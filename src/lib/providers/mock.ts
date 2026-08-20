@@ -45,19 +45,28 @@ async function ffmpeg(args: string[]): Promise<boolean> {
   }
 }
 
+/** Deterministic pastel color derived from the prompt, so shots are tellable apart. */
+function promptColor(prompt: string): string {
+  let hash = 0;
+  for (const c of prompt) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
+  const palette = ["334155", "3b4a6b", "44403c", "3f3f46", "1e3a5f", "4a3728", "2d4a3e", "4c1d95"];
+  return palette[hash % palette.length];
+}
+
 export const mockImage: ImageGenProvider = {
   async generateImage({ prompt, aspectRatio }): Promise<MediaResult> {
     const dir = await ensureDir("images");
-    const filePath = path.join(dir, `${randomUUID()}.svg`);
+    const filePath = path.join(dir, `${randomUUID()}.png`);
     const [w, h] =
-      aspectRatio === "16:9" ? [1920, 1080] : aspectRatio === "9:16" ? [1080, 1920] : [1080, 1080];
-    const label = prompt.slice(0, 80).replace(/[<>&]/g, "");
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="#1e293b"/>
-  <text x="50%" y="48%" fill="#e2e8f0" font-family="sans-serif" font-size="42" text-anchor="middle">MOCK KEYFRAME</text>
-  <text x="50%" y="55%" fill="#94a3b8" font-family="sans-serif" font-size="26" text-anchor="middle">${label}</text>
-</svg>`;
-    await writeFile(filePath, svg, "utf8");
+      aspectRatio === "16:9" ? [1280, 720] : aspectRatio === "9:16" ? [720, 1280] : [1024, 1024];
+    // PNG (not SVG) so ffmpeg can assemble keyframes into placeholder clips.
+    const ok = await ffmpeg([
+      "-f", "lavfi",
+      "-i", `color=c=0x${promptColor(prompt)}:s=${w}x${h}`,
+      "-frames:v", "1",
+      filePath,
+    ]);
+    if (!ok) await writeFile(filePath, `mock keyframe: ${prompt}`, "utf8");
     return {
       filePath,
       realCostUsd: COSTS.imageUsd,
@@ -69,13 +78,18 @@ export const mockImage: ImageGenProvider = {
 };
 
 export const mockVideo: VideoGenProvider = {
-  async generateClip({ prompt, durationSeconds, tier }): Promise<MediaResult> {
+  async generateClip({ prompt, keyframePath, durationSeconds, tier }): Promise<MediaResult> {
     const dir = await ensureDir("clips");
     const filePath = path.join(dir, `${randomUUID()}.mp4`);
+    // Slow zoom on the keyframe: image-to-video stand-in, uniform codec for concat.
     const ok = await ffmpeg([
-      "-f", "lavfi",
-      "-i", `color=c=0x334155:s=1280x720:d=${durationSeconds}`,
+      "-loop", "1",
+      "-i", keyframePath,
+      "-t", String(durationSeconds),
+      "-vf",
+      `scale=1280:720,zoompan=z='min(zoom+0.0015,1.2)':d=${durationSeconds * 25}:s=1280x720:fps=25`,
       "-pix_fmt", "yuv420p",
+      "-c:v", "libx264",
       filePath,
     ]);
     if (!ok) await writeFile(filePath, `mock clip: ${prompt}`, "utf8");
@@ -94,12 +108,14 @@ export const mockVideo: VideoGenProvider = {
 export const mockTts: TtsProvider = {
   async synthesize({ text, voiceId }): Promise<MediaResult> {
     const dir = await ensureDir("voice");
-    const filePath = path.join(dir, `${randomUUID()}.mp3`);
+    // WAV: no codec dependency in ffmpeg builds, converted to AAC at montage.
+    const filePath = path.join(dir, `${randomUUID()}.wav`);
     // ~15 characters per second of narrated speech.
     const seconds = Math.max(1, Math.round(text.length / 15));
     const ok = await ffmpeg([
       "-f", "lavfi",
       "-i", `sine=frequency=220:duration=${seconds}`,
+      "-af", "volume=0.15",
       filePath,
     ]);
     if (!ok) await writeFile(filePath, `mock voice: ${text.slice(0, 100)}`, "utf8");
