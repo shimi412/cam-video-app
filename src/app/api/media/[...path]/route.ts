@@ -10,6 +10,8 @@ const MIME: Record<string, string> = {
   ".png": "image/png",
   ".wav": "audio/wav",
   ".mp3": "audio/mpeg",
+  ".md": "text/markdown; charset=utf-8",
+  ".json": "application/json",
 };
 
 export async function GET(

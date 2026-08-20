@@ -15,6 +15,7 @@ import type { MediaResult } from "./providers/types";
 import { splitScript, type ProductionParams } from "./brain";
 import { addLedgerEntry, billedFromRealCost } from "./credits";
 import { getMarginMultiplier } from "./settings";
+import { MODEL_MAP, providerMode, saveSheet, type SheetEntry } from "./sheet";
 
 const exec = promisify(execFile);
 const STORAGE = path.join(process.cwd(), "storage");
@@ -64,6 +65,16 @@ export async function runJob(jobId: string): Promise<void> {
   const steps: JobStep[] = STEPS.map((s) => ({ ...s, status: "pending" }));
   // Whiteboard produces clips locally in the montage engine, not via video API.
   const usesVideoApi = params.templateSlug === "cartoon";
+  // Dry-run: record every request the real pipeline would send to fal.ai.
+  const dryRun = providerMode() === "dryrun";
+  const sheet: SheetEntry[] = [];
+  const template = job.templateId
+    ? (await db.select().from(schema.templates).where(eq(schema.templates.id, job.templateId)))[0]
+    : undefined;
+  const recipeStyle =
+    ((template?.recipe as Record<string, unknown>)?.style as string | undefined) ?? params.templateSlug;
+  const mediaUrl = (filePath: string) =>
+    `/api/media/${path.relative(STORAGE, filePath).split(path.sep).join("/")}`;
 
   let totalBilled = 0;
   const setStep = async (key: string, status: JobStep["status"]) => {
@@ -81,7 +92,7 @@ export async function runJob(jobId: string): Promise<void> {
     const shots = segments.map((narration, i) => ({
       index: i,
       narration,
-      visualPrompt: `${params.templateSlug} style, shot ${i + 1}: ${narration.slice(0, 140)}`,
+      visualPrompt: `${recipeStyle}. Shot ${i + 1} of ${segments.length}, ${params.tone} tone, illustrating: ${narration.replace(/[.!?]\s*$/, "")}.`,
     }));
     await setStep("storyboard", "done");
 
@@ -95,6 +106,17 @@ export async function runJob(jobId: string): Promise<void> {
       });
       totalBilled += await meter(jobId, "image", kf, marginMultiplier);
       keyframes.push(kf);
+      if (dryRun) {
+        sheet.push({
+          step: sheet.length + 1,
+          kind: "image",
+          falModel: MODEL_MAP.image.falModel,
+          higgsfieldEquivalent: MODEL_MAP.image.higgsfieldEquivalent,
+          prompt: shot.visualPrompt,
+          aspectRatio: params.aspectRatio,
+          notes: `Keyframe for shot ${shot.index + 1}. Generate in 2K.`,
+        });
+      }
     }
     await setStep("keyframes", "done");
 
@@ -103,14 +125,29 @@ export async function runJob(jobId: string): Promise<void> {
     const clipPaths: string[] = [];
     for (const [i, shot] of shots.entries()) {
       if (usesVideoApi) {
+        const motionPrompt = `Animate this keyframe: subtle character motion, ${params.tone} energy, camera holds or slow push-in, consistent with the still. ${shot.narration.slice(0, 120)}`;
         const clip = await providers.video.generateClip({
-          prompt: shot.visualPrompt,
+          prompt: motionPrompt,
           keyframePath: keyframes[i].filePath,
           durationSeconds: params.shotSeconds,
           tier: params.tier,
         });
         totalBilled += await meter(jobId, "video", clip, marginMultiplier);
         clipPaths.push(clip.filePath);
+        if (dryRun) {
+          const target = params.tier === "premium" ? MODEL_MAP.videoPremium : MODEL_MAP.videoStandard;
+          sheet.push({
+            step: sheet.length + 1,
+            kind: "video",
+            falModel: target.falModel,
+            higgsfieldEquivalent: target.higgsfieldEquivalent,
+            prompt: motionPrompt,
+            referenceUrl: mediaUrl(keyframes[i].filePath),
+            durationSeconds: params.shotSeconds,
+            aspectRatio: params.aspectRatio,
+            notes: `Image-to-video for shot ${i + 1}: use the keyframe generated at the matching image step as the start frame.`,
+          });
+        }
       } else {
         const clipPath = path.join(STORAGE, "clips", `${jobId}-${i}.mp4`);
         await mkdir(path.dirname(clipPath), { recursive: true });
@@ -137,6 +174,16 @@ export async function runJob(jobId: string): Promise<void> {
       language: params.language,
     });
     totalBilled += await meter(jobId, "tts", voice, marginMultiplier);
+    if (dryRun) {
+      sheet.push({
+        step: sheet.length + 1,
+        kind: "tts",
+        falModel: MODEL_MAP.tts.falModel,
+        higgsfieldEquivalent: MODEL_MAP.tts.higgsfieldEquivalent,
+        prompt: job.script,
+        notes: `Voice-over, ${params.tone} tone, English narrator. Full script above.`,
+      });
+    }
     await setStep("voice", "done");
 
     // 5. Montage: concat clips + voice track. (HyperFrames packaging: chantier 3.)
@@ -172,6 +219,14 @@ export async function runJob(jobId: string): Promise<void> {
       marginMultiplier,
     );
     await setStep("montage", "done");
+
+    // Dry-run: persist the production sheet and expose it on the job.
+    if (dryRun && sheet.length > 0) {
+      const sheetUrl = await saveSheet(jobId, sheet);
+      params.sheet = sheet;
+      params.sheetUrl = sheetUrl;
+      await setProgress(jobId, params, steps);
+    }
 
     // Billing: consume credits at the metered billed total.
     const billed = Number(totalBilled.toFixed(2));

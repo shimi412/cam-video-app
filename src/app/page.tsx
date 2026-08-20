@@ -13,12 +13,25 @@ type Framing = {
   canConfirm: boolean;
 };
 type JobStep = { key: string; label: string; status: "pending" | "running" | "done" | "failed" };
+type SheetEntry = {
+  step: number;
+  kind: string;
+  falModel: string;
+  higgsfieldEquivalent: string;
+  prompt: string;
+  referenceUrl?: string;
+  durationSeconds?: number;
+  aspectRatio?: string;
+  notes?: string;
+};
 type JobState = {
   status: string;
   progress: JobStep[];
   billedUsd: number | null;
   estimateUsd: number | null;
   outputUrl: string | null;
+  sheet: SheetEntry[] | null;
+  sheetUrl: string | null;
   error: string | null;
 };
 
@@ -72,7 +85,7 @@ export default function StudioPage() {
       const res = await fetch(`/api/jobs/${framing.jobId}/confirm`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Confirmation failed");
-      setJob({ status: "running", progress: [], billedUsd: null, estimateUsd: null, outputUrl: null, error: null });
+      setJob({ status: "running", progress: [], billedUsd: null, estimateUsd: null, outputUrl: null, sheet: null, sheetUrl: null, error: null });
       pollRef.current = setInterval(async () => {
         const r = await fetch(`/api/jobs/${framing.jobId}`);
         const j: JobState = await r.json();
@@ -301,6 +314,68 @@ export default function StudioPage() {
               New production
             </button>
           )}
+        </section>
+      )}
+
+      {/* Dry-run: production sheet for manual reproduction on Higgsfield */}
+      {job?.status === "succeeded" && job.sheet && job.sheet.length > 0 && (
+        <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-medium">Production sheet (dry-run)</h2>
+              <p className="text-sm text-muted mt-1">
+                The exact requests the pipeline would have sent to fal.ai. Reproduce them on
+                Higgsfield to judge real quality.
+              </p>
+            </div>
+            {job.sheetUrl && (
+              <a
+                href={job.sheetUrl}
+                target="_blank"
+                className="text-sm text-accent hover:underline whitespace-nowrap"
+              >
+                Open as markdown ↗
+              </a>
+            )}
+          </div>
+          <div className="space-y-3">
+            {job.sheet.map((e) => (
+              <details key={e.step} className="bg-surface-2 border border-line rounded-lg">
+                <summary className="px-4 py-2.5 text-sm cursor-pointer select-none flex items-center gap-3">
+                  <span className="font-mono text-muted">#{e.step}</span>
+                  <span className="uppercase text-xs tracking-wide bg-accent-soft text-accent rounded px-1.5 py-0.5">
+                    {e.kind}
+                  </span>
+                  <span className="text-muted truncate">{e.higgsfieldEquivalent}</span>
+                </summary>
+                <div className="px-4 pb-4 space-y-2 text-sm">
+                  <p className="text-muted">
+                    fal.ai: <span className="font-mono text-foreground">{e.falModel}</span>
+                    {e.durationSeconds ? ` · ${e.durationSeconds}s` : ""}
+                    {e.aspectRatio ? ` · ${e.aspectRatio}` : ""}
+                  </p>
+                  {e.referenceUrl && (
+                    <p className="text-muted">
+                      Reference:{" "}
+                      <a href={e.referenceUrl} target="_blank" className="text-accent hover:underline">
+                        keyframe ↗
+                      </a>
+                    </p>
+                  )}
+                  {e.notes && <p className="text-muted">{e.notes}</p>}
+                  <pre className="bg-background border border-line rounded-md p-3 whitespace-pre-wrap text-xs">
+                    {e.prompt}
+                  </pre>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(e.prompt)}
+                    className="text-xs text-accent hover:underline"
+                  >
+                    Copy prompt
+                  </button>
+                </div>
+              </details>
+            ))}
+          </div>
         </section>
       )}
     </div>

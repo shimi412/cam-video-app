@@ -19,6 +19,8 @@ export async function GET(
     billedUsd: job.billedUsd ? Number(job.billedUsd) : null,
     error: job.error,
     outputUrl: job.outputPath ? `/api/media/outputs/${job.id}.mp4` : null,
+    sheet: jobParams.sheet ?? null,
+    sheetUrl: jobParams.sheetUrl ?? null,
     balance: await getBalanceUsd(),
   });
 }

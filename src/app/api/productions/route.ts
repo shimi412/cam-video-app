@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { resolveParams } from "@/lib/brain";
+import { frameProduction } from "@/lib/brain-llm";
 import { estimateProduction } from "@/lib/pricing";
 import { getBalanceUsd } from "@/lib/credits";
 import { getMarginMultiplier } from "@/lib/settings";
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   }
   const { script, mode, overrides } = parsed.data;
 
-  const { analysis, params } = resolveParams(script, mode, overrides);
+  const { analysis, params, brain } = await frameProduction(script, mode, overrides);
   const marginMultiplier = await getMarginMultiplier();
   const estimate = estimateProduction(params, marginMultiplier);
   const balance = await getBalanceUsd();
@@ -73,6 +73,7 @@ export async function POST(request: Request) {
     template: template ? { slug: template.slug, name: template.name, description: template.description } : null,
     estimate,
     balance,
+    brain,
     canConfirm: balance >= estimate.totalBilledUsd,
   });
 }
