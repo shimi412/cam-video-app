@@ -6,21 +6,36 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:start": "tsx scripts/db.ts start",
+    "db:stop": "tsx scripts/db.ts stop",
+    "db:status": "tsx scripts/db.ts status",
+    "db:push": "drizzle-kit push",
+    "db:seed": "tsx --env-file-if-exists=.env scripts/seed.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.39",
+    "@ai-sdk/react": "^4.0.71",
+    "ai": "^7.0.68",
+    "drizzle-orm": "^0.45.2",
     "next": "16.3.1",
+    "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.10",
+    "embedded-postgres": "18.4.0-beta.17",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.12",
     "typescript": "^5"
   },
   "packageManager": "pnpm@11.17.0"
