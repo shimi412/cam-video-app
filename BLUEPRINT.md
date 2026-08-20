@@ -56,10 +56,10 @@ Règle d'or : **aucun appel réseau externe hors de `src/lib/providers/`**. C'es
 
 ## Chantiers
 
-1. **Fondations** (fait le 2026-08-20) : repo, Next.js, Postgres embarqué, schéma, adaptateurs mock, seed.
-2. **Le chat** : interface conversationnelle Sonnet 5, cadrage, modes auto/manuel, estimation + confirmation, jobs simulés.
-3. **La pipeline** : script → storyboard → keyframes → clips → voix → montage HyperFrames → fichier final, jobs asynchrones, métering réel, fournisseur fal.ai.
-4. **Crédits et admin** : page admin (modèle, marges, plafonds, relevé), recharges, blocage.
+1. **Fondations** (✅ 2026-08-20) : repo, Next.js, Postgres embarqué, schéma, adaptateurs mock, seed.
+2. **Le chat** (V1 simulée ✅ 2026-08-20) : page Studio avec modes auto/manuel, estimation + confirmation. Le cadrage est déterministe (`src/lib/brain.ts`) ; reste à brancher : conversation libre Sonnet 5 via AI SDK derrière la même sortie (`resolveParams`), dès que la clé Anthropic existe.
+3. **La pipeline** (V1 simulée ✅ 2026-08-20) : `src/lib/runner.ts`, bout en bout avec les mocks + montage ffmpeg. Reste à brancher : fournisseur fal.ai réel (`src/lib/providers/fal.ts`), habillage HyperFrames complet, sous-titres.
+4. **Crédits et admin** (V1 ✅ 2026-08-20) : ledger, métering, blocage à solde vide, page admin (recharge, marge, relevés). Reste : plafonds mensuels + alertes.
 5. Ensuite (hors local) : assistant de campagnes, Auth.js, Stripe, VPS.
 
 Le POC pour Eyal (2 vidéos test, mêmes formats) se produit à la main avec les skills existants, en parallèle de l'app. Ses réglages calibrent les recettes du chantier 3.
