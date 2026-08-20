@@ -1,8 +1,6 @@
 /**
  * Production sheet (dry-run mode): the exact requests the pipeline WOULD
- * send to fal.ai, written down so they can be reproduced manually on
- * Higgsfield (Shimon's subscription) to judge real output quality before
- * wiring the fal.ai API.
+ * send to fal.ai, written down for debugging prompts without spending.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -12,7 +10,7 @@ export type SheetEntry = {
   kind: "image" | "video" | "tts";
   /** Target model on fal.ai (what the real pipeline would call). */
   falModel: string;
-  /** Equivalent on Higgsfield for manual reproduction. */
+  /** Human-readable model name. */
   higgsfieldEquivalent: string;
   prompt: string;
   /** Media URL of the reference/keyframe placeholder, when applicable. */
@@ -24,8 +22,12 @@ export type SheetEntry = {
 
 export const MODEL_MAP = {
   image: {
-    falModel: "fal-ai/nano-banana",
-    higgsfieldEquivalent: "Nano Banana (2K)",
+    falModel: "fal-ai/nano-banana-pro",
+    higgsfieldEquivalent: "Nano Banana Pro (2K)",
+  },
+  imageEdit: {
+    falModel: "fal-ai/nano-banana-pro/edit",
+    higgsfieldEquivalent: "Nano Banana Pro edit (2K, with reference image)",
   },
   videoStandard: {
     falModel: "fal-ai/wan-25-preview/image-to-video",
@@ -41,9 +43,9 @@ export const MODEL_MAP = {
   },
 } as const;
 
-export function providerMode(): "mock" | "dryrun" | "higgsfield" | "fal" {
+export function providerMode(): "mock" | "dryrun" | "fal" {
   const mode = process.env.PROVIDER_MODE;
-  if (mode === "dryrun" || mode === "higgsfield" || mode === "fal") return mode;
+  if (mode === "dryrun" || mode === "fal") return mode;
   // Backward compatibility with the original MOCK_MODE flag.
   return process.env.MOCK_MODE === "false" ? "fal" : "mock";
 }
@@ -53,7 +55,7 @@ export function sheetToMarkdown(jobId: string, entries: SheetEntry[]): string {
     `# Production sheet — job ${jobId}`,
     "",
     "Dry-run: these are the exact requests the pipeline would have sent to fal.ai.",
-    "Reproduce them on Higgsfield to judge real quality, in step order.",
+    "Debug view of the prompts, in step order.",
     "",
   ];
   for (const e of entries) {

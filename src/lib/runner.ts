@@ -1,6 +1,8 @@
 /**
  * Production engine: executes a confirmed job end to end.
- * script → storyboard → keyframes → clips → voice → montage → final mp4.
+ *   storyboard (director brain) → voice per shot → keyframes (first one is the
+ *   style/character reference of the others) → clips → montage per shot,
+ *   synced on the voice → final mp4.
  * Every provider call is metered (api_calls) and the client is billed
  * cost x margin through the credit ledger on success.
  */
@@ -12,10 +14,13 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getProviders } from "./providers";
 import type { MediaResult } from "./providers/types";
-import { splitScript, type ProductionParams } from "./brain";
+import type { ProductionParams } from "./brain";
+import { directStoryboard, sanitizeScene, type Storyboard } from "./director";
+import { buildImagePrompt, buildMotionPrompt, canvasFor, getRecipe, safeFallbackScene } from "./recipes";
 import { addLedgerEntry, billedFromRealCost } from "./credits";
 import { getMarginMultiplier } from "./settings";
 import { MODEL_MAP, providerMode, saveSheet, type SheetEntry } from "./sheet";
+import { produceCollage } from "./collage/run";
 
 const exec = promisify(execFile);
 const STORAGE = path.join(process.cwd(), "storage");
@@ -28,11 +33,14 @@ export type JobStep = {
 
 const STEPS: Array<Pick<JobStep, "key" | "label">> = [
   { key: "storyboard", label: "Storyboard" },
+  { key: "voice", label: "Voice-over" },
   { key: "keyframes", label: "Keyframes" },
   { key: "clips", label: "Clips" },
-  { key: "voice", label: "Voice-over" },
   { key: "montage", label: "Montage & packaging" },
 ];
+
+/** Breathing room added after each narration segment, in seconds. */
+const TAIL_SECONDS = 0.35;
 
 async function setProgress(jobId: string, params: Record<string, unknown>, steps: JobStep[]) {
   await db
@@ -55,24 +63,35 @@ async function meter(jobId: string, kind: "image" | "video" | "tts" | "render", 
   return billed;
 }
 
+async function mediaDuration(filePath: string): Promise<number> {
+  const { stdout } = await exec("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration",
+    "-of", "default=noprint_wrappers=1:nokey=1",
+    filePath,
+  ]);
+  const d = Number(stdout.trim());
+  return Number.isFinite(d) && d > 0 ? d : 3;
+}
+
+/** Video models accept 5 or 10 s clips; pick the smallest that covers the narration. */
+function clipSecondsFor(audioSeconds: number): number {
+  return audioSeconds + TAIL_SECONDS <= 5 ? 5 : 10;
+}
+
 export async function runJob(jobId: string): Promise<void> {
   const [job] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, jobId));
   if (!job || job.status !== "confirmed") return;
 
   const params = job.params as Record<string, unknown> & ProductionParams;
+  const recipe = getRecipe(params.templateSlug);
   const marginMultiplier = await getMarginMultiplier();
   const providers = getProviders();
   const steps: JobStep[] = STEPS.map((s) => ({ ...s, status: "pending" }));
-  // Whiteboard produces clips locally in the montage engine, not via video API.
-  const usesVideoApi = params.templateSlug === "cartoon";
-  // Dry-run: record every request the real pipeline would send to fal.ai.
+  const usesVideoApi = params.family === "cartoon";
   const dryRun = providerMode() === "dryrun";
   const sheet: SheetEntry[] = [];
-  const template = job.templateId
-    ? (await db.select().from(schema.templates).where(eq(schema.templates.id, job.templateId)))[0]
-    : undefined;
-  const recipeStyle =
-    ((template?.recipe as Record<string, unknown>)?.style as string | undefined) ?? params.templateSlug;
+  const { width, height } = canvasFor(params.aspectRatio);
   const mediaUrl = (filePath: string) =>
     `/api/media/${path.relative(STORAGE, filePath).split(path.sep).join("/")}`;
 
@@ -84,72 +103,182 @@ export async function runJob(jobId: string): Promise<void> {
   };
 
   try {
+    if (!recipe) throw new Error(`Unknown video model "${params.templateSlug}"`);
     await db.update(schema.jobs).set({ status: "running" }).where(eq(schema.jobs.id, jobId));
 
-    // 1. Storyboard: one narration segment + visual prompt per shot.
+    let outputPath: string;
+    if (recipe.collage) {
+      // Whiteboard family: collage engine (score → elements → HyperFrames render).
+      const r = await produceCollage({
+        jobId,
+        script: job.script,
+        params,
+        recipe,
+        providers,
+        meter: async (kind, media) => {
+          totalBilled += await meter(jobId, kind, media, marginMultiplier);
+        },
+        setStep,
+        tailSeconds: TAIL_SECONDS,
+      });
+      outputPath = r.outputPath;
+      params.storyboard = { brain: r.score.brain, engine: "collage", elements: r.score.elements, shots: r.score.shots };
+      params.fallbacks = r.fallbacks;
+      params.finalDurationSeconds = r.durationSeconds;
+      await setProgress(jobId, params, steps);
+    } else {
+    // 1. Storyboard: the director brain stages the script inside the style bible.
     await setStep("storyboard", "running");
-    const segments = splitScript(job.script, params.shotCount);
-    const shots = segments.map((narration, i) => ({
-      index: i,
-      narration,
-      visualPrompt: `${recipeStyle}. Shot ${i + 1} of ${segments.length}, ${params.tone} tone, illustrating: ${narration.replace(/[.!?]\s*$/, "")}.`,
-    }));
+    const storyboard: Storyboard = await directStoryboard(job.script, recipe, params);
+    const shots = storyboard.shots;
+    params.storyboard = {
+      brain: storyboard.brain,
+      characterNotes: storyboard.characterNotes,
+      shots: shots.map((s) => ({ narration: s.narration, scene: s.scene, motion: s.motion, handwrittenKeywords: s.handwrittenKeywords })),
+    };
     await setStep("storyboard", "done");
 
-    // 2. Keyframes.
-    await setStep("keyframes", "running");
-    const keyframes: MediaResult[] = await Promise.all(
+    // 2. Voice-over per shot: the real durations drive the clips and the montage.
+    await setStep("voice", "running");
+    const voices = await Promise.all(
       shots.map((shot) =>
-        providers.image.generateImage({
-          prompt: shot.visualPrompt,
-          aspectRatio: params.aspectRatio,
-        }),
+        providers.tts.synthesize({ text: shot.narration, voiceId: params.voiceId, language: params.language }),
       ),
     );
-    for (const kf of keyframes) {
-      totalBilled += await meter(jobId, "image", kf, marginMultiplier);
+    for (const v of voices) totalBilled += await meter(jobId, "tts", v, marginMultiplier);
+    const audioSeconds = await Promise.all(voices.map((v) => mediaDuration(v.filePath)));
+    if (dryRun) {
+      shots.forEach((shot, i) =>
+        sheet.push({
+          step: sheet.length + 1,
+          kind: "tts",
+          falModel: MODEL_MAP.tts.falModel,
+          higgsfieldEquivalent: MODEL_MAP.tts.higgsfieldEquivalent,
+          prompt: shot.narration,
+          durationSeconds: Number(audioSeconds[i].toFixed(2)),
+          notes: `Voice-over for shot ${i + 1}, ${params.tone} tone.`,
+        }),
+      );
     }
-    for (const shot of shots) {
-      if (dryRun) {
+    await setStep("voice", "done");
+
+    // 3. Keyframes: shot 1 sets the style and the character; the others use it as reference.
+    await setStep("keyframes", "running");
+    const sceneWithCharacter = (scene: string) =>
+      storyboard.characterNotes ? `${scene} Recurring character/props: ${storyboard.characterNotes}` : scene;
+    const imagePrompts = shots.map((shot) =>
+      buildImagePrompt(recipe, sceneWithCharacter(shot.scene), params.aspectRatio, shot.handwrittenKeywords),
+    );
+    const fallbacks: Array<{ shot: number; step: string; reason: string }> = [];
+    const REF_PREFIX =
+      "Use the reference image ONLY for its art style, palette and recurring character design. Create a NEW scene with a different composition: ";
+    // A refused prompt (content checker) is rewritten abstractly, then falls back
+    // to the recurring motif: one refused shot never breaks the video.
+    const generateKeyframe = async (i: number, referencePath?: string): Promise<MediaResult> => {
+      const attempt = (scene: string) =>
+        providers.image.generateImage({
+          prompt:
+            (referencePath ? REF_PREFIX : "") +
+            buildImagePrompt(recipe, sceneWithCharacter(scene), params.aspectRatio, shots[i].handwrittenKeywords),
+          aspectRatio: params.aspectRatio,
+          referencePath,
+        });
+      try {
+        return await attempt(shots[i].scene);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        if (!/content_policy|flagged|safety/i.test(reason)) throw err;
+        const rewritten = await sanitizeScene(shots[i].scene, recipe);
+        if (rewritten) {
+          try {
+            const r = await attempt(rewritten);
+            fallbacks.push({ shot: i + 1, step: "keyframe", reason: "scene rewritten after content check" });
+            shots[i].scene = rewritten;
+            return r;
+          } catch {
+            /* fall through to the safe motif */
+          }
+        }
+        const r = await attempt(safeFallbackScene(recipe));
+        fallbacks.push({ shot: i + 1, step: "keyframe", reason: "safe motif after content check" });
+        shots[i].scene = safeFallbackScene(recipe);
+        return r;
+      }
+    };
+    const first = await generateKeyframe(0);
+    totalBilled += await meter(jobId, "image", first, marginMultiplier);
+    const rest = await Promise.all(
+      shots.slice(1).map(async (_, i) => {
+        const r = await generateKeyframe(i + 1, first.filePath);
+        totalBilled += await meter(jobId, "image", r, marginMultiplier);
+        return r;
+      }),
+    );
+    const keyframes: MediaResult[] = [first, ...rest];
+    params.fallbacks = fallbacks;
+    if (dryRun) {
+      shots.forEach((_, i) =>
         sheet.push({
           step: sheet.length + 1,
           kind: "image",
-          falModel: MODEL_MAP.image.falModel,
-          higgsfieldEquivalent: MODEL_MAP.image.higgsfieldEquivalent,
-          prompt: shot.visualPrompt,
+          falModel: i === 0 ? MODEL_MAP.image.falModel : MODEL_MAP.imageEdit.falModel,
+          higgsfieldEquivalent: i === 0 ? MODEL_MAP.image.higgsfieldEquivalent : MODEL_MAP.imageEdit.higgsfieldEquivalent,
+          prompt: imagePrompts[i],
+          referenceUrl: i === 0 ? undefined : mediaUrl(first.filePath),
           aspectRatio: params.aspectRatio,
-          notes: `Keyframe for shot ${shot.index + 1}. Generate in 2K.`,
-        });
-      }
+          notes: i === 0 ? "Master keyframe (style + character reference)." : `Keyframe for shot ${i + 1}, reference = master keyframe.`,
+        }),
+      );
     }
     await setStep("keyframes", "done");
 
-    // 3. Clips: video API for cartoon, local still-to-clip render for whiteboard.
+    // 4. Clips: video API for the cartoon family, local animated still for whiteboard.
     await setStep("clips", "running");
+    const clipDir = path.join(STORAGE, "clips");
+    await mkdir(clipDir, { recursive: true });
     let clipPaths: string[];
+    // Local animated still (slow drift on the keyframe): whiteboard family, and fallback for a refused clip.
+    const stillClip = async (i: number): Promise<string> => {
+      const seconds = audioSeconds[i] + TAIL_SECONDS;
+      const clipPath = path.join(clipDir, `${jobId}-${i}.mp4`);
+      await exec("ffmpeg", [
+        "-y", "-loglevel", "error",
+        "-loop", "1",
+        "-i", keyframes[i].filePath,
+        "-t", seconds.toFixed(2),
+        "-vf",
+        `scale=${width * 2}:${height * 2}:force_original_aspect_ratio=decrease,pad=${width * 2}:${height * 2}:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.0006,1.06)':d=${Math.ceil(seconds * 25)}:s=${width}x${height}:fps=25`,
+        "-pix_fmt", "yuv420p",
+        "-c:v", "libx264",
+        clipPath,
+      ]);
+      return clipPath;
+    };
     if (usesVideoApi) {
-      const motionPrompts = shots.map(
-        (shot) =>
-          `Animate this keyframe: subtle character motion, ${params.tone} energy, camera holds or slow push-in, consistent with the still. ${shot.narration.slice(0, 120)}`,
+      const motionPrompts = shots.map((shot) => buildMotionPrompt(recipe, shot.motion));
+      clipPaths = await Promise.all(
+        shots.map(async (_, i) => {
+          try {
+            const clip = await providers.video.generateClip({
+              prompt: motionPrompts[i],
+              keyframePath: keyframes[i].filePath,
+              durationSeconds: clipSecondsFor(audioSeconds[i]),
+              tier: params.tier,
+              aspectRatio: params.aspectRatio,
+            });
+            totalBilled += await meter(jobId, "video", clip, marginMultiplier);
+            return clip.filePath;
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            fallbacks.push({ shot: i + 1, step: "clip", reason: reason.slice(0, 200) });
+            return stillClip(i);
+          }
+        }),
       );
-      const clips = await Promise.all(
-        shots.map((_, i) =>
-          providers.video.generateClip({
-            prompt: motionPrompts[i],
-            keyframePath: keyframes[i].filePath,
-            keyframeRef: keyframes[i].meta?.jobId as string | undefined,
-            durationSeconds: params.shotSeconds,
-            tier: params.tier,
-          }),
-        ),
-      );
-      for (const clip of clips) {
-        totalBilled += await meter(jobId, "video", clip, marginMultiplier);
-      }
-      clipPaths = clips.map((c) => c.filePath);
+      params.fallbacks = fallbacks;
       if (dryRun) {
         const target = params.tier === "premium" ? MODEL_MAP.videoPremium : MODEL_MAP.videoStandard;
-        for (const [i] of shots.entries()) {
+        shots.forEach((_, i) =>
           sheet.push({
             step: sheet.length + 1,
             kind: "video",
@@ -157,88 +286,61 @@ export async function runJob(jobId: string): Promise<void> {
             higgsfieldEquivalent: target.higgsfieldEquivalent,
             prompt: motionPrompts[i],
             referenceUrl: mediaUrl(keyframes[i].filePath),
-            durationSeconds: params.shotSeconds,
+            durationSeconds: clipSecondsFor(audioSeconds[i]),
             aspectRatio: params.aspectRatio,
-            notes: `Image-to-video for shot ${i + 1}: use the keyframe generated at the matching image step as the start frame.`,
-          });
-        }
+            notes: `Image-to-video for shot ${i + 1}, start frame = its keyframe.`,
+          }),
+        );
       }
     } else {
+      // Whiteboard: the keyframe holds for the narration with a slow drift (HyperFrames packaging: next chantier).
       clipPaths = [];
-      for (const [i] of shots.entries()) {
-        const clipPath = path.join(STORAGE, "clips", `${jobId}-${i}.mp4`);
-        await mkdir(path.dirname(clipPath), { recursive: true });
-        await exec("ffmpeg", [
-          "-y", "-loglevel", "error",
-          "-loop", "1",
-          "-i", keyframes[i].filePath,
-          "-t", String(params.shotSeconds),
-          "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
-          "-pix_fmt", "yuv420p",
-          "-c:v", "libx264",
-          clipPath,
-        ]);
-        clipPaths.push(clipPath);
-      }
+      for (const [i] of shots.entries()) clipPaths.push(await stillClip(i));
     }
     await setStep("clips", "done");
 
-    // 4. Voice-over on the full script.
-    await setStep("voice", "running");
-    const voice = await providers.tts.synthesize({
-      text: job.script,
-      voiceId: params.voiceId,
-      language: params.language,
-    });
-    totalBilled += await meter(jobId, "tts", voice, marginMultiplier);
-    if (dryRun) {
-      sheet.push({
-        step: sheet.length + 1,
-        kind: "tts",
-        falModel: MODEL_MAP.tts.falModel,
-        higgsfieldEquivalent: MODEL_MAP.tts.higgsfieldEquivalent,
-        prompt: job.script,
-        notes: `Voice-over, ${params.tone} tone, English narrator. Full script above.`,
-      });
-    }
-    await setStep("voice", "done");
-
-    // 5. Montage: concat clips + voice track. (HyperFrames packaging: chantier 3.)
+    // 5. Montage: each clip is cut to its narration (+ breathing room), muxed with its voice, then concatenated.
     await setStep("montage", "running");
     const outDir = path.join(STORAGE, "outputs");
     await mkdir(outDir, { recursive: true });
+    const segmentPaths: string[] = [];
+    for (const [i] of shots.entries()) {
+      const seconds = audioSeconds[i] + TAIL_SECONDS;
+      const segPath = path.join(outDir, `${jobId}-seg-${i}.mp4`);
+      await exec("ffmpeg", [
+        "-y", "-loglevel", "error",
+        "-stream_loop", "-1", "-i", clipPaths[i],
+        "-i", voices[i].filePath,
+        "-t", seconds.toFixed(2),
+        "-vf", `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=25,format=yuv420p`,
+        "-af", "apad",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-c:a", "aac", "-ar", "44100", "-ac", "1",
+        "-map", "0:v:0", "-map", "1:a:0",
+        segPath,
+      ]);
+      segmentPaths.push(segPath);
+    }
     const listPath = path.join(outDir, `${jobId}.txt`);
-    await writeFile(
-      listPath,
-      clipPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"),
-      "utf8",
-    );
-    const outputPath = path.join(outDir, `${jobId}.mp4`);
-    // Re-encode: downloaded clips can differ in codec/resolution across providers.
+    await writeFile(listPath, segmentPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"), "utf8");
+    outputPath = path.join(outDir, `${jobId}.mp4`);
     await exec("ffmpeg", [
       "-y", "-loglevel", "error",
       "-f", "concat", "-safe", "0",
       "-i", listPath,
-      "-i", voice.filePath,
-      "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=25",
-      "-c:v", "libx264",
-      "-pix_fmt", "yuv420p",
-      "-c:a", "aac",
-      "-shortest",
+      "-c", "copy",
+      "-movflags", "+faststart",
       outputPath,
     ]);
     totalBilled += await meter(
       jobId,
       "render",
-      {
-        filePath: outputPath,
-        realCostUsd: 0.05,
-        provider: "hyperframes",
-        model: "local-cpu-montage",
-      },
+      { filePath: outputPath, realCostUsd: 0.05, provider: "hyperframes", model: "local-cpu-montage" },
       marginMultiplier,
     );
+    params.finalDurationSeconds = Number(audioSeconds.reduce((s, d) => s + d + TAIL_SECONDS, 0).toFixed(2));
     await setStep("montage", "done");
+    }
 
     // Dry-run: persist the production sheet and expose it on the job.
     if (dryRun && sheet.length > 0) {
@@ -254,7 +356,7 @@ export async function runJob(jobId: string): Promise<void> {
       deltaUsd: -billed,
       kind: "consumption",
       jobId,
-      note: `Production ${params.templateSlug} (${params.durationSeconds}s)`,
+      note: `Production ${params.templateSlug} (${params.finalDurationSeconds}s, ${params.aspectRatio})`,
     });
     await db
       .update(schema.jobs)

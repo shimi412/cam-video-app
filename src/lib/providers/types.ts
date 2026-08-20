@@ -33,10 +33,12 @@ export interface VideoGenProvider {
     prompt: string;
     /** Keyframe driving the clip (image-to-video). */
     keyframePath: string;
-    /** Provider-side reference of the keyframe (e.g. Higgsfield jobId), when it has one. */
+    /** Provider-side reference of the keyframe (upload URL or job id), when it has one. */
     keyframeRef?: string;
     durationSeconds: number;
     tier: "standard" | "premium";
+    /** Output aspect ratio (mock uses it for the placeholder canvas; real models follow the keyframe). */
+    aspectRatio?: "16:9" | "9:16" | "1:1";
   }): Promise<MediaResult>;
 }
 
@@ -48,8 +50,22 @@ export interface TtsProvider {
   }): Promise<MediaResult>;
 }
 
+/** Isolated collage element: generated on a plain background, then background-removed to a PNG with alpha. */
+export interface CutoutProvider {
+  generateCutout(input: { prompt: string }): Promise<MediaResult>;
+}
+
+export type WordTiming = { word: string; start: number; end: number };
+
+/** Word-level timestamps of a voice file, to anchor visual events on words. */
+export interface TranscribeProvider {
+  transcribe(input: { audioPath: string; language: "en" | "fr" | "he" }): Promise<{ words: WordTiming[]; realCostUsd: number; provider: string; model: string }>;
+}
+
 export type ProviderSet = {
   image: ImageGenProvider;
   video: VideoGenProvider;
   tts: TtsProvider;
+  cutout: CutoutProvider;
+  transcribe: TranscribeProvider;
 };

@@ -13,10 +13,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type {
+  CutoutProvider,
   ImageGenProvider,
-  VideoGenProvider,
-  TtsProvider,
   MediaResult,
+  TranscribeProvider,
+  TtsProvider,
+  VideoGenProvider,
+  WordTiming,
 } from "./types";
 
 const exec = promisify(execFile);
@@ -24,9 +27,9 @@ const STORAGE = path.join(process.cwd(), "storage");
 
 // Simulated real costs, aligned with the fiche projet research of 2026-08-19.
 const COSTS = {
-  imageUsd: 0.13, // Nano Banana 2K, per image
+  imageUsd: 0.15, // Nano Banana Pro 2K, per image
   videoStandardUsdPerSec: 0.1, // Wan 2.5 720p
-  videoPremiumUsdPerSec: 0.15, // Veo/Kling class
+  videoPremiumUsdPerSec: 0.07, // Kling 2.5 Turbo Pro
   ttsUsdPerMinute: 0.1,
 };
 
@@ -78,16 +81,18 @@ export const mockImage: ImageGenProvider = {
 };
 
 export const mockVideo: VideoGenProvider = {
-  async generateClip({ prompt, keyframePath, durationSeconds, tier }): Promise<MediaResult> {
+  async generateClip({ prompt, keyframePath, durationSeconds, tier, aspectRatio }): Promise<MediaResult> {
     const dir = await ensureDir("clips");
     const filePath = path.join(dir, `${randomUUID()}.mp4`);
+    const [w, h] =
+      aspectRatio === "16:9" ? [1280, 720] : aspectRatio === "1:1" ? [720, 720] : [720, 1280];
     // Slow zoom on the keyframe: image-to-video stand-in, uniform codec for concat.
     const ok = await ffmpeg([
       "-loop", "1",
       "-i", keyframePath,
       "-t", String(durationSeconds),
       "-vf",
-      `scale=1280:720,zoompan=z='min(zoom+0.0015,1.2)':d=${durationSeconds * 25}:s=1280x720:fps=25`,
+      `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.0015,1.2)':d=${durationSeconds * 25}:s=${w}x${h}:fps=25`,
       "-pix_fmt", "yuv420p",
       "-c:v", "libx264",
       filePath,
@@ -119,6 +124,7 @@ export const mockTts: TtsProvider = {
       filePath,
     ]);
     if (!ok) await writeFile(filePath, `mock voice: ${text.slice(0, 100)}`, "utf8");
+    await writeFile(filePath + ".txt", text, "utf8"); // sidecar for the mock transcription
     return {
       filePath,
       realCostUsd: Number(((seconds / 60) * COSTS.ttsUsdPerMinute).toFixed(4)),
@@ -126,5 +132,46 @@ export const mockTts: TtsProvider = {
       model: `mock-tts/${voiceId}`,
       meta: { characters: text.length, seconds },
     };
+  },
+};
+
+export const mockCutout: CutoutProvider = {
+  async generateCutout({ prompt }): Promise<MediaResult> {
+    const dir = await ensureDir("cutouts");
+    const filePath = path.join(dir, `${randomUUID()}.png`);
+    // Opaque rounded-ish colored block with transparent margins: stands in for a cut-out.
+    const ok = await ffmpeg([
+      "-f", "lavfi",
+      "-i", `color=c=0x${promptColor(prompt)}:s=520x420,format=rgba`,
+      "-vf", "pad=640:560:60:70:color=0x00000000",
+      "-frames:v", "1",
+      filePath,
+    ]);
+    if (!ok) await writeFile(filePath, `mock cutout: ${prompt}`, "utf8");
+    return {
+      filePath,
+      realCostUsd: COSTS.imageUsd + 0.018,
+      provider: "mock",
+      model: "mock-cutout",
+      meta: { prompt },
+    };
+  },
+};
+
+export const mockTranscribe: TranscribeProvider = {
+  async transcribe({ audioPath }) {
+    // Even spacing over the file duration; the mock voice carries no speech.
+    let seconds = 3;
+    try {
+      const { stdout } = await exec("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", audioPath]);
+      seconds = Number(stdout.trim()) || 3;
+    } catch {
+      /* keep default */
+    }
+    const text = (await import("node:fs/promises")).readFile(audioPath + ".txt", "utf8").catch(() => "");
+    const words = (await text).split(/\s+/).filter(Boolean);
+    const n = Math.max(1, words.length);
+    const timings: WordTiming[] = words.map((w, i) => ({ word: w, start: (i / n) * seconds, end: ((i + 1) / n) * seconds }));
+    return { words: timings, realCostUsd: 0, provider: "mock", model: "mock-whisper" };
   },
 };

@@ -4,6 +4,7 @@ import { frameProduction } from "@/lib/brain-llm";
 import { estimateProduction } from "@/lib/pricing";
 import { getBalanceUsd } from "@/lib/credits";
 import { getMarginMultiplier } from "@/lib/settings";
+import { getRecipe } from "@/lib/recipes";
 import { eq } from "drizzle-orm";
 
 const bodySchema = z.object({
@@ -11,10 +12,14 @@ const bodySchema = z.object({
   mode: z.enum(["auto", "manual"]),
   overrides: z
     .object({
-      templateSlug: z.enum(["cartoon", "whiteboard"]).optional(),
+      templateSlug: z
+        .string()
+        .refine((s) => Boolean(getRecipe(s)), "Unknown video model")
+        .optional(),
       tone: z.enum(["serious", "energetic", "calm"]).optional(),
       tier: z.enum(["standard", "premium"]).optional(),
       voiceId: z.string().optional(),
+      aspectRatio: z.enum(["9:16", "16:9", "1:1"]).optional(),
     })
     .optional(),
 });

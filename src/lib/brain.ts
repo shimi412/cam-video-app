@@ -1,37 +1,57 @@
 /**
  * Framing brain: turns a pasted script + mode into resolved production
- * parameters. In mock mode this is deterministic (zero API spend).
- * Chantier "real chat": Claude Sonnet 5 via the AI SDK plugs in behind
- * the same output shape.
+ * parameters. Deterministic part (zero API spend); the LLM framing in
+ * brain-llm.ts plugs in behind the same output shape.
  */
+import {
+  DEFAULT_ASPECT_RATIO,
+  DEFAULT_RECIPE_BY_FAMILY,
+  getRecipe,
+  type AspectRatio,
+  type Family,
+  type Tone,
+} from "./recipes";
 
 export type ProductionParams = {
-  templateSlug: "cartoon" | "whiteboard";
-  tone: "serious" | "energetic" | "calm";
+  templateSlug: string;
+  family: Family;
+  tone: Tone;
   tier: "standard" | "premium";
   voiceId: string;
   language: "en";
+  aspectRatio: AspectRatio;
+  /** Estimated narration duration (the real one comes from the generated voice). */
   durationSeconds: number;
-  shotSeconds: number;
+  /** Estimated number of shots; the storyboard may adjust slightly. */
   shotCount: number;
-  aspectRatio: "16:9";
+  /** Nominal clip length sent to video models (5 or 10 s). */
+  shotSeconds: number;
+  wordCount: number;
+  characterCount: number;
 };
+
+export type Overrides = Partial<
+  Pick<ProductionParams, "templateSlug" | "tone" | "tier" | "voiceId" | "aspectRatio">
+>;
 
 export type ScriptAnalysis = {
   wordCount: number;
   durationSeconds: number;
   educationalScore: number;
-  suggestedTemplate: "cartoon" | "whiteboard";
+  suggestedFamily: Family;
+  suggestedTemplate: string;
   reason: string;
 };
 
 const NARRATION_WPM = 150;
-const SHOT_SECONDS = 5;
+/** ~11 words per shot ≈ 4.4 s of narration: fits a 5 s clip, keeps social rhythm. */
+const WORDS_PER_SHOT = 11;
+export const SHOT_SECONDS = 5;
 
 export function analyzeScript(script: string): ScriptAnalysis {
   const words = script.trim().split(/\s+/).filter(Boolean);
   const wordCount = words.length;
-  const durationSeconds = Math.max(15, Math.round((wordCount / NARRATION_WPM) * 60));
+  const durationSeconds = Math.max(10, Math.round((wordCount / NARRATION_WPM) * 60));
 
   // Educational markers push toward Whiteboard; narrative markers toward Cartoon.
   const text = script.toLowerCase();
@@ -43,46 +63,48 @@ export function analyzeScript(script: string): ScriptAnalysis {
   const digitDensity = (script.match(/\d/g)?.length ?? 0) / Math.max(wordCount, 1);
   const educationalScore = eduHits + digitDensity * 50;
 
-  const suggestedTemplate = educationalScore >= 4 ? "whiteboard" : "cartoon";
+  const suggestedFamily: Family = educationalScore >= 4 ? "whiteboard" : "cartoon";
+  const suggestedTemplate = DEFAULT_RECIPE_BY_FAMILY[suggestedFamily];
   const reason =
-    suggestedTemplate === "whiteboard"
-      ? "The script is explanatory (facts, figures, definitions): the Whiteboard model fits an educational tone best."
-      : "The script is narrative-driven: the Cartoon model with characters carries it best.";
+    suggestedFamily === "whiteboard"
+      ? "The script is explanatory (facts, figures, definitions): a Whiteboard model fits an educational tone best."
+      : "The script is narrative-driven: a Cartoon model with a narrator carries it best.";
 
-  return { wordCount, durationSeconds, educationalScore, suggestedTemplate, reason };
+  return { wordCount, durationSeconds, educationalScore, suggestedFamily, suggestedTemplate, reason };
 }
 
 export function resolveParams(
   script: string,
   mode: "auto" | "manual",
-  overrides?: Partial<Pick<ProductionParams, "templateSlug" | "tone" | "tier" | "voiceId">>,
+  overrides?: Overrides,
 ): { analysis: ScriptAnalysis; params: ProductionParams } {
   const analysis = analyzeScript(script);
-  const templateSlug =
-    mode === "manual" && overrides?.templateSlug
-      ? overrides.templateSlug
-      : analysis.suggestedTemplate;
+  const requested = overrides?.templateSlug && getRecipe(overrides.templateSlug) ? overrides.templateSlug : undefined;
+  const templateSlug = requested ?? analysis.suggestedTemplate;
+  const recipe = getRecipe(templateSlug)!;
 
-  const durationSeconds = Math.min(analysis.durationSeconds, 90);
-  const shotCount = Math.max(3, Math.ceil(durationSeconds / SHOT_SECONDS));
+  const shotCount = Math.min(24, Math.max(3, Math.ceil(analysis.wordCount / WORDS_PER_SHOT)));
 
   return {
     analysis,
     params: {
       templateSlug,
-      tone: overrides?.tone ?? (templateSlug === "whiteboard" ? "calm" : "energetic"),
+      family: recipe.family,
+      tone: overrides?.tone ?? recipe.defaultTone,
       tier: overrides?.tier ?? "standard",
-      voiceId: overrides?.voiceId ?? "narrator-en-1",
+      voiceId: overrides?.voiceId ?? recipe.voiceId,
       language: "en",
-      durationSeconds,
-      shotSeconds: SHOT_SECONDS,
+      aspectRatio: overrides?.aspectRatio ?? DEFAULT_ASPECT_RATIO,
+      durationSeconds: analysis.durationSeconds,
       shotCount,
-      aspectRatio: "16:9",
+      shotSeconds: SHOT_SECONDS,
+      wordCount: analysis.wordCount,
+      characterCount: script.length,
     },
   };
 }
 
-/** Splits the script into one narration segment per shot, for storyboard + TTS. */
+/** Splits the script into one narration segment per shot (deterministic fallback). */
 export function splitScript(script: string, shotCount: number): string[] {
   const sentences = script
     .replace(/\s+/g, " ")
@@ -95,4 +117,9 @@ export function splitScript(script: string, shotCount: number): string[] {
     segments.push(sentences.slice(i, i + perShot).join(" "));
   }
   return segments;
+}
+
+/** Normalizes text for "same words" comparisons (storyboard narration vs script). */
+export function normalizeWords(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9\s']/g, " ").replace(/\s+/g, " ").trim();
 }

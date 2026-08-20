@@ -1,6 +1,6 @@
 /**
  * Price estimation shown to the client BEFORE launch (mandatory confirmation).
- * Based on the simulated/real unit costs and the admin margin multiplier.
+ * Unit costs = real fal.ai prices (verified 2026-08-20), times the admin margin.
  * The client sees dollars per line item, never tokens.
  */
 import type { ProductionParams } from "./brain";
@@ -19,17 +19,18 @@ export type Estimate = {
   totalBilledUsd: number;
 };
 
-const UNIT = {
-  imageUsd: 0.13,
-  videoStandardUsdPerSec: 0.1,
-  videoPremiumUsdPerSec: 0.15,
-  ttsUsdPerMinute: 0.1,
+export const UNIT = {
+  imageUsd: 0.15, // Nano Banana Pro, 2K
+  videoStandardUsdPerSec: 0.1, // Wan 2.5 720p
+  videoPremiumUsdPer5s: 0.35, // Kling 2.5 Turbo Pro, 5 s clip
+  ttsUsdPer1000Chars: 0.1, // MiniMax Speech-02 HD
+  cutoutUsd: 0.018, // Bria background removal
   hyperframesRenderUsd: 0.05, // CPU render, near-zero real cost buffer
 };
 
 export function estimateProduction(params: ProductionParams, marginMultiplier: number): Estimate {
   const lines: EstimateLine[] = [];
-  const { shotCount, shotSeconds, durationSeconds, templateSlug, tier } = params;
+  const { shotCount, shotSeconds, family, tier, characterCount } = params;
 
   const push = (label: string, quantity: number, realUnitUsd: number) => {
     const real = quantity * realUnitUsd;
@@ -41,14 +42,22 @@ export function estimateProduction(params: ProductionParams, marginMultiplier: n
     });
   };
 
-  push("Keyframes / visuals", shotCount, UNIT.imageUsd);
-
-  if (templateSlug === "cartoon") {
-    const perSec = tier === "premium" ? UNIT.videoPremiumUsdPerSec : UNIT.videoStandardUsdPerSec;
-    push(`Animated clips (${tier})`, shotCount, perSec * shotSeconds);
+  if (family === "whiteboard") {
+    // Collage engine: ~2.2 cut-out elements per sentence (generated + background removed), reused across sentences.
+    push("Cut-out elements", Math.ceil(shotCount * 2.2), UNIT.imageUsd + UNIT.cutoutUsd);
+  } else {
+    push("Keyframes / visuals", shotCount, UNIT.imageUsd);
   }
 
-  push("Voice-over", 1, (durationSeconds / 60) * UNIT.ttsUsdPerMinute);
+  if (family === "cartoon") {
+    // Clips are 5 s; a narration segment that runs long needs a 10 s clip. Budget 25% of them.
+    const LONG_SHOT_SHARE = 0.25;
+    const perClip =
+      tier === "premium" ? UNIT.videoPremiumUsdPer5s : UNIT.videoStandardUsdPerSec * shotSeconds;
+    push(`Animated clips (${tier})`, shotCount, Number((perClip * (1 + LONG_SHOT_SHARE)).toFixed(4)));
+  }
+
+  push("Voice-over", 1, (characterCount / 1000) * UNIT.ttsUsdPer1000Chars);
   push("Montage & packaging", 1, UNIT.hyperframesRenderUsd);
 
   const totalRealUsd = lines.reduce((s, l) => s + l.quantity * l.realUnitUsd, 0);
