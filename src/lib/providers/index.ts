@@ -1,17 +1,19 @@
 import type { ProviderSet } from "./types";
 import { mockImage, mockVideo, mockTts } from "./mock";
+import { higgsfieldImage, higgsfieldVideo, higgsfieldTts } from "./higgsfield";
 import { providerMode } from "../sheet";
 
 /**
  * PROVIDER_MODE:
- *  - "mock":   placeholder media, simulated costs (zero API spend)
- *  - "dryrun": placeholders too, plus the production sheet recorded by the
- *              runner — the exact requests fal.ai would receive, to be
- *              reproduced manually on Higgsfield
- *  - "fal":    real fal.ai calls (chantier réel, needs FAL_KEY)
+ *  - "mock":       placeholder media, simulated costs (zero API spend)
+ *  - "dryrun":     placeholders + production sheet (exact fal.ai requests)
+ *  - "higgsfield": REAL media via the Higgsfield MCP on Shimon's subscription —
+ *                  temporary testing backend, never shipped to the client
+ *  - "fal":        real fal.ai calls (chantier réel, needs FAL_KEY)
  */
 export function isMockMode(): boolean {
-  return providerMode() !== "fal";
+  const mode = providerMode();
+  return mode === "mock" || mode === "dryrun";
 }
 
 export function getProviders(): ProviderSet {
@@ -19,7 +21,10 @@ export function getProviders(): ProviderSet {
   if (mode === "mock" || mode === "dryrun") {
     return { image: mockImage, video: mockVideo, tts: mockTts };
   }
+  if (mode === "higgsfield") {
+    return { image: higgsfieldImage, video: higgsfieldVideo, tts: higgsfieldTts };
+  }
   throw new Error(
-    "Real providers (fal.ai) are not wired yet — keep PROVIDER_MODE=mock or dryrun.",
+    "Real fal.ai providers are not wired yet — use PROVIDER_MODE=mock, dryrun or higgsfield.",
   );
 }

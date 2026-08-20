@@ -98,14 +98,18 @@ export async function runJob(jobId: string): Promise<void> {
 
     // 2. Keyframes.
     await setStep("keyframes", "running");
-    const keyframes: MediaResult[] = [];
-    for (const shot of shots) {
-      const kf = await providers.image.generateImage({
-        prompt: shot.visualPrompt,
-        aspectRatio: params.aspectRatio,
-      });
+    const keyframes: MediaResult[] = await Promise.all(
+      shots.map((shot) =>
+        providers.image.generateImage({
+          prompt: shot.visualPrompt,
+          aspectRatio: params.aspectRatio,
+        }),
+      ),
+    );
+    for (const kf of keyframes) {
       totalBilled += await meter(jobId, "image", kf, marginMultiplier);
-      keyframes.push(kf);
+    }
+    for (const shot of shots) {
       if (dryRun) {
         sheet.push({
           step: sheet.length + 1,
@@ -122,33 +126,46 @@ export async function runJob(jobId: string): Promise<void> {
 
     // 3. Clips: video API for cartoon, local still-to-clip render for whiteboard.
     await setStep("clips", "running");
-    const clipPaths: string[] = [];
-    for (const [i, shot] of shots.entries()) {
-      if (usesVideoApi) {
-        const motionPrompt = `Animate this keyframe: subtle character motion, ${params.tone} energy, camera holds or slow push-in, consistent with the still. ${shot.narration.slice(0, 120)}`;
-        const clip = await providers.video.generateClip({
-          prompt: motionPrompt,
-          keyframePath: keyframes[i].filePath,
-          durationSeconds: params.shotSeconds,
-          tier: params.tier,
-        });
+    let clipPaths: string[];
+    if (usesVideoApi) {
+      const motionPrompts = shots.map(
+        (shot) =>
+          `Animate this keyframe: subtle character motion, ${params.tone} energy, camera holds or slow push-in, consistent with the still. ${shot.narration.slice(0, 120)}`,
+      );
+      const clips = await Promise.all(
+        shots.map((_, i) =>
+          providers.video.generateClip({
+            prompt: motionPrompts[i],
+            keyframePath: keyframes[i].filePath,
+            keyframeRef: keyframes[i].meta?.jobId as string | undefined,
+            durationSeconds: params.shotSeconds,
+            tier: params.tier,
+          }),
+        ),
+      );
+      for (const clip of clips) {
         totalBilled += await meter(jobId, "video", clip, marginMultiplier);
-        clipPaths.push(clip.filePath);
-        if (dryRun) {
-          const target = params.tier === "premium" ? MODEL_MAP.videoPremium : MODEL_MAP.videoStandard;
+      }
+      clipPaths = clips.map((c) => c.filePath);
+      if (dryRun) {
+        const target = params.tier === "premium" ? MODEL_MAP.videoPremium : MODEL_MAP.videoStandard;
+        for (const [i] of shots.entries()) {
           sheet.push({
             step: sheet.length + 1,
             kind: "video",
             falModel: target.falModel,
             higgsfieldEquivalent: target.higgsfieldEquivalent,
-            prompt: motionPrompt,
+            prompt: motionPrompts[i],
             referenceUrl: mediaUrl(keyframes[i].filePath),
             durationSeconds: params.shotSeconds,
             aspectRatio: params.aspectRatio,
             notes: `Image-to-video for shot ${i + 1}: use the keyframe generated at the matching image step as the start frame.`,
           });
         }
-      } else {
+      }
+    } else {
+      clipPaths = [];
+      for (const [i] of shots.entries()) {
         const clipPath = path.join(STORAGE, "clips", `${jobId}-${i}.mp4`);
         await mkdir(path.dirname(clipPath), { recursive: true });
         await exec("ffmpeg", [
@@ -156,7 +173,7 @@ export async function runJob(jobId: string): Promise<void> {
           "-loop", "1",
           "-i", keyframes[i].filePath,
           "-t", String(params.shotSeconds),
-          "-vf", "scale=1280:720",
+          "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
           "-pix_fmt", "yuv420p",
           "-c:v", "libx264",
           clipPath,
@@ -197,12 +214,15 @@ export async function runJob(jobId: string): Promise<void> {
       "utf8",
     );
     const outputPath = path.join(outDir, `${jobId}.mp4`);
+    // Re-encode: downloaded clips can differ in codec/resolution across providers.
     await exec("ffmpeg", [
       "-y", "-loglevel", "error",
       "-f", "concat", "-safe", "0",
       "-i", listPath,
       "-i", voice.filePath,
-      "-c:v", "copy",
+      "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=25",
+      "-c:v", "libx264",
+      "-pix_fmt", "yuv420p",
       "-c:a", "aac",
       "-shortest",
       outputPath,

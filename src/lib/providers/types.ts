@@ -33,6 +33,8 @@ export interface VideoGenProvider {
     prompt: string;
     /** Keyframe driving the clip (image-to-video). */
     keyframePath: string;
+    /** Provider-side reference of the keyframe (e.g. Higgsfield jobId), when it has one. */
+    keyframeRef?: string;
     durationSeconds: number;
     tier: "standard" | "premium";
   }): Promise<MediaResult>;

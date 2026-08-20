@@ -41,9 +41,9 @@ export const MODEL_MAP = {
   },
 } as const;
 
-export function providerMode(): "mock" | "dryrun" | "fal" {
+export function providerMode(): "mock" | "dryrun" | "higgsfield" | "fal" {
   const mode = process.env.PROVIDER_MODE;
-  if (mode === "dryrun" || mode === "fal") return mode;
+  if (mode === "dryrun" || mode === "higgsfield" || mode === "fal") return mode;
   // Backward compatibility with the original MOCK_MODE flag.
   return process.env.MOCK_MODE === "false" ? "fal" : "mock";
 }
