@@ -3,7 +3,7 @@
  * and dev settings. Idempotent: safe to run several times. Templates that no
  * longer exist in the recipe library are archived, not deleted (jobs reference them).
  */
-import { inArray, notInArray } from "drizzle-orm";
+import { notInArray } from "drizzle-orm";
 import { db, schema } from "../src/db";
 import { RECIPES } from "../src/lib/recipes";
 
@@ -18,10 +18,10 @@ async function main() {
     };
     await db
       .insert(schema.templates)
-      .values({ slug: r.slug, name: r.name, description: r.description, recipe, status: "active" })
+      .values({ slug: r.slug, name: r.name, description: r.description, recipe, status: r.status })
       .onConflictDoUpdate({
         target: schema.templates.slug,
-        set: { name: r.name, description: r.description, recipe, status: "active", updatedAt: new Date() },
+        set: { name: r.name, description: r.description, recipe, status: r.status, updatedAt: new Date() },
       });
     console.log(`Template upserted: ${r.slug}`);
   }
@@ -33,11 +33,6 @@ async function main() {
     .where(notInArray(schema.templates.slug, slugs))
     .returning({ slug: schema.templates.slug });
   for (const a of archived) console.log(`Template archived: ${a.slug}`);
-  await db
-    .update(schema.templates)
-    .set({ status: "active" })
-    .where(inArray(schema.templates.slug, slugs));
-
   const existing = await db.select().from(schema.creditLedger).limit(1);
   if (existing.length === 0) {
     await db.insert(schema.creditLedger).values({

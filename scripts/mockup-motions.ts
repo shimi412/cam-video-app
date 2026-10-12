@@ -10,7 +10,7 @@ import { copyFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { layoutRoles, placeRole, safeZones } from "../src/lib/collage/layouts";
 import { trimCutout } from "../src/lib/collage/assets";
-import { MOTIONS, compileMotion, type MotionPreset } from "../src/lib/collage/motions";
+import { MOTIONS, compileMotion } from "../src/lib/collage/motions";
 import type { AspectRatio } from "../src/lib/recipes";
 
 const exec = promisify(execFile);

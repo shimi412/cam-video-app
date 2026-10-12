@@ -7,6 +7,8 @@ import {
   DEFAULT_ASPECT_RATIO,
   DEFAULT_RECIPE_BY_FAMILY,
   getRecipe,
+  activeRecipes,
+  RecipeUnavailableError,
   type AspectRatio,
   type Family,
   type Tone,
@@ -77,16 +79,23 @@ export function resolveParams(
   script: string,
   mode: "auto" | "manual",
   overrides?: Overrides,
+  options: { allowArchived?: boolean } = {},
 ): { analysis: ScriptAnalysis; params: ProductionParams } {
   const analysis = analyzeScript(script);
-  const requested = overrides?.templateSlug && getRecipe(overrides.templateSlug) ? overrides.templateSlug : undefined;
-  const templateSlug = requested ?? analysis.suggestedTemplate;
-  const recipe = getRecipe(templateSlug)!;
+  const requested = overrides?.templateSlug ? getRecipe(overrides.templateSlug) : undefined;
+  if (overrides?.templateSlug && (!requested || (requested.status !== "active" && !options.allowArchived))) {
+    throw new RecipeUnavailableError();
+  }
+  const recipe = requested
+    ?? activeRecipes().find((r) => r.family === analysis.suggestedFamily)
+    ?? activeRecipes()[0];
+  if (!recipe) throw new RecipeUnavailableError();
+  const templateSlug = recipe.slug;
 
   const shotCount = Math.min(24, Math.max(3, Math.ceil(analysis.wordCount / WORDS_PER_SHOT)));
 
   return {
-    analysis,
+    analysis: { ...analysis, suggestedTemplate: templateSlug, suggestedFamily: recipe.family },
     params: {
       templateSlug,
       family: recipe.family,

@@ -81,3 +81,38 @@ pnpm db:stop       # arrête Postgres
 pnpm check:providers   # valide les clés Anthropic, fal et Runway sans dépense média
 pnpm compare:video 30 5 0.3   # coût des clips par moteur (durée, plan, taux de retries), zéro appel
 ```
+
+
+## État au 12/10/2026 : reprise du logiciel
+
+Cette section actualise l'état historique du 20/08. Les choix de stack restent applicables. Reprise autorisée par Shimon le 12/10, puis autonomie accordée pour la remise en état.
+
+### Situation constatée
+
+- Base Git initiale : `1977fd9`. Changements existants (Runway, collage, démonstrations et brief) sauvegardés dans `b81af6d`, sans génération payante ni push.
+- Le Studio est encore un formulaire. Pas encore de conversation libre, pièces jointes, itérations ciblées ni bibliothèque des productions côté client.
+- Les cinq recettes d'août sont retirées du catalogue de production. Les trois concepts d'octobre existent dans `storage/cam-oct05-v2/` sous forme de productions accompagnées et de scripts manuels. Ils ne sont pas intégrés au moteur de l'application.
+- Les scripts de voix et de montage d'octobre contiennent le texte d'Eyal, des numéros de cases et des pauses spécifiques. Ils sont des références de résultat et des fixtures à généraliser, pas un moteur générique à traduire tel quel. Le dossier `storage/` reste ignoré par Git ; les sources utiles et les actifs verrouillés doivent être pérennisés lors du chantier concept.
+- Restent à livrer : assistant de campagnes, Stripe et auto-recharge, alertes, plafonds mensuels, relevé exportable, comptes utilisateurs, serveur CAM dédié, audit Base44, guide, export des trois formats en 1080p et grille de prix définitive.
+- Le devis mentionne quatre semaines depuis la signature. Les notes de suivi calculent aussi un délai depuis l'acompte et citent l'engagement après la revue du 05/10. Aucun nouveau calendrier client n'est acté par cette reprise.
+
+### Chantier 0 : remise en état
+
+- Compilation réparée : durée Kling typée et validée dans l'utilitaire R&D, suppression des `any` concernés. Contrôle de code limité aux sources, sans analyser les bibliothèques générées de `storage/`.
+- Politique d'exécution centralisée dans `src/lib/providers/mode.ts`. `mock` et `dryrun` bloquent les appels du cerveau (API et CLI), même avec clés et `BRAIN_MODE=api`. Les adaptateurs médias réels refusent aussi les appels directs en simulation. Un mode inconnu échoue explicitement ; `PROVIDER_MODE=mock` prime sur l'ancien `MOCK_MODE=false`.
+- Appels du cerveau déplacés dans `src/lib/providers/brain.ts`. Le suivi exhaustif de leurs coûts réels reste à construire ; cette remise en état ne le prétend pas achevé.
+- Simulation : aucun débit, aucun remboursement compensatoire, coûts réels et montants facturés à zéro. Coûts hypothétiques conservés séparément pour contrôle. La commande `pnpm dryrun` vérifie ces invariants et un double lancement concurrent.
+- Correction du diagnostic initial : les échecs avant le débit final n'étaient déjà pas facturés. Le débit et le passage à `succeeded` sont désormais dans une transaction unique. Les doubles confirmations et exécutions du même job utilisent une prise en charge atomique. La réservation de solde entre jobs distincts reste à faire.
+- Mode de production enregistré dans chaque nouveau job et recontrôlé au lancement. Une estimation créée dans un autre mode doit être refaite.
+- Recettes archivées dans le seed et la source. Elles sont refusées à la sélection, au cadrage et à la confirmation, même avec une ancienne base non reseedée. Exception réservée à la CLI de test hors ligne. Le Studio et la bibliothèque indiquent la préparation des nouveaux styles.
+- `pnpm check:providers` ne réalise plus de complétion payante et retourne un code d'échec si un contrôle échoue. Anthropic : accès au modèle confirmé. fal : upload de contrôle refusé HTTP 403 avec restriction de crédits signalée. Aucun crédit ajouté, aucune génération réelle testée.
+- Vérification : tests Vitest des frontières de simulation, du catalogue et des diagnostics ; compilation et lint ; production complète de remplacement en 9:16. Le rendu réussi, ses écritures de coûts et son absence de mouvements de crédit sont vérifiés en base.
+
+### Corrections à appliquer au chantier concept
+
+- Un premier parcours pâte à modeler complet, testé sur plusieurs scripts, avant de décliner BD puis motion. Dépendances à intégrer d'emblée : reprise durable par plan, identifiants fournisseur conservés avant l'attente, limite d'appels simultanés, réservation du budget et plafond accepté par le client.
+- La voix pilote les durées ; ne pas imposer cinq secondes à une narration plus longue. Kling 3 Pro accepte de 3 à 15 secondes selon le schéma consulté le 12/10. Audio natif désactivé lorsque la voix off est séparée.
+- Tarifs vérifiés le 12/10 : Kling 3 Pro sans audio 0,112 $/s ; Eleven v3 0,10 $/1 000 caractères. Les coûts totaux incluent images, transcription, cerveau, tentatives et rendu. Aucune grille commerciale définitive validée ici. Sources : https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video et https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3.
+- Contradiction éditoriale du brief : le BRIEF initial impose l'étiquette CLAIM ; le montage final du concept 1 et la note de production du 04/10 consignent son retrait demandé par Shimon, avec guillemets et barre rouge. Préserver la contextualisation explicite de l'accusation et appliquer le dernier retour au lieu de réintroduire l'étiquette silencieusement.
+- Les contrôles techniques (flashs, sous-titres, zones sûres) ne prouvent pas seuls la qualité éditoriale ou l'absence de visages sous les sous-titres. Conserver une validation visuelle.
+- Le modèle de serveur CAM sera choisi après mesure du rendu ; aucun achat ou déploiement engagé. Les essais payants gardent leur validation spécifique : script, recette, voix et coût estimé.

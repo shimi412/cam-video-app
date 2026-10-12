@@ -7,10 +7,9 @@
  * in the frame), a motion description (what moves, how the camera behaves),
  * and optional handwritten keywords for recipes that allow them.
  */
-import { generateObject } from "ai";
 import { z } from "zod";
 import { normalizeWords, splitScript, type ProductionParams } from "./brain";
-import { getAnthropicModel } from "./brain-llm";
+import { requestBrainObject } from "./providers/brain";
 import type { Recipe } from "./recipes";
 
 export type Shot = {
@@ -99,11 +98,8 @@ const SanitizedSchema = z.object({ scene: z.string() });
  * human figure, any sensitive word, keeps the recurring motif and the idea.
  */
 export async function sanitizeScene(scene: string, recipe: Recipe): Promise<string | null> {
-  const model = getAnthropicModel();
-  if (!model) return null;
   try {
-    const { object } = await generateObject({
-      model: await model(),
+    const object = await requestBrainObject({
       schema: SanitizedSchema,
       system: `You rewrite scene descriptions for an image model whose content checker refused them. Keep the idea and the recurring motif (${recipe.bible.characters || "the lie as an abstract red stain"}), remove every human or child figure, every threat aimed at a figure, every sensitive word (children, sexual, blood, weapon, kill, ethnic or religious names). Use only abstract objects: old pages, books, scissors, stains, shapes, light. 40-80 words, concrete and filmable, no style words, no text in the image.`,
       prompt: `Refused scene:
@@ -113,7 +109,7 @@ ${scene}
 Rewrite it.`,
       maxRetries: 1,
     });
-    return object.scene.trim();
+    return object?.scene.trim() ?? null;
   } catch (err) {
     console.error("[director] sanitizeScene failed:", err);
     return null;
@@ -125,17 +121,16 @@ export async function directStoryboard(
   recipe: Recipe,
   params: ProductionParams,
 ): Promise<Storyboard> {
-  const model = getAnthropicModel();
-  if (!model) return fallbackStoryboard(script, params);
 
   try {
-    const { object } = await generateObject({
-      model: await model(),
+    const object = await requestBrainObject({
       schema: StoryboardSchema,
       system: systemPrompt(recipe, params),
       prompt: `SCRIPT (reproduce verbatim across the shots):\n"""\n${script}\n"""`,
       maxRetries: 2,
     });
+
+    if (!object) return fallbackStoryboard(script, params);
 
     let shots: Shot[] = object.shots.map((s, index) => ({
       index,

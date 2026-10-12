@@ -6,10 +6,9 @@
  * handwritten keywords per sentence, 3-5 events per sentence, never more than
  * ~1.5 s without a visual change, elements reused across sentences.
  */
-import { generateObject } from "ai";
 import { z } from "zod";
 import { normalizeWords, splitScript, type ProductionParams } from "../brain";
-import { getAnthropicModel } from "../brain-llm";
+import { requestBrainObject } from "../providers/brain";
 import type { Recipe } from "../recipes";
 
 export const SLOTS = ["top", "center", "left", "right", "top-left", "top-right"] as const;
@@ -127,16 +126,14 @@ function fallbackScore(script: string, params: ProductionParams): Score {
 }
 
 export async function directScore(script: string, recipe: Recipe, params: ProductionParams): Promise<Score> {
-  const model = getAnthropicModel();
-  if (!model) return fallbackScore(script, params);
   try {
-    const { object } = await generateObject({
-      model: await model(),
+    const object = await requestBrainObject({
       schema: ScoreSchema,
       system: systemPrompt(recipe, params),
       prompt: `SCRIPT (reproduce verbatim across the shots):\n"""\n${script}\n"""`,
       maxRetries: 2,
     });
+    if (!object) return fallbackScore(script, params);
     let shots: ShotScore[] = object.shots.map((s, index) => ({ index, narration: s.narration.trim(), events: s.events }));
     // The voice must say exactly the script: if the LLM drifted, re-cut the narration into the same count.
     const joined = normalizeWords(shots.map((s) => s.narration).join(" "));

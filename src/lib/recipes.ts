@@ -52,6 +52,7 @@ export type CollageStyle = {
 
 export type Recipe = {
   slug: string;
+  status: "active" | "archived";
   name: string;
   family: Family;
   description: string;
@@ -73,6 +74,7 @@ const NARRATOR =
 export const RECIPES: Recipe[] = [
   {
     slug: "cartoon-flat-vector",
+    status: "archived",
     name: "Cartoon · Flat vector",
     family: "cartoon",
     description:
@@ -96,6 +98,7 @@ export const RECIPES: Recipe[] = [
   },
   {
     slug: "cartoon-ink-noir",
+    status: "archived",
     name: "Cartoon · Ink noir",
     family: "cartoon",
     description:
@@ -119,6 +122,7 @@ export const RECIPES: Recipe[] = [
   },
   {
     slug: "cartoon-retro",
+    status: "archived",
     name: "Cartoon · Retro mid-century",
     family: "cartoon",
     description:
@@ -142,6 +146,7 @@ export const RECIPES: Recipe[] = [
   },
   {
     slug: "whiteboard-vox-collage",
+    status: "archived",
     name: "Whiteboard · Vox collage",
     family: "whiteboard",
     description:
@@ -177,6 +182,7 @@ export const RECIPES: Recipe[] = [
   },
   {
     slug: "whiteboard-marker",
+    status: "archived",
     name: "Whiteboard · Marker board",
     family: "whiteboard",
     description:
@@ -221,6 +227,22 @@ export const DEFAULT_ASPECT_RATIO: AspectRatio = "9:16";
 
 export function getRecipe(slug: string): Recipe | undefined {
   return RECIPES.find((r) => r.slug === slug);
+}
+
+/** Archived recipes remain readable for historical jobs and explicit offline tests. */
+export function activeRecipes(): Recipe[] {
+  return RECIPES.filter((recipe) => recipe.status === "active");
+}
+
+export function getActiveRecipe(slug: string): Recipe | undefined {
+  return activeRecipes().find((recipe) => recipe.slug === slug);
+}
+
+export class RecipeUnavailableError extends Error {
+  constructor() {
+    super("Video production is temporarily unavailable while the new CAM styles are prepared.");
+    this.name = "RecipeUnavailableError";
+  }
 }
 
 export function recipeSlugs(): string[] {

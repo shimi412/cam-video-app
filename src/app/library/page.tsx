@@ -1,4 +1,5 @@
 import { db, schema } from "@/db";
+import { getActiveRecipe } from "@/lib/recipes";
 
 export const dynamic = "force-dynamic";
 
@@ -10,18 +11,21 @@ type RecipeJson = {
 };
 
 export default async function LibraryPage() {
-  const templates = (await db.select().from(schema.templates)).filter((t) => t.status === "active");
+  const templates = (await db.select().from(schema.templates)).filter((t) => t.status === "active" && getActiveRecipe(t.slug));
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Video model library</h1>
         <p className="text-muted mt-1">
-          Each model is a frozen recipe: a style bible (art direction, palette, characters,
-          composition, bans), a pipeline, a packaging. A recognizable signature for every video,
-          extensible without new development.
+          Choose a consistent visual style for your video, with its own characters, colours and pacing.
         </p>
       </div>
+      {templates.length === 0 && (
+        <div className="bg-surface border border-line rounded-xl p-5 text-sm text-muted">
+          New CAM video styles are being prepared. They will appear here when ready for production.
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4">
         {templates.map((t) => {
           const recipe = t.recipe as RecipeJson;

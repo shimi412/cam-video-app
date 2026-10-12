@@ -43,12 +43,7 @@ export const MODEL_MAP = {
   },
 } as const;
 
-export function providerMode(): "mock" | "dryrun" | "fal" {
-  const mode = process.env.PROVIDER_MODE;
-  if (mode === "dryrun" || mode === "fal") return mode;
-  // Backward compatibility with the original MOCK_MODE flag.
-  return process.env.MOCK_MODE === "false" ? "fal" : "mock";
-}
+export { providerMode } from "./providers/mode";
 
 export function sheetToMarkdown(jobId: string, entries: SheetEntry[]): string {
   const lines: string[] = [

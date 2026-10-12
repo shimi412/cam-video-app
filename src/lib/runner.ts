@@ -10,17 +10,18 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getProviders } from "./providers";
 import type { MediaResult } from "./providers/types";
 import type { ProductionParams } from "./brain";
 import { directStoryboard, sanitizeScene, type Storyboard } from "./director";
 import { buildImagePrompt, buildMotionPrompt, canvasFor, getRecipe, safeFallbackScene } from "./recipes";
-import { addLedgerEntry, billedFromRealCost } from "./credits";
+import { billedFromRealCost } from "./credits";
 import { getMarginMultiplier } from "./settings";
 import { MODEL_MAP, providerMode, saveSheet, type SheetEntry } from "./sheet";
 import { produceCollage } from "./collage/run";
+import { isSimulation } from "./providers/mode";
 
 const exec = promisify(execFile);
 const STORAGE = path.join(process.cwd(), "storage");
@@ -56,9 +57,11 @@ async function meter(jobId: string, kind: "image" | "video" | "tts" | "render", 
     provider: r.provider,
     kind,
     model: r.model,
-    realCostUsd: r.realCostUsd.toFixed(4),
-    billedUsd: billed.toFixed(4),
-    meta: r.meta ?? {},
+    realCostUsd: isSimulation() ? "0.0000" : r.realCostUsd.toFixed(4),
+    billedUsd: isSimulation() ? "0.0000" : billed.toFixed(4),
+    meta: isSimulation()
+      ? { ...r.meta, simulatedRealCostUsd: r.realCostUsd, simulatedBilledUsd: billed }
+      : r.meta ?? {},
   });
   return billed;
 }
@@ -90,6 +93,7 @@ export async function runJob(jobId: string): Promise<void> {
   const steps: JobStep[] = STEPS.map((s) => ({ ...s, status: "pending" }));
   const usesVideoApi = params.family === "cartoon";
   const dryRun = providerMode() === "dryrun";
+  const simulation = isSimulation();
   const sheet: SheetEntry[] = [];
   const { width, height } = canvasFor(params.aspectRatio);
   const mediaUrl = (filePath: string) =>
@@ -104,7 +108,14 @@ export async function runJob(jobId: string): Promise<void> {
 
   try {
     if (!recipe) throw new Error(`Unknown video model "${params.templateSlug}"`);
-    await db.update(schema.jobs).set({ status: "running" }).where(eq(schema.jobs.id, jobId));
+    if (params.executionMode !== providerMode()) throw new Error("Execution mode changed. Please create a new production.");
+    if (recipe.status !== "active" && !(simulation && params.allowArchivedRecipe === true)) {
+      throw new Error("This video model is archived.");
+    }
+    const claimed = await db.update(schema.jobs).set({ status: "running" })
+      .where(and(eq(schema.jobs.id, jobId), eq(schema.jobs.status, "confirmed")))
+      .returning({ id: schema.jobs.id });
+    if (claimed.length === 0) return;
 
     let outputPath: string;
     if (recipe.collage) {
@@ -351,14 +362,22 @@ export async function runJob(jobId: string): Promise<void> {
     }
 
     // Billing: consume credits at the metered billed total.
-    const billed = Number(totalBilled.toFixed(2));
-    await addLedgerEntry({
-      deltaUsd: -billed,
-      kind: "consumption",
-      jobId,
-      note: `Production ${params.templateSlug} (${params.finalDurationSeconds}s, ${params.aspectRatio})`,
-    });
-    await db
+    const billed = simulation ? 0 : Number(totalBilled.toFixed(2));
+    if (simulation) {
+      params.simulatedBilledUsd = Number(totalBilled.toFixed(2));
+      await setProgress(jobId, params, steps);
+    }
+    // Debit and success are committed together. Simulation never writes the ledger.
+    await db.transaction(async (tx) => {
+      if (!simulation && billed > 0) {
+        await tx.insert(schema.creditLedger).values({
+          deltaUsd: (-billed).toFixed(2),
+          kind: "consumption",
+          jobId,
+          note: `Production ${params.templateSlug} (${params.finalDurationSeconds}s, ${params.aspectRatio})`,
+        });
+      }
+      await tx
       .update(schema.jobs)
       .set({
         status: "succeeded",
@@ -367,6 +386,7 @@ export async function runJob(jobId: string): Promise<void> {
         finishedAt: new Date(),
       })
       .where(eq(schema.jobs.id, jobId));
+    });
   } catch (err) {
     // Technical failure: nothing is billed (rule from the devis).
     const failing = steps.find((s) => s.status === "running");

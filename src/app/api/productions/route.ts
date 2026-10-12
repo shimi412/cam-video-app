@@ -4,7 +4,8 @@ import { frameProduction } from "@/lib/brain-llm";
 import { estimateProduction } from "@/lib/pricing";
 import { getBalanceUsd } from "@/lib/credits";
 import { getMarginMultiplier } from "@/lib/settings";
-import { getRecipe } from "@/lib/recipes";
+import { getActiveRecipe, activeRecipes, RecipeUnavailableError } from "@/lib/recipes";
+import { providerMode, isSimulation } from "@/lib/providers/mode";
 import { eq } from "drizzle-orm";
 
 const bodySchema = z.object({
@@ -14,7 +15,7 @@ const bodySchema = z.object({
     .object({
       templateSlug: z
         .string()
-        .refine((s) => Boolean(getRecipe(s)), "Unknown video model")
+        .refine((s) => Boolean(getActiveRecipe(s)), "This video model is unavailable")
         .optional(),
       tone: z.enum(["serious", "energetic", "calm"]).optional(),
       tier: z.enum(["standard", "premium"]).optional(),
@@ -25,7 +26,10 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const parsed = bodySchema.safeParse(await request.json());
+  if (activeRecipes().length === 0) {
+    return Response.json({ error: new RecipeUnavailableError().message }, { status: 409 });
+  }
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return Response.json({ error: parsed.error.issues[0].message }, { status: 400 });
   }
@@ -59,7 +63,7 @@ export async function POST(request: Request) {
       templateId: template?.id,
       status: "estimated",
       script,
-      params: { ...params },
+      params: { ...params, executionMode: providerMode() },
       estimateUsd: estimate.totalBilledUsd.toFixed(2),
     })
     .returning();
@@ -79,6 +83,7 @@ export async function POST(request: Request) {
     estimate,
     balance,
     brain,
-    canConfirm: balance >= estimate.totalBilledUsd,
+    simulation: isSimulation(),
+    canConfirm: isSimulation() || balance >= estimate.totalBilledUsd,
   });
 }

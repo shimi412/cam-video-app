@@ -24,6 +24,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import type { MediaResult, VideoGenProvider } from "./types";
+import { assertLiveMedia } from "./mode";
 
 const STORAGE = path.join(process.cwd(), "storage");
 const API_BASE = "https://api.dev.runwayml.com/v1";
@@ -184,6 +185,7 @@ function clampDuration(seconds: number): number {
 
 export const runwayVideo: VideoGenProvider = {
   async generateClip({ prompt, keyframePath, durationSeconds, tier, aspectRatio }): Promise<MediaResult> {
+    assertLiveMedia();
     apiKey(); // fail fast on a missing credential, before uploading anything
     const key = tierModel(tier);
     const spec = MODELS[key];

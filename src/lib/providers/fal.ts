@@ -18,6 +18,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fal } from "@fal-ai/client";
+import { assertLiveMedia } from "./mode";
 import type {
   CutoutProvider,
   ImageGenProvider,
@@ -63,6 +64,7 @@ const VOICE_MAP: Record<string, string> = {
 
 let configured = false;
 function ensureClient() {
+  assertLiveMedia();
   if (configured) return;
   const key = process.env.FAL_KEY;
   if (!key) throw new Error("PROVIDER_MODE=fal needs FAL_KEY in .env");

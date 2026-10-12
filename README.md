@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CAM Video App
 
-## Getting Started
+Local development of CAM's video production tool. Read `BLUEPRINT.md` before changes and the relevant Next.js documentation in `node_modules/next/dist/docs/` before changing pages or routes. The framework rules live in `AGENTS.md`.
 
-First, run the development server:
+## Safe local workflow
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install --frozen-lockfile
+pnpm db:start
+pnpm db:seed
+pnpm dev:preview
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`dev:preview` binds to localhost and forces offline media and brain providers, even if `.env` contains production credentials. Simulation never writes a credit consumption or refund. Its hypothetical costs are stored separately in API-call metadata and `jobs.params.simulatedBilledUsd`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The old five styles are archived in the database and the source catalogue. They remain available to the explicit offline CLI below for regression checks. The client library and new-production endpoints do not offer them. Until the first new CAM recipe is integrated, the Studio displays a preparation message and disables production.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Verification
 
-## Learn More
+```bash
+pnpm test
+pnpm lint
+PROVIDER_MODE=dryrun BRAIN_MODE=mock pnpm build
+pnpm check:providers
+```
 
-To learn more about Next.js, take a look at the following resources:
+Provider diagnostics perform an Anthropic model lookup, upload one dummy byte to fal storage, and optionally read Runway's organization endpoint. They do not generate text, images, audio or video. Failure exits nonzero. Passing only proves the specific access checked, not sufficient credits, inference availability or media quality.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Offline end-to-end regression, with PostgreSQL running and recipes seeded:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+pnpm dryrun cartoon-ink-noir 9:16 <<'SCRIPT'
+A book opens. The pages reveal the full context. Read the whole passage before sharing a claim.
+SCRIPT
+```
 
-## Deploy on Vercel
+This blocks Node fetch, submits the same job twice concurrently, renders a placeholder MP4 and writes a production sheet. It fails if the job fails, makes an external fetch, renders twice, records real expenses or writes any ledger entry. This is a technical regression check, not a CAM visual-quality demonstration. The retired collage renderer still loads its animation library externally; its offline rendering will be replaced with the concept engine.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Production mode
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`PROVIDER_MODE=fal` enables real media adapters. `BRAIN_MODE=api` enables the Anthropic brain in real mode. `VIDEO_PROVIDER=runway` changes only the video adapter. Keep secrets in the gitignored `.env` file; `.env.example` lists the configuration.
+
+A paid test still requires Shimon's approval of its script, style, voice and estimated budget. No paid generation is part of the development checks above.
+
+A production snapshots its execution mode. Confirmation and execution refuse a mode change, archived styles cannot be confirmed, and duplicate confirmations/executions are claimed atomically. The successful job update and the credit debit share one transaction. Durable resumption, budget reservations between different jobs, price caps and complete provider metering remain work for the concept engine.

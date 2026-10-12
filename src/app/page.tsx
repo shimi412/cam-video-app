@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type EstimateLine = { label: string; quantity: number; billedUsd: number };
 type Framing = {
+  simulation: boolean;
   jobId: string;
   analysis: { wordCount: number; durationSeconds: number; reason: string };
   params: {
@@ -40,6 +41,7 @@ type SheetEntry = {
   notes?: string;
 };
 type JobState = {
+  simulation?: boolean;
   status: string;
   progress: JobStep[];
   billedUsd: number | null;
@@ -59,6 +61,7 @@ const ASPECTS: Array<{ value: AspectRatio; label: string }> = [
 
 export default function StudioPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [templateSlug, setTemplateSlug] = useState<string>("");
   const [tone, setTone] = useState<"serious" | "energetic" | "calm">("serious");
@@ -86,7 +89,8 @@ export default function StudioPage() {
         setTemplates(active);
         if (active.length > 0) setTemplateSlug((s) => s || active[0].slug);
       })
-      .catch(() => undefined);
+      .catch(() => setError("Could not load video styles. Please reload the page."))
+      .finally(() => setTemplatesLoaded(true));
   }, []);
 
   async function frame() {
@@ -120,7 +124,7 @@ export default function StudioPage() {
       const res = await fetch(`/api/jobs/${framing.jobId}/confirm`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Confirmation failed");
-      setJob({ status: "running", progress: [], billedUsd: null, estimateUsd: null, outputUrl: null, sheet: null, sheetUrl: null, error: null });
+      setJob({ simulation: framing.simulation, status: "running", progress: [], billedUsd: null, estimateUsd: null, outputUrl: null, sheet: null, sheetUrl: null, error: null });
       pollRef.current = setInterval(async () => {
         const r = await fetch(`/api/jobs/${framing.jobId}`);
         const j: JobState = await r.json();
@@ -158,6 +162,11 @@ export default function StudioPage() {
       </div>
 
       {/* Step 1: script + mode */}
+      {templatesLoaded && templates.length === 0 && (
+        <div role="status" className="bg-surface border border-line rounded-xl p-5 text-sm text-muted">
+          New CAM video styles are being prepared. Production will be available once the first style is ready.
+        </div>
+      )}
       <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-medium">1. Your script</h2>
@@ -259,7 +268,7 @@ export default function StudioPage() {
         {!framing && (
           <button
             onClick={frame}
-            disabled={loading || script.trim().length < 40}
+            disabled={loading || templates.length === 0 || script.trim().length < 40}
             className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
           >
             {loading ? "Framing…" : "Frame my request"}
@@ -277,6 +286,7 @@ export default function StudioPage() {
       {framing && !job && (
         <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
           <h2 className="font-medium">2. Framing &amp; price</h2>
+          {framing.simulation && <p className="text-sm text-muted">Free preview. The prices below are estimates only; no credits will be deducted.</p>}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-surface-2 border border-line rounded-lg p-4 space-y-2 text-sm">
               <div className="flex justify-between items-center gap-3">
@@ -335,7 +345,7 @@ export default function StudioPage() {
               disabled={loading || !framing.canConfirm}
               className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
             >
-              Confirm &amp; produce — ${framing.estimate.totalBilledUsd.toFixed(2)}
+              {framing.simulation ? "Run free preview" : `Confirm & produce · $${framing.estimate.totalBilledUsd.toFixed(2)}`}
             </button>
             <button onClick={reset} className="text-muted hover:text-foreground text-sm px-3">
               Cancel
@@ -380,10 +390,10 @@ export default function StudioPage() {
                 controls
                 className={`rounded-lg border border-line bg-black ${isVertical ? "max-h-[75vh] mx-auto" : "w-full"}`}
               />
-              <p className="text-sm text-muted">
+              {job.simulation ? <p className="text-sm text-muted">Preview complete. No credits were deducted.</p> : <p className="text-sm text-muted">
                 Billed <span className="font-mono text-foreground">${job.billedUsd?.toFixed(2)}</span>
                 {" "}(estimate ${job.estimateUsd?.toFixed(2)}) — deducted from your credits.
-              </p>
+              </p>}
             </div>
           )}
 

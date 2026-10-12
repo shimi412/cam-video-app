@@ -13,6 +13,7 @@ export async function GET(
   const jobParams = job.params as Record<string, unknown>;
   return Response.json({
     id: job.id,
+    simulation: jobParams.executionMode === "mock" || jobParams.executionMode === "dryrun",
     status: job.status,
     progress: jobParams.progress ?? [],
     estimateUsd: job.estimateUsd ? Number(job.estimateUsd) : null,
