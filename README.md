@@ -13,7 +13,23 @@ pnpm dev:preview
 
 `dev:preview` binds to localhost and forces offline media and brain providers, even if `.env` contains production credentials. Simulation never writes a credit consumption or refund. Its hypothetical costs are stored separately in API-call metadata and `jobs.params.simulatedBilledUsd`.
 
-The old five styles are archived in the database and the source catalogue. They remain available to the explicit offline CLI below for regression checks. The client library and new-production endpoints do not offer them. CAM Clay is available as a free planning preview; its live production gate remains closed.
+The old five styles are archived in the database and the source catalogue. They remain available to the explicit offline CLI below for regression checks. The client library and new-production endpoints do not offer them. CAM Clay offers free local previews; its live production gate remains closed.
+
+## Existing CAM characters and voice
+
+In the Studio, choose **Load CAM example**, **Prepare existing film · $0**, then **Rebuild existing film · $0**. The app reconstructs a 52.25-second vertical film from the 12 existing animated clips and the recorded Dylan voice. This is local editing of existing media, not fresh generation. The last confirmed production is restored on reload in the same browser, including progress while the local server continues running.
+
+```bash
+pnpm dryrun cam-clay 9:16 --existing < tests/fixtures/eyal.txt
+```
+
+The checked-in `src/lib/concept/demo/manifest.json` pins 15 files (65.4 MB) under `storage/cam-oct05-v2/concept-1-pate-a-modeler/montage/`. Media remain gitignored. They must be restored separately on another machine; missing or modified files block this mode explicitly. The app verifies all hashes before framing and again when copying the media into a self-contained job folder. It does not fetch missing assets or silently substitute another voice.
+
+The recorded voice is **Dylan / Higgsfield Seed Audio, v3 with breathing pauses**. Its PCM matches `voix/voix-dylan-v3-respire.wav`. Imported timing uses measured silence boundaries with approximate word positions; three collapsed word intervals are repaired within their preceding spoken span, documented in each job's `timing.json`. No new transcription or provider call occurs. Picture speed fits the recorded speech; voice speed stays unchanged. This version uses voice only, without the old music/SFX mix.
+
+The exact script, Clay recipe and 9:16 format are enforced on the server. A different script or format uses the planning path below. Outputs include MP4, WAV, SRT/VTT, media provenance, shot/cut contact sheets and one review frame per subtitle. Every spoken word is captioned, including lines repeated by titles. Caption positions vary by shot to keep faces clear; a human visual review remains necessary. The export checks also reject a missing/inaudible voice. Browser media seeking uses byte-range responses.
+
+Reference run: `884013f5-853e-4952-b9d4-36fe31c741c7`, 207 seconds end to end on this Mac, 1080×1920 / H.264 / AAC / 30 fps, one render under duplicate execution, zero real costs, zero ledger movements and zero application-process fetch attempts. A subsequent visual pass moved captions away from faces in shots 3, 6 and 12.
 
 ## CAM Clay planning preview
 

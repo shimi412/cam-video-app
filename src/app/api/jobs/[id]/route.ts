@@ -13,6 +13,8 @@ export async function GET(
   const jobParams = job.params as Record<string, unknown>;
   return Response.json({
     id: job.id,
+    script: job.script,
+    aspectRatio: jobParams.aspectRatio,
     simulation: jobParams.executionMode === "mock" || jobParams.executionMode === "dryrun",
     status: job.status,
     progress: jobParams.progress ?? [],
@@ -23,6 +25,7 @@ export async function GET(
     sheet: jobParams.sheet ?? null,
     sheetUrl: jobParams.sheetUrl ?? null,
     artifacts: jobParams.artifacts ?? [],
+    media: jobParams.media ?? null,
     balance: await getBalanceUsd(),
   });
 }

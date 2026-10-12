@@ -7,10 +7,12 @@ import { getMarginMultiplier } from "@/lib/settings";
 import { getActiveRecipe, activeRecipes, RecipeUnavailableError } from "@/lib/recipes";
 import { providerMode, isSimulation } from "@/lib/providers/mode";
 import { eq } from "drizzle-orm";
+import { assertExistingSelection, existingParams, verifyExistingAssets, existingMediaSummary } from "@/lib/concept/existing";
 
 const bodySchema = z.object({
   script: z.string().min(40, "Script too short: paste the full script from your monitoring app.").max(6000),
   mode: z.enum(["auto", "manual"]),
+  previewSource: z.enum(["planning", "existing"]).default("planning"),
   overrides: z
     .object({
       templateSlug: z
@@ -33,14 +35,25 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return Response.json({ error: parsed.error.issues[0].message }, { status: 400 });
   }
-  const { script, mode, overrides } = parsed.data;
+  const { script, mode, overrides, previewSource } = parsed.data;
+  if (previewSource === "existing") {
+    try {
+      assertExistingSelection(script, { templateSlug: overrides?.templateSlug ?? "cam-clay", aspectRatio: overrides?.aspectRatio ?? "9:16" });
+      await verifyExistingAssets();
+    } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Existing media unavailable." }, { status: 409 }); }
+  }
   if (!isSimulation() && (overrides?.templateSlug ? getActiveRecipe(overrides.templateSlug)?.concept?.previewOnly : activeRecipes().every((r) => r.concept?.previewOnly))) {
     return Response.json({ error: "CAM Clay is currently available for free previews only. Final production is being prepared." }, { status: 409 });
   }
   let framing;
   try { framing = await frameProduction(script, mode, overrides); }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to plan this script." }, { status: 400 }); }
-  const { analysis, params, brain } = framing;
+  const { analysis, brain } = framing;
+  const params = previewSource === "existing" ? existingParams(framing.params) : { ...framing.params, previewSource };
+  if (previewSource === "existing") {
+    analysis.durationSeconds = params.durationSeconds;
+    analysis.reason = "Reuse the existing CAM film with its recorded Dylan voice and 12 animated clips. Local montage, no new generation.";
+  }
   const marginMultiplier = await getMarginMultiplier();
   const estimate = estimateProduction(params, marginMultiplier);
   const balance = await getBalanceUsd();
@@ -89,6 +102,7 @@ export async function POST(request: Request) {
     balance,
     brain,
     simulation: isSimulation(),
+    media: previewSource === "existing" ? existingMediaSummary() : null,
     canConfirm: isSimulation() || balance >= estimate.totalBilledUsd,
   });
 }

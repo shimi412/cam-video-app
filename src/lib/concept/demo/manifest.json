@@ -1,0 +1,126 @@
+{
+  "id": "cam-clay-eyal-v3",
+  "version": 1,
+  "source": "storage/cam-oct05-v2/concept-1-pate-a-modeler/montage",
+  "voice": {
+    "name": "Dylan",
+    "provider": "Higgsfield Seed Audio",
+    "speechRate": 22,
+    "processing": "Existing paced recording, aligned to detected silences; no voice generation.",
+    "file": "assets/narration.wav"
+  },
+  "assets": [
+    {
+      "file": "assets/narration.wav",
+      "sha256": "6d72ae82c6e9bf53812b7c975e6f7b3304b4e7a5054a0dc5e68ddcda60cf3fb5",
+      "bytes": 9725750,
+      "duration": 50.654542
+    },
+    {
+      "file": "assets/affiche-archive.png",
+      "sha256": "82b1e11e249ee640164a4fae930eb17ae9d6f9949dda60c94a4e300a0e5d5842",
+      "bytes": 268154
+    },
+    {
+      "file": "assets/fonts/montserrat.ttf",
+      "sha256": "0f7b311b2f3279e4eef9b2f968bcdbab6e28f4daeb1f049f4f278a902bcd82f7",
+      "bytes": 744936
+    },
+    {
+      "file": "assets/clips/case-01.mp4",
+      "sha256": "616253b5db032b222629d36887779f884e4e283751d6165b101c47190e21e026",
+      "bytes": 2871733,
+      "duration": 4.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-02.mp4",
+      "sha256": "87d410a152c738223f79c36a97cb6589b838fa3b22a17dab676996e20f79a51d",
+      "bytes": 4100079,
+      "duration": 4.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-03.mp4",
+      "sha256": "37b5c9a7fe809108bfc1e176159b53e63af2513bda20c1cd5986f2c3f4e27f53",
+      "bytes": 2521428,
+      "duration": 3.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-04.mp4",
+      "sha256": "f26d83690b20e037f04017603e1ad69b32f22058afd43cabb522b4f24e4eea5e",
+      "bytes": 4871505,
+      "duration": 3.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-05.mp4",
+      "sha256": "4889a6e8476fc079567968fbac106842c986097fa1ffdbd90993badd8e3fdb23",
+      "bytes": 4029316,
+      "duration": 4.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-06.mp4",
+      "sha256": "6d9cb470ecb12b5577edbbf3eeb303f4c1dbf7c35e7cea9fc75c610d76a5a87d",
+      "bytes": 5769493,
+      "duration": 4.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-07.mp4",
+      "sha256": "0ca3cbd2054ea7a32020d6b0c3efbe95715b51e60a7d153b728eac2562678b48",
+      "bytes": 3545813,
+      "duration": 3.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-08.mp4",
+      "sha256": "08a2a4144d041d145ee3d59ca61ad76a2f20ce294f8043b9cedb10511ca8c0e3",
+      "bytes": 4170024,
+      "duration": 3.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-09.mp4",
+      "sha256": "1eeede311bd50a89ce581fd8c7dcc90a45052ef0ac8f4e0b9ac6fef8371917e6",
+      "bytes": 12081965,
+      "duration": 12.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-10.mp4",
+      "sha256": "4333d2e46079b0dc82a28dfae247d3372d126d6f1be3c06db3fbd5094ec1ca2a",
+      "bytes": 2294053,
+      "duration": 3.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-11.mp4",
+      "sha256": "b91e5c3cc315ee8a11b47960480b24490fd1b21adf006a5377c474df4db40e32",
+      "bytes": 4364692,
+      "duration": 4.033333,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "assets/clips/case-12.mp4",
+      "sha256": "edc2318ef10a6780892492ee13d18a189f3dd892cab4e07d3e5a785b3e83f32f",
+      "bytes": 3992528,
+      "duration": 5.033333,
+      "width": 1080,
+      "height": 1920
+    }
+  ]
+}

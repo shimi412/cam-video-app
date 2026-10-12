@@ -93,7 +93,8 @@ async function download(url: string, subDir: string, fallbackExt: string): Promi
   const ext = path.extname(new URL(url).pathname) || fallbackExt;
   const dir = path.join(STORAGE, subDir);
   await mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, `${randomUUID()}${ext}`);
+  // Generated output is runtime storage, not a build-time file dependency.
+  const filePath = path.join(/* turbopackIgnore: true */ dir, `${randomUUID()}${ext}`);
   await writeFile(filePath, Buffer.from(await res.arrayBuffer()));
   return filePath;
 }

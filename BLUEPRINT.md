@@ -140,3 +140,24 @@ Preuves exécutées :
 - 13 tests Vitest passent ; lint et build passent. Les planches ont été inspectées visuellement. Sorties sous `storage/concepts/<job>/` et `storage/outputs/<job>.mp4`.
 
 **Ce jalon ne clôt pas le chantier 1 complet.** Restent le pipeline réel (Claude, images, clips, voix/transcription et alignement), ses validations par étape, la reprise persistante, le plafond de facturation, les contrôles éditoriaux et le test payant approuvé. Les recettes BD/motion, le chat et les références utilisateur, les paiements, les comptes, l'hébergement et les autres livrables du devis ne sont pas livrés.
+
+### Chantier 1, deuxième jalon du 12/10 : personnages et voix existants
+
+Shimon demande de poursuivre en autonomie sans dépenser de crédits fal.ai. Ce jalon ne réalise aucun appel de génération, quel que soit le fournisseur.
+
+- Nouveau parcours explicite « Load CAM example » dans le Studio : reconstruction locale du film Clay à partir des 12 clips existants, de la voix Dylan et du script correspondant. Estimation et montant facturé : 0 $. Le mode de préparation de nouveaux scripts reste disponible séparément, avec images de remplacement et son silencieux.
+- 15 fichiers source, soit 65,4 Mo, inscrits dans un manifeste versionné avec leurs empreintes. Ils restent dans le stockage local non commité. Vérification avant cadrage et après copie dans chaque dossier de production autonome. Un fichier absent ou remplacé bloque ce parcours avec un message explicite, sans téléchargement ni génération de secours.
+- Voix effectivement intégrée : `voix-dylan-v3-respire.wav`, Dylan Seed Audio, avec les pauses déjà préparées. Son PCM correspond à `montage/assets/narration.wav`. Le fichier de minutage provient de `timing-dylan-v3-respire-recale.json`, et non de l'ancienne prise rapide mentionnée au premier jalon. Les frontières de phrases restent inchangées ; trois mots de durée nulle sont redistribués dans leur intervalle parlé précédent. Le minutage mot à mot reste une estimation guidée par les silences, pas un nouvel alignement forcé.
+- 14 phrases sur 12 plans, ajustement de vitesse des images uniquement, sans dépassement des médias. Voix à sa vitesse d'origine. Sortie de contrôle de 52,25 s, 1080 × 1920, H.264 / AAC / 30 i/s. Cette version intègre uniquement la voix, pas l'ancien mix musique/bruitages.
+- Chaque mot prononcé est sous-titré, y compris les lignes déjà reprises en titre et la fin complète « like it's a legitimate question ». Contrôle d'une image par sous-titre et des deux côtés de chaque raccord. Après inspection, déplacement des sous-titres des plans 3, 6 et 12 pour dégager les visages. Export SRT et VTT ; enregistrement vocal et provenance accessibles depuis le résultat.
+- Réutilisation limitée au script exact (espaces et apostrophes typographiques tolérés), à Clay et au format 9:16. Les mêmes restrictions sont appliquées côté serveur, y compris au lancement direct. Aucun identifiant ElevenLabs équivalent à Dylan n'est inventé.
+- Lecture audio/vidéo avec réponses HTTP partielles pour avancer dans le fichier ; refus des plages invalides et des liens symboliques sortant du stockage. Le Studio retrouve le dernier travail confirmé dans le même navigateur après rechargement. Cette restauration de l'écran ne remplace pas une file de travaux durable en cas d'arrêt du serveur.
+- Build sans avertissement, lint et 22 tests réussis : script/format/mode incompatibles, empreintes, mots conservés, minutage, durées des clips, prix nul et plages HTTP notamment.
+
+Preuves :
+
+- CLI hors ligne, job `884013f5-853e-4952-b9d4-36fe31c741c7` : 207 s, un seul rendu malgré deux appels concurrents, zéro tentative fetch du processus applicatif, aucune dépense ni écriture de crédit.
+- Parcours navigateur après correction des sous-titres, job `e4d5f51a-38e3-47a4-b4cc-74d8e953c50a` : 130 s, terminé, estimation 0 $, facturation 0 $, une seule opération de rendu local à coût nul. Solde inchangé à 96,19 $. Lecture et navigation dans la vidéo vérifiées ; résultat retrouvé après rechargement.
+- Piste exportée comparée à la voix source en PCM mono 8 kHz : corrélation 0,99926 sur 50,65 s à décalage nul. Volume moyen −22,3 dB, crête −1,3 dB. Les planches finales de sous-titres et de raccords ont été relues. `visualApproval: false` reste conservé : l'inspection technique ne constitue pas une nouvelle validation client.
+
+**Limite du jalon :** le logiciel remonte maintenant un film à partir de médias existants. Produire de nouvelles scènes et faire dire un nouveau texte à la voix approuvée nécessitent encore les adaptateurs réels, les validations éditoriales, la reprise durable, les limites de coûts puis un essai payant expressément autorisé. Aucun de ces éléments n'est déclaré livré par la démonstration locale.

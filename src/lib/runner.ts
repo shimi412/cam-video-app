@@ -91,7 +91,8 @@ export async function runJob(jobId: string): Promise<void> {
   const recipe = getRecipe(params.templateSlug);
   const marginMultiplier = await getMarginMultiplier();
   const providers = getProviders();
-  const steps: JobStep[] = STEPS.map((s) => ({ ...s, status: "pending" }));
+  const existingLabels: Record<string, string> = { storyboard: "Existing film edit", voice: "Recorded Dylan voice", keyframes: "Character references", clips: "Existing animated clips", montage: "Local montage & checks" };
+  const steps: JobStep[] = STEPS.map((s) => ({ ...s, label: params.previewSource === "existing" ? existingLabels[s.key] : s.label, status: "pending" }));
   const usesVideoApi = params.family === "cartoon";
   const dryRun = providerMode() === "dryrun";
   const simulation = isSimulation();
@@ -130,6 +131,7 @@ export async function runJob(jobId: string): Promise<void> {
       params.sheet = result.sheet;
       params.sheetUrl = result.sheetUrl;
       params.artifacts = result.artifacts;
+      params.media = result.media;
       await setProgress(jobId, params, steps);
     } else if (recipe.collage) {
       // Whiteboard family: collage engine (score → elements → HyperFrames render).

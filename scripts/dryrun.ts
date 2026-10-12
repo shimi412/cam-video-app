@@ -10,6 +10,7 @@ import { resolveParams } from "../src/lib/brain";
 import { estimateProduction } from "../src/lib/pricing";
 import { getMarginMultiplier } from "../src/lib/settings";
 import { runJob } from "../src/lib/runner";
+import { assertExistingSelection, existingParams } from "../src/lib/concept/existing";
 
 let networkAttempts = 0;
 globalThis.fetch = async () => {
@@ -21,7 +22,10 @@ async function main() {
   const [templateSlug = "cartoon-ink-noir", aspect = "9:16"] = process.argv.slice(2);
   const script = z.string().min(40).parse(readFileSync(0, "utf8").trim());
   const aspectRatio = z.enum(["9:16", "16:9", "1:1"]).parse(aspect);
-  const { params } = resolveParams(script, "manual", { templateSlug, aspectRatio }, { allowArchived: true });
+  const framing = resolveParams(script, "manual", { templateSlug, aspectRatio }, { allowArchived: true });
+  const reuse = process.argv.includes("--existing");
+  if (reuse) assertExistingSelection(script, framing.params);
+  const params = reuse ? existingParams(framing.params) : framing.params;
   const estimate = estimateProduction(params, await getMarginMultiplier());
   const [template] = await db.select().from(schema.templates).where(eq(schema.templates.slug, params.templateSlug));
   const [job] = await db.insert(schema.jobs).values({

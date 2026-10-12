@@ -79,7 +79,7 @@ export const RECIPES: Recipe[] = [
     status: "active",
     name: "CAM · Clay",
     family: "cartoon",
-    description: "A tactile clay world with a recurring narrator. Free planning preview with placeholder visuals and silent audio; final production is being prepared.",
+    description: "A tactile clay world with a recurring narrator. Rebuild the existing CAM film with its characters and Dylan recording for free, or prepare a new script with a silent planning preview.",
     bible: {
       artDirection: "Handcrafted realistic clay miniature world, visible fingerprints and soft modeling-clay texture, warm studio lighting, restrained stop-motion character acting.",
       palette: "Warm cream #FFF4DC, deep brown #3B2416, mustard #F2B632 and red #E5392B reserved for misinformation and its rejection.",

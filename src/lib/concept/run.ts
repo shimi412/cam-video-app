@@ -11,6 +11,7 @@ import { controls, validateTiming } from "./controls";
 import { renderConcept, silentVoice } from "./render";
 import { lockedAssets } from "./assets";
 import { saveSheet, type SheetEntry } from "../sheet";
+import { produceExistingConcept } from "./existing-run";
 
 export async function produceConcept(input: {
   jobId: string; script: string; params: ProductionParams; recipe: Recipe;
@@ -18,6 +19,7 @@ export async function produceConcept(input: {
   setStep: (key: string, status: "pending" | "running" | "done" | "failed") => Promise<void>;
 }) {
   if (!isSimulation()) throw new Error("CAM Clay is preview-only until its voice, storyboard and paid pipeline are approved.");
+  if (input.params.previewSource === "existing") return produceExistingConcept(input);
   const { jobId, script, params, recipe, setStep } = input;
   const root = path.join(process.cwd(), "storage/concepts", jobId);
   const outputPath = path.join(process.cwd(), "storage/outputs", `${jobId}.mp4`);
@@ -55,7 +57,7 @@ export async function produceConcept(input: {
   await input.meter("render", { filePath: outputPath, realCostUsd: 0, provider: "hyperframes", model: "concept-placeholder-preview", meta: { estimatedTiming: true, visualApproval: false } });
   await setStep("montage", "done");
   const url = (file: string) => `/api/media/concepts/${jobId}/${file}`;
-  return { outputPath, durationSeconds: timing.duration, board, sheet, sheetUrl, artifacts: [
+  return { outputPath, durationSeconds: timing.duration, board, sheet, sheetUrl, media: null, artifacts: [
     { label: "Storyboard", url: url("storyboard.json") },
     { label: "Shot contact sheet", url: url("controls/shots.png") },
     ...(board.shots.length > 1 ? [{ label: "Transition contact sheet", url: url("controls/transitions.png") }] : []),

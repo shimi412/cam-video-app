@@ -31,6 +31,10 @@ export const UNIT = {
 };
 
 export function estimateProduction(params: ProductionParams, marginMultiplier: number): Estimate {
+  if (params.previewSource === "existing") return {
+    lines: [{ label: "Reuse existing CAM clips, voice & local montage", quantity: 1, realUnitUsd: 0, billedUsd: 0 }],
+    totalRealUsd: 0, totalBilledUsd: 0,
+  };
   const lines: EstimateLine[] = [];
   const { shotCount, shotSeconds, family, tier, characterCount } = params;
 

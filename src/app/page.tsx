@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type EstimateLine = { label: string; quantity: number; billedUsd: number };
+type MediaSummary = { id: string; label: string; voice: string; duration: number; shots: number; source: "existing" };
+type Example = MediaSummary & { available: boolean; reason: string | null; script: string; voiceUrl: string | null };
 type Framing = {
   simulation: boolean;
+  media?: MediaSummary | null;
   jobId: string;
   analysis: { wordCount: number; durationSeconds: number; reason: string };
   params: {
@@ -41,6 +44,9 @@ type SheetEntry = {
   notes?: string;
 };
 type JobState = {
+  script?: string;
+  aspectRatio?: AspectRatio;
+  media?: MediaSummary | null;
   simulation?: boolean;
   status: string;
   progress: JobStep[];
@@ -69,20 +75,75 @@ export default function StudioPage() {
   const [tier, setTier] = useState<"standard" | "premium">("standard");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [script, setScript] = useState("");
+  const [example, setExample] = useState<Example | null>(null);
+  const [previewSource, setPreviewSource] = useState<"planning" | "existing">("planning");
   const [framing, setFraming] = useState<Framing | null>(null);
   const [job, setJob] = useState<JobState | null>(null);
   const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollEpoch = useRef(0);
 
   const stopPolling = useCallback(() => {
+    pollEpoch.current += 1;
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = null;
   }, []);
 
   useEffect(() => stopPolling, [stopPolling]);
 
+  const watchJob = useCallback((id: string) => {
+    stopPolling();
+    const epoch = pollEpoch.current;
+    let pending = false;
+    const refresh = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const response = await fetch(`/api/jobs/${id}`);
+        if (epoch !== pollEpoch.current) return;
+        if (!response.ok) {
+          if (response.status === 404) {
+            try { localStorage.removeItem("cam-last-job"); } catch { /* Storage may be disabled. */ }
+            setError("This saved production is no longer available. You can start a new one.");
+            setRestoring(false);
+            stopPolling();
+            return;
+          }
+          throw new Error("Could not retrieve this production. Reload to try again.");
+        }
+        const next: JobState = await response.json();
+        if (epoch !== pollEpoch.current) return;
+        setJob(next);
+        setScript(next.script ?? "");
+        if (next.aspectRatio) setAspectRatio(next.aspectRatio);
+        setError(null);
+        setRestoring(false);
+        if (next.status === "succeeded" || next.status === "failed") stopPolling();
+      } catch (error) { if (epoch === pollEpoch.current) { setError(error instanceof Error ? error.message : "Connection lost. Reconnecting to the production…"); setRestoring(false); } }
+      finally { pending = false; }
+    };
+    pollRef.current = setInterval(() => void refresh(), 1500);
+    void refresh();
+  }, [stopPolling]);
+
   useEffect(() => {
+    // Read browser-only persistence after hydration; cancel on a quick navigation.
+    const restore = setTimeout(() => {
+      let id: string | null = null;
+      try { id = localStorage.getItem("cam-last-job"); } catch { /* Storage can be disabled by the browser. */ }
+      if (id && /^[0-9a-f-]{36}$/.test(id)) watchJob(id);
+      else setRestoring(false);
+    }, 0);
+    return () => { clearTimeout(restore); stopPolling(); };
+  }, [watchJob, stopPolling]);
+
+  useEffect(() => {
+    fetch("/api/examples/cam-clay").then((r) => {
+      if (!r.ok) throw new Error("Could not check existing media");
+      return r.json();
+    }).then(setExample).catch(() => setError("Could not check the existing CAM film. Planning previews remain available."));
     fetch("/api/templates")
       .then((r) => r.json())
       .then((list: Template[]) => {
@@ -104,6 +165,7 @@ export default function StudioPage() {
         body: JSON.stringify({
           script,
           mode,
+          previewSource,
           overrides: mode === "manual" ? { templateSlug, tone, tier, aspectRatio } : { aspectRatio },
         }),
       });
@@ -125,13 +187,9 @@ export default function StudioPage() {
       const res = await fetch(`/api/jobs/${framing.jobId}/confirm`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Confirmation failed");
-      setJob({ simulation: framing.simulation, status: "running", progress: [], billedUsd: null, estimateUsd: null, outputUrl: null, sheet: null, sheetUrl: null, error: null });
-      pollRef.current = setInterval(async () => {
-        const r = await fetch(`/api/jobs/${framing.jobId}`);
-        const j: JobState = await r.json();
-        setJob(j);
-        if (j.status === "succeeded" || j.status === "failed") stopPolling();
-      }, 1500);
+      setJob({ simulation: framing.simulation, media: framing.media, status: "running", progress: [], billedUsd: null, estimateUsd: null, outputUrl: null, sheet: null, sheetUrl: null, error: null });
+      try { localStorage.setItem("cam-last-job", framing.jobId); } catch { /* Current session still works. */ }
+      watchJob(framing.jobId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -141,13 +199,16 @@ export default function StudioPage() {
 
   function reset() {
     stopPolling();
+    try { localStorage.removeItem("cam-last-job"); } catch { /* No saved job when storage is disabled. */ }
     setFraming(null);
     setJob(null);
     setScript("");
+    setPreviewSource("planning");
     setError(null);
   }
 
-  const inputDisabled = framing !== null;
+  const inputDisabled = framing !== null || job !== null || restoring;
+  const settingsDisabled = inputDisabled || previewSource === "existing";
   const selectedTemplate = templates.find((t) => t.slug === templateSlug);
   const framedTemplate = framing ? templates.find((t) => t.slug === framing.params.templateSlug) : undefined;
 
@@ -162,6 +223,26 @@ export default function StudioPage() {
       </div>
 
       {/* Step 1: script + mode */}
+      {example && !framing && !job && !restoring && <section className="bg-surface border border-accent/40 rounded-xl p-5 space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-medium">Try the existing CAM film</h2>
+            <p className="text-sm text-muted mt-1">12 animated clips, the original Dylan recording and timed subtitles. Rebuilt locally in 9:16, with no generation charge.</p>
+          </div>
+          <span className="text-accent font-mono whitespace-nowrap">$0.00</span>
+        </div>
+        <div className="flex flex-wrap items-end gap-4">
+          {([['narrator', 'Narrator'], ['monster', 'Monster'], ['effigy', 'Effigy']] as const).map(([id, label]) => <div key={id} className="text-center text-xs text-muted">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/recipes/cam-clay/${id}.png`} alt={label} className="w-16 h-20 object-contain bg-surface-2 rounded-lg mb-1" />{label}
+          </div>)}
+          {example.voiceUrl && <label className="text-xs text-muted space-y-1"><span className="block">Listen to Dylan · existing recording</span><audio aria-label="Existing Dylan voice recording" controls preload="none" src={example.voiceUrl} className="h-9 max-w-full" /></label>}
+        </div>
+        {example.available ? <div className="flex items-center gap-3">
+          <button disabled={previewSource === "existing"} onClick={() => { setScript(example.script); setPreviewSource("existing"); setMode("manual"); setTemplateSlug("cam-clay"); setAspectRatio("9:16"); setTone("serious"); setTier("premium"); setError(null); }} className="bg-accent text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50">{previewSource === "existing" ? "Existing film selected" : "Load CAM example"}</button>
+          {previewSource === "existing" && <button onClick={() => { setPreviewSource("planning"); setScript(""); }} className="text-muted hover:text-foreground text-sm">Use my own script</button>}
+        </div> : <p role="status" className="text-sm text-muted">{example.reason}</p>}
+      </section>}
       {templatesLoaded && templates.length === 0 && (
         <div role="status" className="bg-surface border border-line rounded-xl p-5 text-sm text-muted">
           New CAM video styles are being prepared. Production will be available once the first style is ready.
@@ -175,7 +256,7 @@ export default function StudioPage() {
               <button
                 key={m}
                 onClick={() => setMode(m)}
-                disabled={inputDisabled}
+                disabled={settingsDisabled}
                 className={`px-4 py-1.5 capitalize ${
                   mode === m ? "bg-accent text-white" : "bg-surface-2 text-muted hover:text-foreground"
                 } disabled:opacity-60`}
@@ -191,7 +272,7 @@ export default function StudioPage() {
             <span className="text-muted">Format</span>
             <select
               value={aspectRatio}
-              disabled={inputDisabled}
+              disabled={settingsDisabled}
               onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
               className="w-full bg-surface-2 border border-line rounded-md px-2 py-1.5"
             >
@@ -206,7 +287,7 @@ export default function StudioPage() {
                 <span className="text-muted">Tone</span>
                 <select
                   value={tone}
-                  disabled={inputDisabled}
+                  disabled={settingsDisabled}
                   onChange={(e) => setTone(e.target.value as typeof tone)}
                   className="w-full bg-surface-2 border border-line rounded-md px-2 py-1.5"
                 >
@@ -219,7 +300,7 @@ export default function StudioPage() {
                 <span className="text-muted">Quality tier</span>
                 <select
                   value={tier}
-                  disabled={inputDisabled}
+                  disabled={settingsDisabled}
                   onChange={(e) => setTier(e.target.value as typeof tier)}
                   className="w-full bg-surface-2 border border-line rounded-md px-2 py-1.5"
                 >
@@ -239,7 +320,7 @@ export default function StudioPage() {
                 <button
                   key={t.slug}
                   type="button"
-                  disabled={inputDisabled}
+                  disabled={settingsDisabled}
                   onClick={() => setTemplateSlug(t.slug)}
                   className={`text-left rounded-lg border overflow-hidden bg-surface-2 ${
                     templateSlug === t.slug ? "border-accent ring-1 ring-accent" : "border-line hover:border-accent/60"
@@ -260,18 +341,18 @@ export default function StudioPage() {
         <textarea
           value={script}
           onChange={(e) => setScript(e.target.value)}
-          disabled={inputDisabled}
+          disabled={settingsDisabled}
           rows={7}
           placeholder="Paste the script generated by your monitoring app…"
           className="w-full bg-surface-2 border border-line rounded-lg p-3 text-sm placeholder:text-muted/60 focus:outline-none focus:border-accent disabled:opacity-60"
         />
-        {!framing && (
+        {!framing && !job && (
           <button
             onClick={frame}
-            disabled={loading || templates.length === 0 || script.trim().length < 40}
+            disabled={loading || restoring || templates.length === 0 || script.trim().length < 40}
             className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
           >
-            {loading ? "Framing…" : "Frame my request"}
+            {loading ? "Framing…" : previewSource === "existing" ? "Prepare existing film · $0" : "Frame my request"}
           </button>
         )}
       </section>
@@ -286,7 +367,7 @@ export default function StudioPage() {
       {framing && !job && (
         <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
           <h2 className="font-medium">2. Framing &amp; price</h2>
-          {framing.simulation && <p className="text-sm text-muted">Free preview with placeholder visuals and silent audio. The prices below are provisional planning estimates; no credits will be deducted.</p>}
+          {framing.simulation && <p className="text-sm text-muted">{framing.media ? "Existing animated characters and the original Dylan recording will be assembled locally. No new media will be generated. No credits will be deducted." : "Free preview with placeholder visuals and silent audio. The prices below are provisional planning estimates; no credits will be deducted."}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-surface-2 border border-line rounded-lg p-4 space-y-2 text-sm">
               <div className="flex justify-between items-center gap-3">
@@ -311,6 +392,7 @@ export default function StudioPage() {
                 <span className="text-muted">Tone / tier</span>
                 <span className="capitalize">{framing.params.tone} · {framing.params.tier}</span>
               </div>
+              {framing.media && <p className="text-muted border-t border-line pt-2">Voice: {framing.media.voice}</p>}
               {mode === "auto" && (
                 <p className="text-muted pt-2 border-t border-line">{framing.analysis.reason}</p>
               )}
@@ -345,7 +427,7 @@ export default function StudioPage() {
               disabled={loading || !framing.canConfirm}
               className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
             >
-              {framing.simulation ? "Run free preview" : `Confirm & produce · $${framing.estimate.totalBilledUsd.toFixed(2)}`}
+              {framing.media ? "Rebuild existing film · $0" : framing.simulation ? "Run free preview" : `Confirm & produce · $${framing.estimate.totalBilledUsd.toFixed(2)}`}
             </button>
             <button onClick={reset} className="text-muted hover:text-foreground text-sm px-3">
               Cancel
@@ -390,7 +472,7 @@ export default function StudioPage() {
                 controls
                 className="rounded-lg border border-line bg-black max-h-[60vh] max-w-full w-auto mx-auto"
               />
-              {job.simulation ? <p className="text-sm text-muted">Planning preview complete. Visuals are placeholders and narration timing is estimated. No credits were deducted.</p> : <p className="text-sm text-muted">
+              {job.simulation ? <p className="text-sm text-muted">{job.media ? "Film rebuilt from the existing CAM characters and Dylan recording, with timed subtitles. No credits were deducted. A new script needs its own voice and scenes." : "Planning preview complete. Visuals are placeholders and narration timing is estimated. No credits were deducted."}</p> : <p className="text-sm text-muted">
                 Billed <span className="font-mono text-foreground">${job.billedUsd?.toFixed(2)}</span>
                 {" "}(estimate ${job.estimateUsd?.toFixed(2)}) — deducted from your credits.
               </p>}
@@ -414,9 +496,9 @@ export default function StudioPage() {
         <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-medium">Production sheet (dry-run)</h2>
+              <h2 className="font-medium">{job.media ? "Reused media" : "Production sheet (dry-run)"}</h2>
               <p className="text-sm text-muted mt-1">
-                Planned prompts and references for review. No generation requests were sent. Voice selection and final images require validation.
+                {job.media ? "Existing voice and clips used in this montage. Their file fingerprints are saved with the production." : "Planned prompts and references for review. No generation requests were sent. Voice selection and final images require validation."}
               </p>
             </div>
             {job.sheetUrl && (
@@ -441,7 +523,7 @@ export default function StudioPage() {
                 </summary>
                 <div className="px-4 pb-4 space-y-2 text-sm">
                   <p className="text-muted">
-                    fal.ai: <span className="font-mono text-foreground">{e.falModel}</span>
+                    Source: <span className="font-mono text-foreground">{e.falModel}</span>
                     {e.durationSeconds ? ` · ${e.durationSeconds}s` : ""}
                     {e.aspectRatio ? ` · ${e.aspectRatio}` : ""}
                   </p>

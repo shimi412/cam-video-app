@@ -32,6 +32,7 @@ export type ProductionParams = {
   wordCount: number;
   characterCount: number;
   concept?: { videoSeconds: number; imageCount: number };
+  previewSource?: "planning" | "existing";
 };
 
 export type Overrides = Partial<

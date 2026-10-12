@@ -1,7 +1,8 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { stat, realpath } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { mediaRange } from "@/lib/media-range";
 
 const STORAGE = path.join(process.cwd(), "storage");
 
@@ -12,10 +13,12 @@ const MIME: Record<string, string> = {
   ".mp3": "audio/mpeg",
   ".md": "text/markdown; charset=utf-8",
   ".json": "application/json",
+  ".srt": "application/x-subrip; charset=utf-8",
+  ".vtt": "text/vtt; charset=utf-8",
 };
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path: segments } = await params;
@@ -25,15 +28,22 @@ export async function GET(
     return new Response("Forbidden", { status: 403 });
   }
   try {
-    const info = await stat(filePath);
-    const stream = Readable.toWeb(createReadStream(filePath)) as ReadableStream;
-    return new Response(stream, {
-      headers: {
-        "Content-Type": MIME[path.extname(filePath)] ?? "application/octet-stream",
-        "Content-Length": String(info.size),
-      },
-    });
+    const resolved = await realpath(filePath);
+    if (!resolved.startsWith(await realpath(STORAGE) + path.sep)) return new Response("Forbidden", { status: 403 });
+    const info = await stat(resolved);
+    if (!info.isFile()) return new Response("Not found", { status: 404 });
+    const headers = new Headers({ "Content-Type": MIME[path.extname(resolved)] ?? "application/octet-stream", "Accept-Ranges": "bytes" });
+    if (path.extname(resolved) === ".srt") headers.set("Content-Disposition", 'attachment; filename="captions.srt"');
+    const requested = request.headers.get("range");
+    const range = requested ? mediaRange(requested, info.size) : null;
+    if (requested && !range) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${info.size}` } });
+    headers.set("Content-Length", String(range ? range.end - range.start + 1 : info.size));
+    if (range) headers.set("Content-Range", `bytes ${range.start}-${range.end}/${info.size}`);
+    const stream = request.method === "HEAD" ? null : Readable.toWeb(createReadStream(resolved, range ?? undefined)) as ReadableStream;
+    return new Response(stream, { status: range ? 206 : 200, headers });
   } catch {
     return new Response("Not found", { status: 404 });
   }
 }
+
+export const HEAD = GET;
