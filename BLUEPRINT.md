@@ -15,6 +15,7 @@ Application conversationnelle pour CAM (Combat Antisemitism Movement) : un emplo
 | Stack | Next.js 16 (App Router), TypeScript strict, Tailwind 4, shadcn/ui, Postgres (embedded-postgres en local). |
 | Cerveau du chat | Claude Sonnet 5 (`claude-sonnet-5`) via API Anthropic, compte Bina. Passé par le AI SDK : changer de modèle = une ligne de config admin. Jamais exposé au client. Remplace la décision « open source » du 19/08 (coût projeté 15 à 45 $/mois à pleine cadence, contrainte inutile). Jamais de serveur chinois. |
 | Génération médias | fal.ai (compte Bina), branché le 2026-08-20 (`src/lib/providers/fal.ts`) : keyframes Nano Banana Pro 2K (0,15 $/image, `/edit` avec image de référence pour la cohérence), clips Wan 2.5 image-to-video 720p (0,10 $/s, standard) / Kling 2.5 Turbo Pro (0,35 $ les 5 s, premium), voix off MiniMax Speech-02 HD (0,10 $/1000 caractères). Prix vérifiés sur fal.ai le 20/08, repris tels quels dans le métering. |
+| Moteur de clips | fal.ai par défaut. **Voie de comparaison ouverte le 2026-09-22 : `VIDEO_PROVIDER=runway`** surcharge le seul slot vidéo (`src/lib/providers/runway.ts`), le reste restant sur fal — Runway n'a ni TTS, ni détourage, ni transcription. Runway côté API est un routeur (wan3, gen4.5, veo3.1, seedance2_5), facturé en crédits à 0,01 $, modèles réglés par `RUNWAY_VIDEO_STANDARD` / `RUNWAY_VIDEO_PREMIUM`. Non activé par défaut : `pnpm compare:video` chiffre l'écart avant toute bascule. Origine : veille, pas une demande client. |
 | Montage | HyperFrames, rendu local sur CPU (gratuit). Tout texte à l'écran passe par HyperFrames, jamais incrusté dans les images générées. |
 | Modèles de vidéos | Bibliothèque de recettes enregistrées. Deux au lancement : **Cartoon** (1-2 personnages stylisés, voix off, pas de lip-sync) et **Whiteboard** (éducatif, dessiné à la main en motion graphics, façon collage Vox). Une recette = style figé + prompts types + pipeline + habillage + sous-titres. Un nouveau modèle = une nouvelle recette, pas un développement. |
 | Modes | **Automatique** : l'app choisit le modèle et les paramètres depuis le script. **Manuel** : l'employé choisit le modèle et règle la grille (ton, format, voix off). Dans les deux cas : estimation de prix affichée, confirmation obligatoire avant lancement. |
@@ -76,4 +77,7 @@ pnpm db:push       # applique le schéma Drizzle
 pnpm db:seed       # recettes + crédits de dev
 pnpm dev           # lance l'app
 pnpm db:stop       # arrête Postgres
+
+pnpm check:providers   # valide les clés Anthropic, fal et Runway sans dépense média
+pnpm compare:video 30 5 0.3   # coût des clips par moteur (durée, plan, taux de retries), zéro appel
 ```

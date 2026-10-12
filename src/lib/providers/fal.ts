@@ -41,7 +41,7 @@ export const FAL_MODELS = {
 } as const;
 
 /** Real prices (USD) used for metering; keep in sync with the header comment. */
-const PRICES = {
+export const FAL_PRICES = {
   imageUsd: 0.15,
   wanUsdPerSec: { "480p": 0.05, "720p": 0.1, "1080p": 0.15 } as Record<string, number>,
   klingBaseUsd: 0.35,
@@ -142,7 +142,7 @@ export const falImage: ImageGenProvider = {
     if (!url) throw new Error(`fal ${endpoint}: no image returned`);
     return {
       filePath: await download(url, "images", ".jpg"),
-      realCostUsd: PRICES.imageUsd,
+      realCostUsd: FAL_PRICES.imageUsd,
       provider: "fal",
       model: endpoint,
       meta: { prompt, requestId, sourceUrl: url, resolution: "2K", reference: Boolean(referencePath) },
@@ -167,7 +167,7 @@ export const falVideo: VideoGenProvider = {
       });
       const url = (data as VideoOutput).video?.url;
       if (!url) throw new Error("fal kling: no video returned");
-      const cost = PRICES.klingBaseUsd + Math.max(0, seconds - 5) * PRICES.klingExtraUsdPerSec;
+      const cost = FAL_PRICES.klingBaseUsd + Math.max(0, seconds - 5) * FAL_PRICES.klingExtraUsdPerSec;
       return {
         filePath: await download(url, "clips", ".mp4"),
         realCostUsd: Number(cost.toFixed(4)),
@@ -189,7 +189,7 @@ export const falVideo: VideoGenProvider = {
     const out = data as VideoOutput;
     const url = out.video?.url;
     if (!url) throw new Error("fal wan: no video returned");
-    const perSec = PRICES.wanUsdPerSec[WAN_RESOLUTION] ?? PRICES.wanUsdPerSec["720p"];
+    const perSec = FAL_PRICES.wanUsdPerSec[WAN_RESOLUTION] ?? FAL_PRICES.wanUsdPerSec["720p"];
     return {
       filePath: await download(url, "clips", ".mp4"),
       realCostUsd: Number((seconds * perSec).toFixed(4)),
@@ -223,7 +223,7 @@ export const falTts: TtsProvider = {
     if (!url) throw new Error("fal minimax tts: no audio returned");
     return {
       filePath: await download(url, "voice", ".mp3"),
-      realCostUsd: Number(((text.length / 1000) * PRICES.ttsUsdPer1000Chars).toFixed(4)),
+      realCostUsd: Number(((text.length / 1000) * FAL_PRICES.ttsUsdPer1000Chars).toFixed(4)),
       provider: "fal",
       model: FAL_MODELS.tts,
       meta: { requestId, sourceUrl: url, characters: text.length, durationMs: out.duration_ms, voice: VOICE_MAP[voiceId] },
@@ -248,7 +248,7 @@ export const falCutout: CutoutProvider = {
     if (!url) throw new Error("fal bria: no cut-out returned");
     return {
       filePath: await download(url, "cutouts", ".png"),
-      realCostUsd: Number((PRICES.imageUsd + PRICES.removeBackgroundUsd).toFixed(4)),
+      realCostUsd: Number((FAL_PRICES.imageUsd + FAL_PRICES.removeBackgroundUsd).toFixed(4)),
       provider: "fal",
       model: `${FAL_MODELS.image} + ${FAL_MODELS.removeBackground}`,
       meta: { prompt, requestId: gen.requestId, sourceUrl: url, rawUrl },
@@ -272,6 +272,6 @@ export const falTranscribe: TranscribeProvider = {
     const words: WordTiming[] = (out.chunks ?? [])
       .map((c) => ({ word: c.text.trim(), start: c.timestamp?.[0] ?? 0, end: c.timestamp?.[1] ?? 0 }))
       .filter((w) => w.word.length > 0);
-    return { words, realCostUsd: PRICES.whisperUsd, provider: "fal", model: FAL_MODELS.whisper };
+    return { words, realCostUsd: FAL_PRICES.whisperUsd, provider: "fal", model: FAL_MODELS.whisper };
   },
 };
