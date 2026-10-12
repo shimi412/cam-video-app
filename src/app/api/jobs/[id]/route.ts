@@ -22,6 +22,7 @@ export async function GET(
     outputUrl: job.outputPath ? `/api/media/outputs/${job.id}.mp4` : null,
     sheet: jobParams.sheet ?? null,
     sheetUrl: jobParams.sheetUrl ?? null,
+    artifacts: jobParams.artifacts ?? [],
     balance: await getBalanceUsd(),
   });
 }

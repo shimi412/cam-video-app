@@ -116,3 +116,27 @@ Cette section actualise l'état historique du 20/08. Les choix de stack restent 
 - Contradiction éditoriale du brief : le BRIEF initial impose l'étiquette CLAIM ; le montage final du concept 1 et la note de production du 04/10 consignent son retrait demandé par Shimon, avec guillemets et barre rouge. Préserver la contextualisation explicite de l'accusation et appliquer le dernier retour au lieu de réintroduire l'étiquette silencieusement.
 - Les contrôles techniques (flashs, sous-titres, zones sûres) ne prouvent pas seuls la qualité éditoriale ou l'absence de visages sous les sous-titres. Conserver une validation visuelle.
 - Le modèle de serveur CAM sera choisi après mesure du rendu ; aucun achat ou déploiement engagé. Les essais payants gardent leur validation spécifique : script, recette, voix et coût estimé.
+
+### Chantier 1, premier jalon local du 12/10 : aperçu concept Clay
+
+L'autonomie donnée par Shimon autorise la suite du développement local. Elle ne transforme pas les vérifications gratuites en autorisation de production payante. Le chantier 0 est enregistré dans `288b773`, après la sauvegarde de l'existant `b81af6d`.
+
+- `cam-clay` est proposée dans le Studio en aperçu gratuit seulement. Le serveur refuse le cadrage payant, la confirmation réelle et l'appel direct au moteur concept avant tout appel fournisseur. La bibliothèque signale explicitement cet état.
+- Références d'octobre copiées dans `public/recipes/cam-clay/`, empreintes SHA-256 vérifiées à chaque travail : narrateur, monstre, effigie et logo CAM. Aucun nouvel actif généré ni envoyé à un fournisseur.
+- Nouveau module `concept/` : plans typés, conservation des mots, découpage sans perte, durées de clips dimensionnées sur la narration estimée, image finale de transformation, prompts et références dans la feuille de production. Le script d'Eyal conserve ses 14 segments validés. Un autre script reçoit des scènes de remplacement neutres explicitement identifiées ; le storyboard créatif Claude n'est pas encore branché.
+- Montage HTML HyperFrames local avec sous-titres, guillemets et barre rouge pour le premier titre du script d'Eyal. Son de remplacement silencieux. Minutage estimatif, et fonctions pures de détection de silences / insertion temporelle de respirations testées ; le recalage de la voix réelle reste à intégrer.
+- Export du format choisi : 1080 × 1920, 1920 × 1080 ou 1080 × 1080, 30 i/s, H.264 + AAC. Composition recalculée pour chaque format ; pas de recadrage aveugle. Les trois exports simultanés d'un même travail restent à faire.
+- Contrôles : ordre des mots, durée des sous-titres, vérification HyperFrames runtime / placement / contraste, dimensions / fréquence / codecs / durée via ffprobe, planches des plans et des raccords. Ils ne remplacent pas le contrôle éditorial, la détection de visages ni un détecteur complet de flashs. Les avertissements HyperFrames d'organisation des pistes sont présents, sans erreur de rendu.
+- Une file de rendu en mémoire limite ce moteur à un rendu à la fois par processus. Ce n'est pas encore la file durable multi-processus exigée pour le serveur.
+- Tarifs de préparation : Nano Banana Pro 2K 0,15 $/image, Kling 3 Pro sans audio 0,112 $/s, Eleven v3 0,10 $/1 000 caractères, réserve de 30 % pour tentatives et provision de 1 $ pour cerveau / transcription / montage. Deux images par plan sont réservées au devis provisoire, même si le plan final n'a pas besoin d'image de fin. La provision n'est pas un tarif fournisseur et la grille commerciale définitive reste à valider. Sources : https://fal.ai/nano-banana-pro ; https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video ; https://fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3.
+- **Correction de voix** : `storage/cam-oct05-v2/voix/timing-dylan.json` identifie la démo comme « Dylan (Higgsfield seed_audio, speech_rate 30) ». Le brief présume une voix ElevenLabs à retrouver ; cette équivalence n'est pas prouvée. Ne pas inventer un identifiant ni présenter une autre voix comme identique.
+- HyperFrames installé et figé en 0.8.91, version disponible et déjà présente sur le Mac. La dernière 0.8.150 renvoie 404 au téléchargement ; le contrôle d'usage n'existe pas en 0.8.91, usage inconnu. GSAP 3.14.2 local, aucune bibliothèque CDN dans ce moteur, télémétrie et recherche de mises à jour désactivées pour les rendus. `storage/` et `.pg-data/` exclus du paquet de déploiement.
+
+Preuves exécutées :
+
+- Eyal 9:16 : job `9925a6d4-4e3e-4931-af3c-4301be6bf41c`, 58,35 s, terminé en 101 s, un seul rendu malgré deux appels concurrents, zéro débit et zéro tentative fetch externe du processus applicatif.
+- Nouveau script 16:9 : job `591dd4ad-f3fd-4c17-be68-7f211fd2a761`, terminé en 21 s, mêmes invariants.
+- Nouveau script 1:1 : job `7a1c21f0-4982-4fa6-8d2a-a5de02df0fb9`, lancé depuis le navigateur par cadrage puis confirmation gratuite ; vidéo, feuille et contrôles affichés, solde inchangé.
+- 13 tests Vitest passent ; lint et build passent. Les planches ont été inspectées visuellement. Sorties sous `storage/concepts/<job>/` et `storage/outputs/<job>.mp4`.
+
+**Ce jalon ne clôt pas le chantier 1 complet.** Restent le pipeline réel (Claude, images, clips, voix/transcription et alignement), ses validations par étape, la reprise persistante, le plafond de facturation, les contrôles éditoriaux et le test payant approuvé. Les recettes BD/motion, le chat et les références utilisateur, les paiements, les comptes, l'hébergement et les autres livrables du devis ne sont pas livrés.

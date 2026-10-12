@@ -1,0 +1,22 @@
+[
+  {
+    "id": "effigy",
+    "path": "public/recipes/cam-clay/effigy.png",
+    "sha256": "7c5a8275c76f624eef47d2d5535036819014add0a4a88bdb3b13c68dc8ae47c7"
+  },
+  {
+    "id": "logo",
+    "path": "public/recipes/cam-clay/logo.png",
+    "sha256": "a3d1fc9087b3e784c3e7599495104fdda70deb1d839b36932a58193ac88bf839"
+  },
+  {
+    "id": "monster",
+    "path": "public/recipes/cam-clay/monster.png",
+    "sha256": "ad156bf353228887d9540c7d185469693982f96346627f828ef8f3b09ad646d0"
+  },
+  {
+    "id": "narrator",
+    "path": "public/recipes/cam-clay/narrator.png",
+    "sha256": "f911c30b2f97637fb7e157736bbb73157414fcb1d62ab298fec3e5c8fc5fa9fc"
+  }
+]

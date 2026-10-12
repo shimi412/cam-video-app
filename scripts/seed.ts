@@ -15,6 +15,7 @@ async function main() {
       defaultTone: r.defaultTone,
       voiceId: r.voiceId,
       thumbnail: r.thumbnail,
+      concept: r.concept,
     };
     await db
       .insert(schema.templates)

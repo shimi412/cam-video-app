@@ -7,6 +7,7 @@ type RecipeJson = {
   family?: string;
   defaultTone?: string;
   thumbnail?: string;
+  concept?: { previewOnly?: boolean };
   bible?: { artDirection?: string; palette?: string; handwrittenKeywords?: boolean };
 };
 
@@ -43,6 +44,7 @@ export default async function LibraryPage() {
                   </span>
                 </div>
                 <p className="text-sm text-muted">{t.description}</p>
+                {recipe.concept?.previewOnly && <p className="text-xs text-accent">Free planning preview</p>}
                 <div className="text-xs text-muted bg-surface-2 border border-line rounded-lg p-3 space-y-1">
                   <p><span className="text-foreground">Look:</span> {recipe.bible?.artDirection}</p>
                   <p><span className="text-foreground">Palette:</span> {recipe.bible?.palette}</p>

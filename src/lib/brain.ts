@@ -13,6 +13,7 @@ import {
   type Family,
   type Tone,
 } from "./recipes";
+import { conceptPhrases, estimatedSpeechSeconds } from "./concept/text";
 
 export type ProductionParams = {
   templateSlug: string;
@@ -30,6 +31,7 @@ export type ProductionParams = {
   shotSeconds: number;
   wordCount: number;
   characterCount: number;
+  concept?: { videoSeconds: number; imageCount: number };
 };
 
 export type Overrides = Partial<
@@ -92,10 +94,17 @@ export function resolveParams(
   if (!recipe) throw new RecipeUnavailableError();
   const templateSlug = recipe.slug;
 
-  const shotCount = Math.min(24, Math.max(3, Math.ceil(analysis.wordCount / WORDS_PER_SHOT)));
+  const phrases = recipe.concept ? conceptPhrases(script) : [];
+  if (phrases.length > 36 || phrases.some((p) => p.split(/\s+/).some((w) => w.length > 40))) throw new Error("Please use a shorter script with ordinary words (maximum 36 shots).");
+  const shotCount = recipe.concept ? phrases.length : Math.min(24, Math.max(3, Math.ceil(analysis.wordCount / WORDS_PER_SHOT)));
+  const concept = recipe.concept ? {
+    videoSeconds: phrases.reduce((sum, p) => sum + Math.max(5, Math.ceil(estimatedSpeechSeconds(p) + .35)), 0),
+    // Reserve one possible end image per shot until the storyboard is reviewed.
+    imageCount: shotCount * 2,
+  } : undefined;
 
   return {
-    analysis: { ...analysis, suggestedTemplate: templateSlug, suggestedFamily: recipe.family },
+    analysis: { ...analysis, suggestedTemplate: templateSlug, suggestedFamily: recipe.family, ...(recipe.concept ? { reason: "CAM Clay is available for a free planning preview. Review the storyboard before final production." } : {}) },
     params: {
       templateSlug,
       family: recipe.family,
@@ -109,6 +118,7 @@ export function resolveParams(
       shotSeconds: SHOT_SECONDS,
       wordCount: analysis.wordCount,
       characterCount: script.length,
+      ...(concept ? { concept } : {}),
     },
   };
 }

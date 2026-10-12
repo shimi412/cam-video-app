@@ -26,6 +26,8 @@ export const UNIT = {
   ttsUsdPer1000Chars: 0.1, // MiniMax Speech-02 HD
   cutoutUsd: 0.018, // Bria background removal
   hyperframesRenderUsd: 0.05, // CPU render, near-zero real cost buffer
+  kling3UsdPerSecond: 0.112, // fal Kling 3 Pro, native audio OFF, verified 2026-10-12
+  elevenV3UsdPer1000Chars: 0.1, // fal Eleven v3, verified 2026-10-12
 };
 
 export function estimateProduction(params: ProductionParams, marginMultiplier: number): Estimate {
@@ -41,6 +43,17 @@ export function estimateProduction(params: ProductionParams, marginMultiplier: n
       billedUsd: billedFromRealCost(real, marginMultiplier),
     });
   };
+
+  if (params.concept) {
+    push("Images (including possible end frames)", params.concept.imageCount, UNIT.imageUsd);
+    push("Animated clips", params.concept.videoSeconds, UNIT.kling3UsdPerSecond);
+    push("Voice-over", 1, characterCount / 1000 * UNIT.elevenV3UsdPer1000Chars);
+    const media = lines.reduce((sum, line) => sum + line.quantity * line.realUnitUsd, 0);
+    push("Allowance for retries (30%)", 1, media * .3);
+    // Budget allowance, not a claimed unit price. Exact metering is not yet wired.
+    push("Planning, transcription & rendering allowance", 1, 1);
+    return { lines, totalRealUsd: Number(lines.reduce((sum,l) => sum+l.quantity*l.realUnitUsd,0).toFixed(4)), totalBilledUsd: Number(lines.reduce((sum,l)=>sum+l.billedUsd,0).toFixed(2)) };
+  }
 
   if (family === "whiteboard") {
     // Collage engine: ~2.2 cut-out elements per sentence (generated + background removed), reused across sentences.

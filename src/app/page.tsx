@@ -49,6 +49,7 @@ type JobState = {
   outputUrl: string | null;
   sheet: SheetEntry[] | null;
   sheetUrl: string | null;
+  artifacts?: { label: string; url: string }[];
   error: string | null;
 };
 
@@ -149,7 +150,6 @@ export default function StudioPage() {
   const inputDisabled = framing !== null;
   const selectedTemplate = templates.find((t) => t.slug === templateSlug);
   const framedTemplate = framing ? templates.find((t) => t.slug === framing.params.templateSlug) : undefined;
-  const isVertical = (framing?.params.aspectRatio ?? aspectRatio) === "9:16";
 
   return (
     <div className="space-y-6">
@@ -286,7 +286,7 @@ export default function StudioPage() {
       {framing && !job && (
         <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
           <h2 className="font-medium">2. Framing &amp; price</h2>
-          {framing.simulation && <p className="text-sm text-muted">Free preview. The prices below are estimates only; no credits will be deducted.</p>}
+          {framing.simulation && <p className="text-sm text-muted">Free preview with placeholder visuals and silent audio. The prices below are provisional planning estimates; no credits will be deducted.</p>}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-surface-2 border border-line rounded-lg p-4 space-y-2 text-sm">
               <div className="flex justify-between items-center gap-3">
@@ -388,12 +388,13 @@ export default function StudioPage() {
               <video
                 src={job.outputUrl}
                 controls
-                className={`rounded-lg border border-line bg-black ${isVertical ? "max-h-[75vh] mx-auto" : "w-full"}`}
+                className="rounded-lg border border-line bg-black max-h-[60vh] max-w-full w-auto mx-auto"
               />
-              {job.simulation ? <p className="text-sm text-muted">Preview complete. No credits were deducted.</p> : <p className="text-sm text-muted">
+              {job.simulation ? <p className="text-sm text-muted">Planning preview complete. Visuals are placeholders and narration timing is estimated. No credits were deducted.</p> : <p className="text-sm text-muted">
                 Billed <span className="font-mono text-foreground">${job.billedUsd?.toFixed(2)}</span>
                 {" "}(estimate ${job.estimateUsd?.toFixed(2)}) — deducted from your credits.
               </p>}
+              {job.artifacts && <div className="flex flex-wrap gap-3 text-sm">{job.artifacts.map((artifact) => <a key={artifact.url} href={artifact.url} target="_blank" className="text-accent hover:underline">{artifact.label} ↗</a>)}</div>}
             </div>
           )}
 
@@ -415,7 +416,7 @@ export default function StudioPage() {
             <div>
               <h2 className="font-medium">Production sheet (dry-run)</h2>
               <p className="text-sm text-muted mt-1">
-                The exact requests the pipeline would have sent to fal.ai (dry-run mode only).
+                Planned prompts and references for review. No generation requests were sent. Voice selection and final images require validation.
               </p>
             </div>
             {job.sheetUrl && (

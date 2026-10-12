@@ -22,6 +22,7 @@ import { getMarginMultiplier } from "./settings";
 import { MODEL_MAP, providerMode, saveSheet, type SheetEntry } from "./sheet";
 import { produceCollage } from "./collage/run";
 import { isSimulation } from "./providers/mode";
+import { produceConcept } from "./concept/run";
 
 const exec = promisify(execFile);
 const STORAGE = path.join(process.cwd(), "storage");
@@ -112,13 +113,25 @@ export async function runJob(jobId: string): Promise<void> {
     if (recipe.status !== "active" && !(simulation && params.allowArchivedRecipe === true)) {
       throw new Error("This video model is archived.");
     }
+    if (recipe.concept?.previewOnly && !simulation) throw new Error("This style is currently available for free previews only.");
     const claimed = await db.update(schema.jobs).set({ status: "running" })
       .where(and(eq(schema.jobs.id, jobId), eq(schema.jobs.status, "confirmed")))
       .returning({ id: schema.jobs.id });
     if (claimed.length === 0) return;
 
     let outputPath: string;
-    if (recipe.collage) {
+    if (recipe.concept) {
+      const result = await produceConcept({ jobId, script: job.script, params, recipe, setStep,
+        meter: async (kind, media) => { totalBilled += await meter(jobId, kind, media, marginMultiplier); },
+      });
+      outputPath = result.outputPath;
+      params.storyboard = result.board;
+      params.finalDurationSeconds = result.durationSeconds;
+      params.sheet = result.sheet;
+      params.sheetUrl = result.sheetUrl;
+      params.artifacts = result.artifacts;
+      await setProgress(jobId, params, steps);
+    } else if (recipe.collage) {
       // Whiteboard family: collage engine (score → elements → HyperFrames render).
       const r = await produceCollage({
         jobId,

@@ -22,6 +22,9 @@ export async function POST(
   if (production.executionMode !== providerMode()) {
     return Response.json({ error: "Production settings changed. Please frame a new request." }, { status: 409 });
   }
+  if (!isSimulation() && getActiveRecipe(production.templateSlug)?.concept?.previewOnly) {
+    return Response.json({ error: "This style is currently available for free previews only." }, { status: 409 });
+  }
 
   const balance = await getBalanceUsd();
   const estimate = Number(job.estimateUsd ?? 0);

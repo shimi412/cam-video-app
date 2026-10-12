@@ -9,7 +9,7 @@ import { providerMode, isSimulation } from "@/lib/providers/mode";
 import { eq } from "drizzle-orm";
 
 const bodySchema = z.object({
-  script: z.string().min(40, "Script too short: paste the full script from your monitoring app."),
+  script: z.string().min(40, "Script too short: paste the full script from your monitoring app.").max(6000),
   mode: z.enum(["auto", "manual"]),
   overrides: z
     .object({
@@ -34,8 +34,13 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error.issues[0].message }, { status: 400 });
   }
   const { script, mode, overrides } = parsed.data;
-
-  const { analysis, params, brain } = await frameProduction(script, mode, overrides);
+  if (!isSimulation() && (overrides?.templateSlug ? getActiveRecipe(overrides.templateSlug)?.concept?.previewOnly : activeRecipes().every((r) => r.concept?.previewOnly))) {
+    return Response.json({ error: "CAM Clay is currently available for free previews only. Final production is being prepared." }, { status: 409 });
+  }
+  let framing;
+  try { framing = await frameProduction(script, mode, overrides); }
+  catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to plan this script." }, { status: 400 }); }
+  const { analysis, params, brain } = framing;
   const marginMultiplier = await getMarginMultiplier();
   const estimate = estimateProduction(params, marginMultiplier);
   const balance = await getBalanceUsd();

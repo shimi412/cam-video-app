@@ -63,6 +63,8 @@ export type Recipe = {
   thumbnail: string;
   /** Present on collage-engine recipes (whiteboard family). */
   collage?: CollageStyle;
+  /** Concept engine is exposed for free previews until its paid path is validated. */
+  concept?: { version: 1; previewOnly: boolean };
 };
 
 const FORBIDDEN_COMMON =
@@ -72,6 +74,27 @@ const NARRATOR =
   "Recurring narrator: a dignified person in their thirties, short dark hair, dark jacket, neutral calm face, no religious or ethnic markers; they observe, point, demonstrate, never shout. The lie is always an abstract entity: a spreading red stain, a faceless megaphone, a torn and re-glued page, scissors cutting a line out of context.";
 
 export const RECIPES: Recipe[] = [
+  {
+    slug: "cam-clay",
+    status: "active",
+    name: "CAM · Clay",
+    family: "cartoon",
+    description: "A tactile clay world with a recurring narrator. Free planning preview with placeholder visuals and silent audio; final production is being prepared.",
+    bible: {
+      artDirection: "Handcrafted realistic clay miniature world, visible fingerprints and soft modeling-clay texture, warm studio lighting, restrained stop-motion character acting.",
+      palette: "Warm cream #FFF4DC, deep brown #3B2416, mustard #F2B632 and red #E5392B reserved for misinformation and its rejection.",
+      characters: "Use the locked narrator and black clay monster reference sheets. Preserve identity, materials and clothing. Monsters visibly manufacture the falsehood; any effigy is only shown as their fabrication, never alone.",
+      composition: "One clear action per shot. Adult narrator in the middle area, room above for headlines. Reserve the lower caption band; no faces or important objects in it.",
+      motion: "Restrained character action, continuous single shot. No cuts, no last-frame surprise, keep the final action readable before the end. No generated dialogue or music.",
+      forbidden: "No children, real faces, weapons aimed at people, gore, logos, letters, numbers or generated text. No isolated ethnic caricature: only the explicitly contextualized fabricated effigy at the monsters' workbench.",
+      negativePrompt: "text, letters, watermark, logo, children, real faces, weapons, flicker, extra limbs, abrupt cuts",
+      handwrittenKeywords: false,
+    },
+    defaultTone: "serious",
+    voiceId: "dylan-pending-verification",
+    thumbnail: "/recipes/cam-clay/narrator.png",
+    concept: { version: 1, previewOnly: true },
+  },
   {
     slug: "cartoon-flat-vector",
     status: "archived",
