@@ -179,3 +179,23 @@ Vérifications du 13/10 :
 - Tests unitaires, lint et build vérifiés. Captures du parcours dans `storage/qa/cam-preparation-2026-10-13.png` et `storage/qa/cam-recovery-2026-10-13.png`.
 
 Limites maintenues : narration d’un nouveau texte avec une voix approuvée, scènes créatives et images finales, adaptateurs payants avec reprise des requêtes, réservation du budget et plafonds. Pas de génération payante, de push ni de déploiement pendant ce jalon.
+
+### Chantier 1, quatrième jalon du 13/10 : scènes importées et voix de test locale
+
+Nouvelle consigne de Shimon : poursuivre les scènes et la voix en autonomie, toujours sans crédits fal.ai. Aucun appel payant, tous fournisseurs confondus.
+
+- Un nouveau script peut maintenant être lu par une voix de test installée sur le Mac : Daniel en anglais, Thomas en français, Carmit en hébreu. L'interface les présente comme des voix de test ; elles ne remplacent pas la validation de la voix finale CAM et ne sont jamais présentées comme Dylan. Aucun téléchargement ni repli distant. Anglais et français vérifiés jusqu'au MP4 ; hébreu proposé si disponible, mais prononciation et mise en page non revues.
+- Chaque phrase reçoit son propre enregistrement. Ses durées mesurées pilotent les scènes ; les respirations internes sont conservées, avec pauses entre phrases. Les positions des mots et des sous-titres restent approximatives. WAV et minutage sont sauvegardés ensemble avec empreintes : correction d'une variation de durée observée entre deux synthèses Mac du même texte, qui empêchait de récupérer un montage terminé.
+- Avant confirmation, chaque scène accepte une image PNG/JPEG/WebP ou un clip MP4 local. Import, remplacement et retrait depuis le Studio, sauvegarde immédiate et restauration du brouillon après rechargement. Le texte n'est pas réécrit. Les scènes sans média gardent un visuel explicitement provisoire.
+- Limites appliquées côté serveur : 32 Mo par fichier et corps multipart borné, images fixes de 24 mégapixels maximum, clips de 0,2 à 60 s jusqu'à 4K. Décodage des octets, identifiants de stockage générés, normalisation en PNG ou H.264/30 i/s, retrait de la piste son et des métadonnées des clips, refus du SVG et des fichiers invalides. Empreinte SHA-256 revérifiée au montage. Anciennes versions importées conservées localement après remplacement ; nettoyage à prévoir avant hébergement.
+- Le cadrage des médias est conservé sans recadrage automatique. Un clip trop long est raccourci ; un clip trop court fige sa dernière image. La vitesse de la voix et des images reste inchangée. Pas de prétention de mise en scène IA nouvelle : ce jalon monte des fichiers existants sur un texte nouveau.
+- Édition et confirmation partagent le verrou du job. Une production confirmée ne peut plus recevoir de médias ni changer de voix. Les routes d'import et de sélection de voix sont fermées en mode payant.
+- Résultat : MP4, lecteur et WAV de la voix de test, SRT/VTT, provenance des médias, minutages et planches de contrôle. L'écoute est accessible dans le Studio.
+
+Vérifications :
+
+- `pnpm test:local-media`, job `f825bd74-811f-4cc0-93eb-b885daa615a6` : image, clip avec piste sonore supprimée et scène provisoire ; voix anglaise de 12,861 s, volume moyen −19,9 dB. Doublon d'exécution refusé, montage et WAV identique récupérés après interruption simulée, zéro tentative fetch du processus applicatif, zéro coût réel et zéro écriture de crédit. Preuve : `storage/qa/cam-local-media-proof.json`.
+- Navigateur, job `12c8e3a6-4856-4142-851e-560ef5de3491` : texte de démonstration français, narrateur et logo existants, un clip CAM importé, Thomas. Trois médias conservés après rechargement avant confirmation ; MP4 de 14,43 s lisible, sans erreur du lecteur, voix présente. C'est une démonstration technique d'import, pas un nouveau film éditorial CAM.
+- 35 tests unitaires réussis ; compilation et lint vérifiés. Captures de préparation et de résultat dans `storage/qa/cam-scenes-voix-*-2026-10-13.png`.
+
+Suite : voix finale approuvée pour les nouveaux textes, choix éditoriaux et génération des nouvelles images/animations, adaptateurs avec requêtes persistantes, budget réservé et plafonné. Ces travaux restent ouverts ; aucune génération payante, aucun push ni déploiement dans ce jalon.

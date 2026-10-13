@@ -18,6 +18,7 @@ export async function GET(
   const canResume = recoveryAllowed(job) && !recentlyQueued(job) && !(await jobWorkerActive(id));
   return Response.json({
     id: job.id,
+    draft: job.status === "estimated" && jobParams.draft ? { ...(jobParams.draft as Record<string, unknown>), jobId: job.id, preparation: jobParams.preparation } : null,
     canResume,
     interrupted: canResume && job.status !== "failed",
     renderReused: jobParams.renderReused === true,

@@ -27,7 +27,8 @@ export function captionGroups(timing: ConceptTiming): Caption[] {
 }
 
 /** Re-layout each canvas; no automatic crop that could remove captions or faces. */
-export async function writeMontage(root: string, board: ConceptBoard, timing: ConceptTiming, aspect: AspectRatio) {
+export async function writeMontage(root: string, board: ConceptBoard, timing: ConceptTiming, aspect: AspectRatio,
+  media: Record<number, { kind: "image" | "video"; file: string; heldSeconds: number }> = {}) {
   const { width: w, height: h } = conceptCanvas(aspect);
   await mkdir(path.join(root, "assets"), { recursive: true });
   await copyFile(path.join(process.cwd(), "node_modules/gsap/dist/gsap.min.js"), path.join(root, "assets/gsap.min.js"));
@@ -38,10 +39,13 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
   const cues = board.shots.map((shot, i) => {
     const start = i === 0 ? 0 : timing.phrases[i].start;
     const end = timing.phrases[i + 1]?.start ?? timing.duration;
-    nodes.push(`<div id="scene-${i}" class="clip scene" data-start="${start}" data-duration="${end - start}" data-track-index="1"><div class="placeholder"><div class="book"></div><p class="shot-number">SHOT ${shot.index}</p><p class="notice">PLACEHOLDER VISUAL</p></div></div>`);
+    const asset = media[shot.index];
+    if (asset?.kind === "video") nodes.push(`<video id="scene-${i}" class="clip scene imported" src="${asset.file}" muted playsinline data-start="${start}" data-duration="${end - start}" data-track-index="1"></video>`);
+    else if (asset) nodes.push(`<div id="scene-${i}" class="clip scene" data-start="${start}" data-duration="${end - start}" data-track-index="1"><img class="imported" src="${asset.file}" alt=""></div>`);
+    else nodes.push(`<div id="scene-${i}" class="clip scene" data-start="${start}" data-duration="${end - start}" data-track-index="1"><div class="placeholder"><div class="book"></div><p class="shot-number">SHOT ${shot.index}</p><p class="notice">PLACEHOLDER VISUAL</p></div></div>`);
     if (shot.overlay) nodes.push(`<div id="title-${i}" class="clip title ${shot.strike ? "struck" : ""}" data-start="${start}" data-duration="${end - start}" data-track-index="10">${escapeHtml(shot.overlay)}</div>`);
     // A static preview intentionally uses no invented image motion.
-    return { shot: shot.index, start, end, hasEndFrame: Boolean(shot.endScene) };
+    return { shot: shot.index, start, end, hasEndFrame: Boolean(shot.endScene), media: asset ?? null };
   });
   const captions = captionGroups(timing);
   for (const [i, cap] of captions.entries()) {
@@ -53,6 +57,7 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#FFF4DC;color:#3B2416;font-family:sans-serif}
 #root{position:relative;width:100%;height:100%;overflow:hidden;background:#FFF4DC}
 .clip{position:absolute}.scene{inset:0}.placeholder{position:absolute;left:${left}px;top:${h * 0.34}px;width:${safeWidth}px;height:${h * 0.26}px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px}
+.imported{width:100%;height:100%;object-fit:contain}
 .book{width:${Math.min(270,w * .2)}px;height:${h * .12}px;border:8px solid #3B2416;border-radius:16px;background:#F2B632;box-shadow:14px 14px 0 #E2CBA8;position:relative}
 .book:after{content:"";position:absolute;top:0;bottom:0;left:50%;border-left:6px solid #3B2416}
 .shot-number{font-size:34px;font-weight:800;margin:0}.notice{font-size:24px;letter-spacing:3px;margin:0}

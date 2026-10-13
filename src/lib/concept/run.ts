@@ -12,7 +12,11 @@ import { renderConcept, silentVoice } from "./render";
 import { lockedAssets } from "./assets";
 import { checkpointedRender } from "./render-checkpoint";
 import { saveSheet, type SheetEntry } from "../sheet";
-import { produceExistingConcept } from "./existing-run";
+import { produceExistingConcept, subtitleFile } from "./existing-run";
+import { localNarration } from "./local-voice";
+import { LOCAL_VOICES, PreviewVoiceSchema } from "./preview-inputs";
+import { stageSceneMedia } from "./imported-media";
+import { prepareConcept } from "./preparation";
 
 export async function produceConcept(input: {
   jobId: string; script: string; params: ProductionParams; recipe: Recipe;
@@ -34,40 +38,57 @@ export async function produceConcept(input: {
   await writeFile(path.join(root, "references.json"), JSON.stringify(references.map(({ id, path: assetPath, sha256 }) => ({ id, path: assetPath, sha256 })), null, 2));
   await setStep("storyboard", "done");
   await setStep("voice", "running");
-  const timing = placeholderTiming(board.shots.map((s) => s.narration));
+  const voice = PreviewVoiceSchema.parse(params.previewVoice ?? "silent");
+  const phrases = board.shots.map((s) => s.narration);
+  const timing = voice === "silent" ? placeholderTiming(phrases) : await localNarration(root, phrases, voice, {
+    directory: input.checkpointDir ?? path.join(root, "checkpoints"), assertOwned: input.assertOwned ?? (async () => {}),
+  });
   await writeFile(path.join(root, "timing.json"), JSON.stringify(timing, null, 2));
-  await silentVoice(path.join(root, "assets/narration.wav"), timing.duration);
+  if (voice === "silent") await silentVoice(path.join(root, "assets/narration.wav"), timing.duration);
   await setStep("voice", "done");
-  const sheet: SheetEntry[] = [{ step: 1, kind: "tts", falModel: "fal-ai/elevenlabs/tts/eleven-v3", higgsfieldEquivalent: "ElevenLabs voice-over", prompt: script, durationSeconds: timing.duration, notes: "Planning only. Dylan voice ID remains unverified. Preview audio is silent; timings are estimates." }];
+  const sheet: SheetEntry[] = [{ step: 1, kind: "tts", falModel: voice === "silent" ? "fal-ai/elevenlabs/tts/eleven-v3" : "local/macos-say", higgsfieldEquivalent: voice === "silent" ? "ElevenLabs voice-over (planned)" : `${LOCAL_VOICES[voice].name} · local test voice`, prompt: script, durationSeconds: timing.duration, notes: voice === "silent" ? "Planning only. Dylan voice ID remains unverified. Preview audio is silent; timings are estimates." : "Offline Mac speech, zero cost. No Dylan identity or final voice approval. Phrase durations measured; word positions approximate." }];
   await setStep("keyframes", "running");
   for (const shot of board.shots) {
+    if (params.sceneMedia?.[shot.index]) {
+      const asset = params.sceneMedia[shot.index];
+      sheet.push({ step: sheet.length + 1, kind: asset.kind, falModel: "local/import", higgsfieldEquivalent: `Imported ${asset.kind} · scene ${shot.index}`, prompt: "", notes: `Existing local file, SHA-256 ${asset.sha256}. No generation. Native picture speed; hold the last frame if needed. Clip audio removed.` });
+      continue;
+    }
     const refs = references.filter((r) => shot.references.includes(r.id as "narrator" | "monster" | "effigy"));
     sheet.push({ step: sheet.length+1, kind: "image", falModel: "fal-ai/nano-banana-pro/edit", higgsfieldEquivalent: "Nano Banana Pro 2K", prompt: shot.imagePrompt, aspectRatio: params.aspectRatio, referenceUrl: refs[0].url, notes: `Shot ${shot.index}; locked references: ${refs.map((r)=>`${r.url} (sha256 ${r.sha256})`).join(", ")}. Image approval required before animation.` });
     if (shot.endImagePrompt) sheet.push({ step: sheet.length+1, kind: "image", falModel: "fal-ai/nano-banana-pro/edit", higgsfieldEquivalent: "Nano Banana Pro 2K end frame", prompt: shot.endImagePrompt, aspectRatio: params.aspectRatio, notes: `End frame for shot ${shot.index}. Use that shot's approved start image as reference.` });
   }
   await setStep("keyframes", "done");
   await setStep("clips", "running");
-  for (const shot of board.shots) sheet.push({ step: sheet.length+1, kind: "video", falModel: "fal-ai/kling-video/v3/pro/image-to-video", higgsfieldEquivalent: "Kling 3.0 Pro", prompt: shot.motionPrompt, durationSeconds: shot.clipSeconds, aspectRatio: params.aspectRatio, notes: `Shot ${shot.index}; start_image_url = its approved keyframe; ${shot.endImagePrompt ? "end_image_url = its approved end frame; " : ""}generate_audio = false. No request sent.` });
+  for (const shot of board.shots.filter((s) => !params.sceneMedia?.[s.index])) sheet.push({ step: sheet.length+1, kind: "video", falModel: "fal-ai/kling-video/v3/pro/image-to-video", higgsfieldEquivalent: "Kling 3.0 Pro", prompt: shot.motionPrompt, durationSeconds: shot.clipSeconds, aspectRatio: params.aspectRatio, notes: `Shot ${shot.index}; start_image_url = its approved keyframe; ${shot.endImagePrompt ? "end_image_url = its approved end frame; " : ""}generate_audio = false. No request sent.` });
   await setStep("clips", "done");
   const sheetUrl = await saveSheet(jobId, sheet);
   await setStep("montage", "running");
-  const composition = await writeMontage(root, board, timing, params.aspectRatio);
+  const sceneDurations = timing.phrases.map((phrase, i) => (timing.phrases[i + 1]?.start ?? timing.duration) - (i === 0 ? 0 : phrase.start));
+  const staged = await stageSceneMedia(jobId, params.sceneMedia ?? {}, root, sceneDurations);
+  const composition = await writeMontage(root, board, timing, params.aspectRatio, staged);
   validateTiming(timing, composition.captions);
+  for (const kind of ["srt", "vtt"] as const) await writeFile(path.join(root, `captions.${kind}`), subtitleFile(composition.captions, kind));
   const rendering = await checkpointedRender({ project: root, output: outputPath,
     checkpointDir: input.checkpointDir ?? path.join(root, "checkpoints"),
     assertOwned: input.assertOwned ?? (async () => {}),
     render: (output) => renderConcept(root, output),
   });
-  await controls(outputPath, root, composition.cues.map((s)=>s.start), composition.width, composition.height, timing.duration);
+  await controls(outputPath, root, composition.cues.map((s)=>s.start), composition.width, composition.height, timing.duration, { requireAudibleVoice: voice !== "silent", captions: voice !== "silent" ? composition.captions : undefined });
+  await writeFile(path.join(root, "provenance.json"), JSON.stringify({ voice: { source: voice === "silent" ? "silent" : "local-macos", name: voice === "silent" ? null : LOCAL_VOICES[voice].name, rate: 150, costUsd: 0, finalVoiceApproved: false }, scenes: composition.cues, importedMedia: params.sceneMedia ?? {}, phraseTiming: voice === "silent" ? "estimated" : "measured", wordTiming: "estimated", costUsd: 0 }, null, 2));
   await copyFile(outputPath, path.join(root, "preview.mp4"));
-  await input.meter("render", { filePath: outputPath, realCostUsd: 0, provider: "hyperframes", model: "concept-placeholder-preview", meta: { estimatedTiming: true, visualApproval: false } });
+  await input.meter("render", { filePath: outputPath, realCostUsd: 0, provider: "hyperframes", model: "concept-local-preview", meta: { previewVoice: voice, importedScenes: Object.keys(staged).length, estimatedWordTiming: true, measuredSceneTiming: voice !== "silent", visualApproval: false } });
   await setStep("montage", "done");
   const url = (file: string) => `/api/media/${path.relative(path.join(process.cwd(), "storage"), root).split(path.sep).join("/")}/${file}`;
-  return { outputPath, renderReused: rendering.reused, durationSeconds: timing.duration, board, sheet, sheetUrl, media: null, artifacts: [
+  return { outputPath, renderReused: rendering.reused, durationSeconds: timing.duration, board, sheet, sheetUrl, media: null,
+    preparation: await prepareConcept(script, params, recipe, jobId, voice === "silent" ? undefined : timing), artifacts: [
     { label: "Storyboard", url: url("storyboard.json") },
     { label: "Shot contact sheet", url: url("controls/shots.png") },
     ...(board.shots.length > 1 ? [{ label: "Transition contact sheet", url: url("controls/transitions.png") }] : []),
     { label: "Timing", url: url("timing.json") }, { label: "Quality checks", url: url("controls/report.json") },
+    { label: "Subtitles (SRT)", url: url("captions.srt") }, { label: "Subtitles (VTT)", url: url("captions.vtt") },
+    { label: "Media provenance", url: url("provenance.json") },
+    ...(voice !== "silent" ? [{ label: "Listen to test voice", url: url("assets/narration.wav") }] : []),
     { label: "Download preview", url: url("preview.mp4") },
   ] };
 }

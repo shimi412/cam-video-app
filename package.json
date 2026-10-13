@@ -16,6 +16,7 @@
     "compare:video": "tsx --env-file-if-exists=.env scripts/compare-video-costs.ts",
     "test": "vitest run",
     "test:recovery": "tsx --env-file-if-exists=.env scripts/check-recovery.ts",
+    "test:local-media": "tsx --env-file-if-exists=.env scripts/check-local-media.ts",
     "dryrun": "tsx --env-file-if-exists=.env scripts/dryrun.ts",
     "dev:preview": "PROVIDER_MODE=dryrun BRAIN_MODE=mock next dev --hostname 127.0.0.1"
   },

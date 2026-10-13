@@ -3,11 +3,17 @@ import { estimatedSpeechSeconds, normalizedText } from "./text";
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
 export function placeholderTiming(phrases: string[]): ConceptTiming {
+  return measuredPhraseTiming(phrases, phrases.map(estimatedSpeechSeconds));
+}
+
+/** Scene boundaries follow measured audio. Word positions remain explicit estimates. */
+export function measuredPhraseTiming(phrases: string[], durations: number[]): ConceptTiming {
+  if (durations.length !== phrases.length || durations.some((d) => !Number.isFinite(d) || d <= 0)) throw new Error("Missing measured phrase durations");
   let cursor = 0.4;
   const words: ConceptTiming["words"] = [];
   const timedPhrases = phrases.map((text, i) => {
     const tokens = text.split(/\s+/);
-    const duration = estimatedSpeechSeconds(text);
+    const duration = durations[i];
     const start = cursor;
     const weights = tokens.map((w) => normalizedText(w).length + 2);
     const total = weights.reduce((a, b) => a + b, 0);

@@ -77,6 +77,14 @@ export async function POST(request: Request) {
     .values({ mode, title: script.slice(0, 60) })
     .returning();
 
+  const draft = {
+    conversationId: conversation.id, analysis, params,
+    template: template ? { slug: template.slug, name: template.name, description: template.description } : null,
+    estimate, balance, brain, simulation: isSimulation(),
+    media: previewSource === "existing" ? existingMediaSummary() : null,
+    canConfirm: isSimulation() || balance >= estimate.totalBilledUsd,
+  };
+
   await db.insert(schema.messages).values({
     conversationId: conversation.id,
     role: "user",
@@ -90,7 +98,7 @@ export async function POST(request: Request) {
       templateId: template?.id,
       status: "estimated",
       script,
-      params: { ...params, executionMode: providerMode(), preparation },
+      params: { ...params, executionMode: providerMode(), preparation, draft },
       estimateUsd: estimate.totalBilledUsd.toFixed(2),
     })
     .returning();

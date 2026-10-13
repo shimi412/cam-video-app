@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PreparationReview } from "./preparation-review";
 import type { ConceptPreparation } from "@/lib/concept/preparation";
 
 type EstimateLine = { label: string; quantity: number; billedUsd: number };
@@ -46,6 +47,7 @@ type SheetEntry = {
   notes?: string;
 };
 type JobState = {
+  draft?: Framing | null;
   preparation?: ConceptPreparation | null;
   id?: string;
   canResume?: boolean;
@@ -87,6 +89,7 @@ export default function StudioPage() {
   const [framing, setFraming] = useState<Framing | null>(null);
   const [job, setJob] = useState<JobState | null>(null);
   const [loading, setLoading] = useState(false);
+  const [preparationBusy, setPreparationBusy] = useState(false);
   const [restoring, setRestoring] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -122,7 +125,8 @@ export default function StudioPage() {
         }
         const next: JobState = await response.json();
         if (epoch !== pollEpoch.current) return;
-        setJob(next);
+        if (next.status === "estimated" && next.draft) { setFraming(next.draft); setJob(null); stopPolling(); }
+        else setJob(next);
         setScript(next.script ?? "");
         if (next.aspectRatio) setAspectRatio(next.aspectRatio);
         setError(null);
@@ -179,6 +183,7 @@ export default function StudioPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Framing failed");
       setFraming(data);
+      try { localStorage.setItem("cam-last-job", data.jobId); } catch { /* Optional draft persistence. */ }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -187,7 +192,7 @@ export default function StudioPage() {
   }
 
   async function confirm() {
-    if (!framing) return;
+    if (!framing || preparationBusy) return;
     setLoading(true);
     setError(null);
     try {
@@ -392,7 +397,7 @@ export default function StudioPage() {
       {framing && !job && (
         <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
           <h2 className="font-medium">2. Framing &amp; price</h2>
-          {framing.simulation && <p className="text-sm text-muted">{framing.media ? "Existing animated characters and the original Dylan recording will be assembled locally. No new media will be generated. No credits will be deducted." : "Free preview with placeholder visuals and silent audio. The prices below are provisional planning estimates; no credits will be deducted."}</p>}
+          {framing.simulation && <p className="text-sm text-muted">{framing.media ? "Existing animated characters and the original Dylan recording will be assembled locally. No new media will be generated. No credits will be deducted." : "Free local preview. Choose a test voice and add visuals below. The prices are provisional estimates for future generation; this preview costs $0."}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-surface-2 border border-line rounded-lg p-4 space-y-2 text-sm">
               <div className="flex justify-between items-center gap-3">
@@ -446,16 +451,16 @@ export default function StudioPage() {
               Insufficient credits (balance ${framing.balance.toFixed(2)}). Top up in Admin.
             </p>
           )}
-          {framing.preparation && <PreparationReview preparation={framing.preparation} />}
+          {framing.preparation && <PreparationReview preparation={framing.preparation} jobId={framing.jobId} disabled={loading} onBusy={setPreparationBusy} onChange={(preparation) => setFraming((current) => current ? { ...current, preparation } : current)} />}
           <div className="flex gap-3">
             <button
               onClick={confirm}
-              disabled={loading || !framing.canConfirm}
+              disabled={loading || preparationBusy || !framing.canConfirm}
               className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
             >
               {framing.media ? "Rebuild existing film · $0" : framing.simulation ? "Run free preview" : `Confirm & produce · $${framing.estimate.totalBilledUsd.toFixed(2)}`}
             </button>
-            <button onClick={reset} className="text-muted hover:text-foreground text-sm px-3">
+            <button onClick={reset} disabled={loading || preparationBusy} className="text-muted hover:text-foreground text-sm px-3">
               Cancel
             </button>
           </div>
@@ -503,10 +508,14 @@ export default function StudioPage() {
                 controls
                 className="rounded-lg border border-line bg-black max-h-[60vh] max-w-full w-auto mx-auto"
               />
-              {job.simulation ? <p className="text-sm text-muted">{job.media ? "Film rebuilt from the existing CAM characters and Dylan recording, with timed subtitles. No credits were deducted. A new script needs its own voice and scenes." : "Planning preview complete. Visuals are placeholders and narration timing is estimated. No credits were deducted."}</p> : <p className="text-sm text-muted">
+              {job.simulation ? <p className="text-sm text-muted">{job.media ? "Film rebuilt from the existing CAM characters and Dylan recording, with timed subtitles. No credits were deducted. A new script needs its own voice and scenes." : "Free preview complete. Added visuals and the selected test voice are included; empty scenes remain placeholders. Subtitle word positions are approximate. No credits were deducted."}</p> : <p className="text-sm text-muted">
                 Billed <span className="font-mono text-foreground">${job.billedUsd?.toFixed(2)}</span>
                 {" "}(estimate ${job.estimateUsd?.toFixed(2)}) — deducted from your credits.
               </p>}
+              {job.preparation?.voice.preview && job.preparation.voice.preview !== "silent" && job.artifacts?.some((a) => a.label === "Listen to test voice") && <div className="text-sm space-y-2">
+                <p>Test narration · {job.preparation.voice.name} · $0</p>
+                <audio aria-label="Local test narration" controls src={job.artifacts.find((a) => a.label === "Listen to test voice")!.url} className="w-full" />
+              </div>}
               {job.artifacts && <div className="flex flex-wrap gap-3 text-sm">{job.artifacts.map((artifact) => <a key={artifact.url} href={artifact.url} target="_blank" className="text-accent hover:underline">{artifact.label} ↗</a>)}</div>}
             </div>
           )}
@@ -585,36 +594,4 @@ export default function StudioPage() {
       )}
     </div>
   );
-}
-
-function PreparationReview({ preparation }: { preparation: ConceptPreparation }) {
-  return <section aria-label="Script preparation" className="bg-surface-2 border border-line rounded-xl p-4 space-y-4">
-    <div>
-      <h3 className="font-medium">Your script, ready to review</h3>
-      <p className="text-sm text-muted mt-1">{preparation.shots.length} scenes · about {Math.round(preparation.durationSeconds)} seconds, including pauses. Timing will be adjusted to the final narration.</p>
-    </div>
-    <div className="border border-line rounded-lg p-3 text-sm">
-      <p className="font-medium">Voice to confirm</p>
-      <p className="text-muted mt-1">{preparation.voice.message}</p>
-    </div>
-    <div className="flex flex-wrap gap-4">
-      {preparation.references.filter((reference) => reference.id !== "logo").map((reference) => <div key={reference.id} className="text-xs text-muted text-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={reference.url} alt={`CAM ${reference.id} reference`} className="w-16 h-20 object-contain rounded-lg mb-1 bg-surface" />
-        <span className="capitalize">{reference.id}</span>
-      </div>)}
-    </div>
-    <p className="text-sm text-muted">{preparation.source === "offline-placeholder" ? "The text has been split into scenes without changing its words. Visual staging still needs to be prepared; the free preview uses placeholders." : "This follows the CAM example's scene plan. The free planning preview uses placeholders; select the existing film to hear its recorded voice."}</p>
-    <details>
-      <summary className="text-sm text-accent cursor-pointer">Read the scene-by-scene plan</summary>
-      <ol className="mt-3 space-y-3 max-h-96 overflow-y-auto">
-        {preparation.shots.map((shot) => <li key={shot.index} className="border border-line rounded-lg p-3 text-sm space-y-1">
-          <p className="text-muted">Scene {shot.index} · {shot.start.toFixed(1)}–{shot.end.toFixed(1)} s</p>
-          <p>{shot.narration}</p>
-          <p className="text-xs text-muted">Characters: {shot.references.join(", ")}</p>
-          {shot.editorialStatus === "needs-staging" ? <p className="text-xs text-muted">Visual staging to prepare</p> : <p className="text-xs text-muted">{shot.scene}</p>}
-        </li>)}
-      </ol>
-    </details>
-  </section>;
 }
