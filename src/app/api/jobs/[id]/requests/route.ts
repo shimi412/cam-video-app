@@ -6,7 +6,7 @@ import { isSimulation, providerMode } from "@/lib/providers/mode";
 import { Hash } from "@/lib/concept/checkpoints";
 import { requestReceipts, reconcileRequest } from "@/lib/concept/request-journal";
 import { simulationAcceptance } from "@/lib/concept/simulated-provider";
-import { requestPaths } from "@/lib/concept/request-recovery";
+import { requestPaths, requestLocations } from "@/lib/concept/request-recovery";
 
 /** Offline reconciliation only. Never accepts arbitrary IDs, URLs or outputs. */
 async function handle(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -19,8 +19,9 @@ async function handle(request: Request, { params }: { params: Promise<{ id: stri
     const [job] = await lock.db.select().from(schema.jobs).where(eq(schema.jobs.id, id));
     if (!job) return Response.json({ error: "Production not found." }, { status: 404 });
     if ((job.params as { executionMode?: string }).executionMode !== providerMode()) return Response.json({ error: "Execution mode changed." }, { status: 409 });
-    const paths = requestPaths(id), directory = paths.current;
-    const receipts = await requestReceipts(directory);
+    const paths = requestPaths(id), locations = requestLocations(id);
+    const located = (await Promise.all(locations.map(async (location) => (await requestReceipts(location.directory)).map((receipt) => ({ ...location, receipt }))))).flat();
+    const receipts = located.map((item) => item.receipt);
     if (receipts.some((r) => r.mode !== "simulation" || r.binding?.jobId !== id)) throw new Error("Invalid request scope.");
     if (request.method === "POST") {
       if (!["failed", "running", "confirmed"].includes(job.status)) return Response.json({ error: "Only an interrupted preview can be reconciled." }, { status: 409 });
@@ -33,18 +34,21 @@ async function handle(request: Request, { params }: { params: Promise<{ id: stri
         size += chunk.value.length; if (size > 1024) { await reader.cancel(); throw new Error("Request too large."); } chunks.push(chunk.value);
       } } finally { reader.releaseLock(); }
       const { fingerprint } = z.object({ fingerprint: Hash }).strict().parse(JSON.parse(Buffer.concat(chunks).toString()));
-      const receipt = receipts.find((r) => r.fingerprint === fingerprint);
+      const matches = located.filter((item) => item.receipt.fingerprint === fingerprint);
+      if (matches.length !== 1) throw new Error("No unique original request.");
+      const { receipt, directory, acceptance } = matches[0];
       if (!receipt?.binding || !["submitting", "submitted", "complete"].includes(receipt.state)) throw new Error("No recoverable original request.");
-      const accepted = await simulationAcceptance(paths.acceptance, fingerprint);
+      const accepted = await simulationAcceptance(acceptance, fingerprint);
       if (!accepted) return Response.json({ error: "No saved acceptance was found. The request stays blocked and its budget stays reserved. Nothing was resubmitted." }, { status: 409 });
       await reconcileRequest({ directory, fingerprint, mode: "simulation", requestId: accepted.requestId,
         binding: receipt.binding, assertOwned: lock.assertOwned, verify: async () => accepted });
     }
-    const current = await requestReceipts(directory);
+    const current = (await Promise.all(locations.map(async (location) => (await requestReceipts(location.directory))
+      .map((r) => ({ ...r, sequence: location.directory === paths.sequence }))))).flat();
     const legacy = await requestReceipts(paths.legacy);
     if (legacy.some((r) => r.mode !== "simulation")) throw new Error("Invalid legacy request scope.");
-    return Response.json({ mode: "simulation", paidRequests: 0, requests: [...current, ...legacy].map((r) => ({
-      fingerprint: r.fingerprint, operation: r.binding?.operation ?? "Earlier simulation request",
+    return Response.json({ mode: "simulation", paidRequests: 0, requests: [...current, ...legacy.map((r) => ({ ...r, sequence: false }))].map((r) => ({
+      fingerprint: r.fingerprint, operation: `${r.sequence ? "Complete sequence · " : ""}${r.binding?.operation ?? "Earlier simulation request"}`,
       state: r.state, requestId: r.requestId ?? null, reconciled: Boolean(r.reconciliation),
       canReconcile: Boolean(r.binding && r.state === "submitting"),
     })) });

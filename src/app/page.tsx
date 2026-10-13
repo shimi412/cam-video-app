@@ -525,6 +525,12 @@ export default function StudioPage() {
                 <p>Test narration · {job.preparation.voice.name} · $0</p>
                 <audio aria-label="Local test narration" controls src={job.artifacts.find((a) => a.label === "Listen to test voice")!.url} className="w-full" />
               </div>}
+              {job.artifacts?.some((a) => a.label === "Offline sequence test video (test voice)") && <details className="border border-line rounded-lg p-4 text-sm space-y-3">
+                <summary className="cursor-pointer font-medium text-accent">Complete production test · $0</summary>
+                <p>Voice, word timing, approved images, animation and montage have been connected and checked offline. The target request uses Bram; the audio here is the selected Mac test voice.</p>
+                <video aria-label="Complete offline production test" controls preload="metadata" src={job.artifacts.find((a) => a.label === "Offline sequence test video (test voice)")!.url} className="rounded-lg max-h-80 max-w-full mx-auto bg-black" />
+                <p className="text-muted">This test uses marked calibration images and simulated approvals. Word timing is approximate. A new Bram recording, creative review and real provider quotes are still required. No paid request or trial was started.</p>
+              </details>}
               {job.artifacts && <div className="flex flex-wrap gap-3 text-sm">{job.artifacts.map((artifact) => <a key={artifact.url} href={artifact.url} target="_blank" className="text-accent hover:underline">{artifact.label} ↗</a>)}</div>}
             </div>
           )}

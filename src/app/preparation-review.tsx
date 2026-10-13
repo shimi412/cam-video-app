@@ -51,6 +51,7 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
         </select>
       </label>}
       <p className="text-muted">{preparation.voice.message}</p>
+      {editable && <p className="text-xs text-muted">{preparation.voice.preview === "silent" ? "Choose a local test voice to also check the complete production sequence for free." : "A separate test video will check the full sequence with this voice and clearly marked test images. Its automatic test approvals do not approve a CAM film."}</p>}
     </div>
     {preparation.generation && <div className="border border-line rounded-lg p-3 text-sm space-y-2">
       <p className="font-medium">Automatic generation prepared</p>

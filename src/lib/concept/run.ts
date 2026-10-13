@@ -23,6 +23,7 @@ import { rehearseGeneration } from "./rehearsal";
 import { rehearsalBudget } from "./rehearsal-budget";
 import { rehearseDelivery } from "./delivery-rehearsal";
 import { sceneWorkflow } from "./scene-workflow";
+import { rehearseProduction } from "./production-rehearsal";
 
 export async function produceConcept(input: {
   jobId: string; script: string; params: ProductionParams; recipe: Recipe;
@@ -102,6 +103,8 @@ export async function produceConcept(input: {
     render: (output) => renderConcept(root, output),
   });
   await controls(outputPath, root, composition.cues.map((s)=>s.start), composition.width, composition.height, timing.duration, { requireAudibleVoice: voice !== "silent", captions: voice !== "silent" ? composition.captions : undefined });
+  const sequence = voice !== "silent" ? await rehearseProduction({ jobId, directory: path.join(checkpoints, "production-sequence"), workspace: root,
+    script, params, recipe, voiceFile: path.join(root, "assets/narration.wav"), timing, assertOwned }) : null;
   await writeFile(path.join(root, "provenance.json"), JSON.stringify({ voice: { source: voice === "silent" ? "silent" : "local-macos", name: voice === "silent" ? null : LOCAL_VOICES[voice].name, rate: 150, costUsd: 0, finalVoiceApproved: false }, scenes: composition.cues, importedMedia: params.sceneMedia ?? {}, phraseTiming: voice === "silent" ? "estimated" : "measured", wordTiming: "estimated", costUsd: 0 }, null, 2));
   await copyFile(outputPath, path.join(root, "preview.mp4"));
   await input.meter("render", { filePath: outputPath, realCostUsd: 0, provider: "hyperframes", model: "concept-local-preview", meta: { previewVoice: voice, importedScenes: Object.keys(staged).length, estimatedWordTiming: true, measuredSceneTiming: voice !== "silent", visualApproval: false } });
@@ -126,6 +129,8 @@ export async function produceConcept(input: {
     { label: "Visual review record", url: url("visual-review.json") },
     { label: "Scene approval steps", url: url("scene-workflow.json") },
     { label: "Quote worksheet (not authorized)", url: url("quote-preparation.json") },
+    ...(sequence ? [{ label: "Complete production sequence (simulation)", url: url("production-sequence.json") },
+      ...(sequence.rendered ? [{ label: "Offline sequence test video (test voice)", url: url("production-sequence/preview.mp4") }] : [])] : []),
     { label: "Generation plan (not submitted)", url: url("generation-plan.json") },
     { label: "Pipeline rehearsal (simulation)", url: url("generation-rehearsal.json") },
     { label: "Budget checks (simulation)", url: url("budget-rehearsal.json") },
