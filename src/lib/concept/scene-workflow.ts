@@ -5,6 +5,7 @@ import type { ConceptShot } from "./types";
 import { Hash, sha256 } from "./checkpoints";
 import { SceneMediaSchema, sceneMediaUrl, type SceneMedia } from "./preview-inputs";
 import { VisualDecisionSchema, visualReview, type VisualDecision } from "./visual-review";
+import { alignmentHash } from "./voice-alignment";
 
 export const Stage = z.enum(["direction", "start", "end", "clip"]);
 export type Stage = z.infer<typeof Stage>;
@@ -32,7 +33,8 @@ export function sceneWorkflow(context: Context) {
   for (const stage of ["start", "end", "clip"] as const) {
     const required = stage !== "end" || Boolean(shot.endImagePrompt);
     const candidate = stored[stage];
-    const parent = parentToken ? sha256(JSON.stringify({ directionTarget, stage, parentToken })) : null;
+    const voice = stage === "clip" && params.useImportedNarration && params.narration ? { recording: params.narration.audio.sha256, alignment: params.narration.alignment ? alignmentHash(params.narration.alignment) : null, review: params.narration.reviews.at(-1)?.id } : null;
+    const parent = parentToken ? sha256(JSON.stringify({ directionTarget, stage, parentToken, ...(voice ? { voice } : {}) })) : null;
     const target = candidate && parent ? sha256(JSON.stringify({ version: 1, jobId, scene: shot.index, stage, parent, media: candidate.media })) : null;
     const current = Boolean(required && candidate && parent && candidate.parent === parent);
     const review = target ? visualReview(target, stored.reviews[stage]) : null;

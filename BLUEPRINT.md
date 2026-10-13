@@ -3,6 +3,21 @@
 > Décisions verrouillées du projet. À lire avant toute session de code. On ne redesigne pas ce qui est acté ici sans décision explicite de Shimon.
 > Fiche projet (contexte client, offre, devis) : `BINA/1 PROJETS/Prospect - Automatisation medias IA (Base44)/`.
 
+## Consigne d'exécution du 13 octobre 2026
+
+Shimi demande de poursuivre en autonomie jusqu'à terminer le travail autorisé, sans redemander une autorisation à chaque étape. Cette consigne remplace les anciens arrêts entre jalons. La contrainte demeure : aucun crédit fal.ai ou Higgsfield dépensé et aucun essai payant. Les revues de fichiers dans le produit sont des contrôles de production ; elles ne constituent pas une obligation de solliciter Shimi pour le développement gratuit. Aucun essai réel payant, abonnement ou déploiement n'est autorisé ici.
+
+## État actuel : enregistrement importé, dossier et historique (13 octobre 2026)
+
+- Le Studio accepte une voix déjà disponible, y compris Bram si son enregistrement est fourni. Décodage des octets, durée/volume/format contrôlés, normalisation WAV sans retoucher le rythme et empreintes conservées. Les playlists sont refusées avant décodage.
+- Saisie ou import du minutage mot à mot lié à l'audio et au script. Écoute et vérification attestées, décisions conservées, refus motivé, anciens onglets bloqués. Une modification du minutage impose une nouvelle revue ; elle ne remplace pas silencieusement la voix choisie. L'identité du locuteur reste une déclaration de l'importateur.
+- Montage avec l'enregistrement normalisé exact, utilisé sans accélération et récupéré à l'identique après interruption. Contrôles à la confirmation, au lancement et à la reprise. Le moteur complet peut réutiliser voix, minutage et scènes approuvées sans soumettre ni transférer de nouvelle demande. Devis : quantité zéro pour voix/transcription réutilisées ; nouvelles empreintes et validations rendent les animations et devis précédents périmés.
+- Dossier JSON regroupant texte, enregistrement, scènes, historique des validations et feuille de devis. Liste des entrées manquantes dans le Studio et copie figée du dossier avec le résultat. Aucune autorisation de dépense n'en découle.
+- Page Productions : recherche, filtres, pagination, retour au brouillon ou au résultat, téléchargement du média présent. Nouveau brouillon indépendant du dernier projet ouvert. Catalogue limité au mode local en attendant les comptes. Page Help intégrée au parcours.
+- Vérification : **103 tests**, lint, TypeScript et compilation réussis. Intégration narration `d06a90fd-7360-4ee1-9f9f-7db78782cb50`, 5,236583 s ; refus d'un minutage périmé, fichier altéré avant/après confirmation, reprise, WAV identique et montage récupéré. Chaîne simulée `3631bc89-74d3-417d-91cc-66f35114f45f`, 6,440125 s ; régression des scènes `52604328-bf28-4534-9080-70491aad6fa1`. Historique : recherche littérale, pages sans doublons, filtres, vidéo accessible et verrouillage du mode réel. Zéro fetch applicatif, aucun mouvement de crédits, 0 $ facturé. Avertissements Turbopack non bloquants sur les chemins de stockage dynamiques, médias exclus des traces de sortie.
+- Parcours navigateur : import, minutage, écoute/revue de contrôle, sélection, sauvegarde/rechargement, export, vidéo et audio lisibles, retour par l'historique, aide. Preuves dans `storage/qa/cam-narration-proof.json`, `cam-production-history-2026-10-13.png`, `cam-imported-recording-2026-10-13.png` et `cam-help-2026-10-13.png`.
+- Limites : essais avec Daniel et images de contrôle ; aucune nouvelle lecture Bram produite ni identité vocale vérifiée. Livraison automatique des vrais résultats dans l'interface, devis/reçus réels et réconciliation fournisseur restent à valider avant activation payante. Les autres livrables contractuels (autres styles, conversation libre, campagnes, comptes, paiements, hébergement, Base44, guide de livraison final) ne sont pas déclarés terminés. Aucun crédit, essai payant, push, déploiement ou message client.
+
 ## Le produit en une phrase
 
 Application conversationnelle pour CAM (Combat Antisemitism Movement) : un employé colle un script produit par leur app Base44, l'assistant cadre la demande, affiche le prix estimé, attend la confirmation, puis la pipeline produit une vidéo prête à publier en moins de 30 minutes. Bina ne fait ni l'idée, ni le message, ni le script.

@@ -144,9 +144,14 @@ export default function StudioPage() {
   useEffect(() => {
     // Read browser-only persistence after hydration; cancel on a quick navigation.
     const restore = setTimeout(() => {
-      let id: string | null = null;
-      try { id = localStorage.getItem("cam-last-job"); } catch { /* Storage can be disabled by the browser. */ }
-      if (id && /^[0-9a-f-]{36}$/.test(id)) watchJob(id);
+      const query = new URLSearchParams(window.location.search);
+      let id: string | null = query.get("job");
+      try {
+        if (query.get("new") === "1") { localStorage.removeItem("cam-last-job"); id = null; }
+        else if (id) localStorage.setItem("cam-last-job", id);
+        else id = localStorage.getItem("cam-last-job");
+      } catch { /* Explicit links also work without browser storage. */ }
+      if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) watchJob(id);
       else setRestoring(false);
     }, 0);
     return () => { clearTimeout(restore); stopPolling(); };
@@ -185,6 +190,7 @@ export default function StudioPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Framing failed");
       setFraming(data);
+      window.history.replaceState(null, "", `/?job=${data.jobId}`);
       try { localStorage.setItem("cam-last-job", data.jobId); } catch { /* Optional draft persistence. */ }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -231,6 +237,7 @@ export default function StudioPage() {
 
   function reset() {
     stopPolling();
+    window.history.replaceState(null, "", "/");
     try { localStorage.removeItem("cam-last-job"); } catch { /* No saved job when storage is disabled. */ }
     setFraming(null);
     setJob(null);
@@ -418,7 +425,7 @@ export default function StudioPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">Duration</span>
-                <span>~{framing.params.durationSeconds}s ({framing.params.shotCount} shots)</span>
+                <span>{framing.preparation?.measuredScenes ? "" : "~"}{(framing.preparation?.durationSeconds ?? framing.params.durationSeconds).toFixed(1)}s ({framing.preparation?.shots.length ?? framing.params.shotCount} shots)</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">Tone / tier</span>
@@ -463,7 +470,7 @@ export default function StudioPage() {
           <div className="flex gap-3">
             <button
               onClick={confirm}
-              disabled={loading || preparationBusy || !framing.canConfirm || framing.preparation?.shots.some((shot) => shot.media && shot.review?.status !== "approved")}
+              disabled={loading || preparationBusy || framing.preparation?.readiness?.canPreview === false || !framing.canConfirm || framing.preparation?.shots.some((shot) => shot.media && shot.review?.status !== "approved")}
               className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
             >
               {framing.media ? "Rebuild existing film · $0" : framing.simulation ? "Run free preview" : `Confirm & produce · $${framing.estimate.totalBilledUsd.toFixed(2)}`}
@@ -517,13 +524,17 @@ export default function StudioPage() {
                 controls
                 className="rounded-lg border border-line bg-black max-h-[60vh] max-w-full w-auto mx-auto"
               />
-              {job.simulation ? <p className="text-sm text-muted">{job.media ? "Film rebuilt from the existing CAM characters and Dylan recording, with timed subtitles. No credits were deducted. A new script needs its own voice and scenes." : "Free preview complete. Added visuals and the selected test voice are included; empty scenes remain placeholders. Subtitle word positions are approximate. No credits were deducted."}</p> : <p className="text-sm text-muted">
+              {job.simulation ? <p className="text-sm text-muted">{job.media ? "Film rebuilt from the existing CAM characters and Dylan recording, with timed subtitles. No credits were deducted. A new script needs its own voice and scenes." : job.preparation?.narration?.selected ? "Preview assembled with the reviewed imported recording and supplied word timings. Missing scene visuals remain placeholders. No credits were deducted." : "Free preview complete. Added visuals and the selected test voice are included; empty scenes remain placeholders. Subtitle word positions are approximate. No credits were deducted."}</p> : <p className="text-sm text-muted">
                 Billed <span className="font-mono text-foreground">${job.billedUsd?.toFixed(2)}</span>
                 {" "}(estimate ${job.estimateUsd?.toFixed(2)}) — deducted from your credits.
               </p>}
               {job.preparation?.voice.preview && job.preparation.voice.preview !== "silent" && job.artifacts?.some((a) => a.label === "Listen to test voice") && <div className="text-sm space-y-2">
                 <p>Test narration · {job.preparation.voice.name} · $0</p>
                 <audio aria-label="Local test narration" controls src={job.artifacts.find((a) => a.label === "Listen to test voice")!.url} className="w-full" />
+              </div>}
+              {job.artifacts?.some((a) => a.label === "Listen to imported recording") && <div className="space-y-2 text-sm">
+                <p>Reviewed imported recording · $0</p>
+                <audio aria-label="Rendered imported recording" controls src={job.artifacts.find((a) => a.label === "Listen to imported recording")!.url} className="w-full" />
               </div>}
               {job.artifacts?.some((a) => a.label === "Offline sequence test video (test voice)") && <details className="border border-line rounded-lg p-4 text-sm space-y-3">
                 <summary className="cursor-pointer font-medium text-accent">Complete production test · $0</summary>

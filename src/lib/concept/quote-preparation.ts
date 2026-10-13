@@ -28,9 +28,9 @@ export function prepareQuote(jobId: string, plan: ReturnType<typeof generationPl
   const rows = plan.operations.map((op) => {
     const stage = op.kind === "video" ? "clip" : op.kind === "image" ? op.id.endsWith("-end") ? "end" : "start" : null;
     const step = workflows.find((w) => w.scene === op.scene)?.stages.find((s) => s.stage === stage);
-    const reuse = step?.status === "approved";
+    const reuse = step?.status === "approved" || Boolean(plan.reusedVoice && (op.kind === "voice" || op.kind === "alignment"));
     const unit = op.transport === "higgsfield-mcp" ? "higgsfield-credit" as const : "usd" as const;
-    const label = op.kind === "voice" ? "Bram reading" : op.kind === "alignment" ? "Word timing" : `Scene ${op.scene} · ${stage === "start" ? "start image" : stage === "end" ? "end image" : "animation"}`;
+    const label = op.kind === "voice" ? plan.reusedVoice ? "Reviewed imported recording" : "Bram reading" : op.kind === "alignment" ? "Word timing" : `Scene ${op.scene} · ${stage === "start" ? "start image" : stage === "end" ? "end image" : "animation"}`;
     const fingerprint = sha256(JSON.stringify({ operation: op, step: step ? { target: step.target, parent: step.uploadTarget, status: step.status, media: step.media?.sha256, token: step.token } : null, voiceEvidence: plan.voiceEvidence }));
     return { id: op.id, fingerprint, operationFingerprint: op.fingerprint, scene: op.scene, label, model: op.model,
       unit, quantity: reuse ? 0 : op.kind === "video" ? Number(op.input.duration) : 1,
@@ -57,7 +57,7 @@ export function prepareQuote(jobId: string, plan: ReturnType<typeof generationPl
     lines, totals, importedScenes: plan.reusedScenes,
     missingPrices: lines.filter((line) => line.amount === null).length,
     downloadUrl: `/api/jobs/${jobId}/quote` as string,
-    blockers: ["Provider quotes and evidence still required", "Paid generation disabled", "A new Bram reading and final synchronization still require review",
+    blockers: ["Provider quotes and evidence still required", "Paid generation disabled", plan.reusedVoice ? "Imported speaker identity is declared, not independently verified" : "A new Bram reading and final synchronization still require review",
       ...(rows.some((r) => r.provisionalDuration) ? ["Animation durations are provisional until Bram is recorded and aligned"] : []),
       ...(totals.some((t) => t.overCap) ? ["Entered estimates exceed a planning ceiling"] : [])],
   } as const;

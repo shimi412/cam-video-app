@@ -19,6 +19,7 @@ import type { SceneDirection } from "./concept/types";
 import type { VisualDecision } from "./concept/visual-review";
 import type { SceneWorkflow } from "./concept/scene-workflow";
 import type { QuoteDraft } from "./concept/quote-preparation";
+import type { Narration } from "./concept/narration";
 
 export type ProductionParams = {
   templateSlug: string;
@@ -45,6 +46,8 @@ export type ProductionParams = {
   sceneWorkflow?: Record<string, SceneWorkflow>;
   sceneMediaWorkflow?: Record<string, string>;
   quoteDraft?: QuoteDraft;
+  narration?: Narration;
+  useImportedNarration?: boolean;
 };
 
 export type Overrides = Partial<

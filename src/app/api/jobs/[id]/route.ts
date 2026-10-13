@@ -5,6 +5,7 @@ import { z } from "zod";
 import { jobWorkerActive } from "@/lib/job-lock";
 import { recoveryAllowed, recentlyQueued } from "@/lib/job-recovery";
 import { currentDraft } from "@/lib/concept/current-draft";
+import { storedVideoUrl } from "@/lib/stored-media";
 
 export async function GET(
   _request: Request,
@@ -34,7 +35,7 @@ export async function GET(
     estimateUsd: job.estimateUsd ? Number(job.estimateUsd) : null,
     billedUsd: job.billedUsd ? Number(job.billedUsd) : null,
     error: job.error,
-    outputUrl: job.outputPath ? `/api/media/outputs/${job.id}.mp4` : null,
+    outputUrl: await storedVideoUrl(job.outputPath),
     sheet: jobParams.sheet ?? null,
     sheetUrl: jobParams.sheetUrl ?? null,
     artifacts: jobParams.artifacts ?? [],

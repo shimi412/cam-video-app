@@ -20,6 +20,8 @@
     "test:review-recovery": "tsx --env-file-if-exists=.env scripts/check-review-recovery.ts",
     "test:scene-workflow": "tsx --env-file-if-exists=.env scripts/check-scene-workflow.ts",
     "test:production-flow": "tsx --env-file-if-exists=.env scripts/check-production-flow.ts",
+    "test:narration": "tsx --env-file-if-exists=.env scripts/check-narration.ts",
+    "test:production-history": "tsx --env-file-if-exists=.env scripts/check-production-history.ts",
     "dryrun": "tsx --env-file-if-exists=.env scripts/dryrun.ts",
     "dev:preview": "PROVIDER_MODE=dryrun BRAIN_MODE=mock next dev --hostname 127.0.0.1"
   },

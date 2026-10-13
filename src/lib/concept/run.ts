@@ -1,4 +1,4 @@
-import { mkdir, writeFile, copyFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import type { Recipe } from "../recipes";
 import type { ProductionParams } from "../brain";
@@ -24,6 +24,9 @@ import { rehearsalBudget } from "./rehearsal-budget";
 import { rehearseDelivery } from "./delivery-rehearsal";
 import { sceneWorkflow } from "./scene-workflow";
 import { rehearseProduction } from "./production-rehearsal";
+import { selectedNarration } from "./narration";
+import { productionDossier } from "./production-dossier";
+import { sha256 } from "./checkpoints";
 
 export async function produceConcept(input: {
   jobId: string; script: string; params: ProductionParams; recipe: Recipe;
@@ -56,25 +59,35 @@ export async function produceConcept(input: {
   await setStep("voice", "running");
   const voice = PreviewVoiceSchema.parse(params.previewVoice ?? "silent");
   const phrases = board.shots.map((s) => s.narration);
-  const timing = voice === "silent" ? placeholderTiming(phrases) : await localNarration(root, phrases, voice, {
+  const imported = await selectedNarration(jobId, phrases, params);
+  const audible = Boolean(imported) || voice !== "silent";
+  if (imported) {
+    const bytes = await readFile(imported.file);
+    if (sha256(bytes) !== imported.audio.sha256) throw new Error("Reviewed recording changed before copying.");
+    await writeFile(path.join(root, "assets/narration.wav"), bytes);
+  }
+  const timing = imported?.timing ?? (voice === "silent" ? placeholderTiming(phrases) : await localNarration(root, phrases, voice, {
     directory: input.checkpointDir ?? path.join(root, "checkpoints"), assertOwned: input.assertOwned ?? (async () => {}),
-  });
+  }));
   await writeFile(path.join(root, "timing.json"), JSON.stringify(timing, null, 2));
-  const plan = generationPlan(script, params, board, timing, references);
+  const plan = generationPlan(script, params, board, timing, references, imported?.evidence);
   await writeFile(path.join(root, "generation-plan.json"), JSON.stringify(plan, null, 2));
   const assertOwned = input.assertOwned ?? (async () => {});
   const checkpoints = input.checkpointDir ?? path.join(root, "checkpoints");
-  const reserved = await rehearsalBudget(plan, jobId, checkpoints, assertOwned);
-  const rehearsal = await rehearseGeneration(plan, path.join(checkpoints, "simulated-requests"), assertOwned, { budget: reserved, timing, jobId });
-  await writeFile(path.join(root, "generation-rehearsal.json"), JSON.stringify(rehearsal, null, 2));
-  await writeFile(path.join(root, "budget-rehearsal.json"), JSON.stringify({ note: "SIMULATION ONLY. Artificial amounts, no provider quote or customer debit.", book: await reserved.budget.snapshot() }, null, 2));
-  if (voice !== "silent") {
-    const delivery = await rehearseDelivery({ jobId, directory: path.join(checkpoints, "delivery-rehearsal"), voiceFile: path.join(root, "assets/narration.wav"), script, params, board, plan, rehearsal, assertOwned });
-    await writeFile(path.join(root, "delivery-rehearsal.json"), JSON.stringify(delivery, null, 2));
+  if (!imported) {
+    const reserved = await rehearsalBudget(plan, jobId, checkpoints, assertOwned);
+    const rehearsal = await rehearseGeneration(plan, path.join(checkpoints, "simulated-requests"), assertOwned, { budget: reserved, timing, jobId });
+    await writeFile(path.join(root, "generation-rehearsal.json"), JSON.stringify(rehearsal, null, 2));
+    await writeFile(path.join(root, "budget-rehearsal.json"), JSON.stringify({ note: "SIMULATION ONLY. Artificial amounts, no provider quote or customer debit.", book: await reserved.budget.snapshot() }, null, 2));
+    if (voice !== "silent") {
+      const delivery = await rehearseDelivery({ jobId, directory: path.join(checkpoints, "delivery-rehearsal"), voiceFile: path.join(root, "assets/narration.wav"), script, params, board, plan, rehearsal, assertOwned });
+      await writeFile(path.join(root, "delivery-rehearsal.json"), JSON.stringify(delivery, null, 2));
+    }
   }
-  if (voice === "silent") await silentVoice(path.join(root, "assets/narration.wav"), timing.duration);
+  if (!audible) await silentVoice(path.join(root, "assets/narration.wav"), timing.duration);
   await setStep("voice", "done");
   const sheet: SheetEntry[] = [{ step: 1, kind: "tts", falModel: voice === "silent" ? "higgsfield/text2speech_v2 (Bram preset)" : "local/macos-say", higgsfieldEquivalent: voice === "silent" ? "Bram · Text to Speech V2 · planned" : `${LOCAL_VOICES[voice].name} · local test voice`, prompt: script, durationSeconds: timing.duration, notes: voice === "silent" ? `Bram preset ${CAM_VOICE.voiceId} verified. New reading and pacing require review. Preview silent; no request sent.` : "Offline Mac speech, zero cost. No Bram identity or final voice approval. Phrase durations measured; word positions approximate." }];
+  if (imported) sheet[0] = { step: 1, kind: "tts", falModel: "local/imported-recording", higgsfieldEquivalent: `Imported ${imported.narration.speaker} recording (declared)`, prompt: script, durationSeconds: timing.duration, notes: "Reviewed local audio and operator-supplied word timings. No generation; speaker identity not independently verified." };
   await setStep("keyframes", "running");
   for (const shot of board.shots) {
     if (params.sceneMedia?.[shot.index]) {
@@ -102,18 +115,22 @@ export async function produceConcept(input: {
     assertOwned: input.assertOwned ?? (async () => {}),
     render: (output) => renderConcept(root, output),
   });
-  await controls(outputPath, root, composition.cues.map((s)=>s.start), composition.width, composition.height, timing.duration, { requireAudibleVoice: voice !== "silent", captions: voice !== "silent" ? composition.captions : undefined });
-  const sequence = voice !== "silent" ? await rehearseProduction({ jobId, directory: path.join(checkpoints, "production-sequence"), workspace: root,
+  await controls(outputPath, root, composition.cues.map((s)=>s.start), composition.width, composition.height, timing.duration, { requireAudibleVoice: audible, captions: audible ? composition.captions : undefined });
+  const sequence = !imported && voice !== "silent" ? await rehearseProduction({ jobId, directory: path.join(checkpoints, "production-sequence"), workspace: root,
     script, params, recipe, voiceFile: path.join(root, "assets/narration.wav"), timing, assertOwned }) : null;
-  await writeFile(path.join(root, "provenance.json"), JSON.stringify({ voice: { source: voice === "silent" ? "silent" : "local-macos", name: voice === "silent" ? null : LOCAL_VOICES[voice].name, rate: 150, costUsd: 0, finalVoiceApproved: false }, scenes: composition.cues, importedMedia: params.sceneMedia ?? {}, phraseTiming: voice === "silent" ? "estimated" : "measured", wordTiming: "estimated", costUsd: 0 }, null, 2));
+  await writeFile(path.join(root, "provenance.json"), JSON.stringify({ voice: imported ? { source: "local-import", declaredSpeaker: imported.narration.speaker, sourceNote: imported.narration.sourceNote, sha256: imported.audio.sha256, reviewTarget: imported.target, reviewed: true, speakerIdentityVerified: false, costUsd: 0, finalVoiceApproved: false } : { source: voice === "silent" ? "silent" : "local-macos", name: voice === "silent" ? null : LOCAL_VOICES[voice].name, rate: 150, costUsd: 0, finalVoiceApproved: false }, scenes: composition.cues, importedMedia: params.sceneMedia ?? {}, phraseTiming: !audible ? "estimated" : imported ? "operator-supplied" : "measured", wordTiming: imported ? "operator-supplied" : "estimated", costUsd: 0 }, null, 2));
   await copyFile(outputPath, path.join(root, "preview.mp4"));
-  await input.meter("render", { filePath: outputPath, realCostUsd: 0, provider: "hyperframes", model: "concept-local-preview", meta: { previewVoice: voice, importedScenes: Object.keys(staged).length, estimatedWordTiming: true, measuredSceneTiming: voice !== "silent", visualApproval: false } });
+  await input.meter("render", { filePath: outputPath, realCostUsd: 0, provider: "hyperframes", model: "concept-local-preview", meta: { previewVoice: voice, importedScenes: Object.keys(staged).length, estimatedWordTiming: timing.estimated, measuredSceneTiming: audible, importedRecording: Boolean(imported), visualApproval: false } });
   await setStep("montage", "done");
   const url = (file: string) => `/api/media/${path.relative(path.join(process.cwd(), "storage"), root).split(path.sep).join("/")}/${file}`;
-  const preparation = await prepareConcept(script, params, recipe, jobId, voice === "silent" ? undefined : timing);
+  const preparation = await prepareConcept(script, params, recipe, jobId, audible ? timing : undefined);
   await writeFile(path.join(root, "visual-review.json"), JSON.stringify({ paidGenerationAuthorized: false,
     scenes: preparation.shots.filter((shot) => shot.media).map((shot) => ({ scene: shot.index, media: shot.media, review: shot.review, history: params.sceneReviews?.[shot.index] ?? [] })),
   }, null, 2));
+  if (imported) {
+    await writeFile(path.join(root, "narration-review.json"), JSON.stringify({ ...preparation.narration, alignment: imported.alignment, paidGenerationAuthorized: false }, null, 2));
+    if (preparation.narration) preparation.narration.url = url("assets/narration.wav");
+  }
   // Results link to the exact measured snapshot used by this attempt.
   preparation.generation.downloadUrl = url("generation-plan.json");
   if (preparation.quote) {
@@ -123,8 +140,11 @@ export async function produceConcept(input: {
   await writeFile(path.join(root, "scene-workflow.json"), JSON.stringify({ paidGenerationAuthorized: false,
     scenes: preparation.shots.map((shot) => shot.workflow), history: params.sceneWorkflow ?? {},
   }, null, 2));
+  preparation.readiness.dossierUrl = url("production-dossier.json");
+  await writeFile(path.join(root, "production-dossier.json"), JSON.stringify(productionDossier(jobId, script, params, preparation), null, 2));
   return { outputPath, renderReused: rendering.reused, durationSeconds: timing.duration, board, sheet, sheetUrl, media: null,
     preparation, artifacts: [
+    { label: "Production dossier", url: url("production-dossier.json") },
     { label: "Storyboard", url: url("storyboard.json") },
     { label: "Visual review record", url: url("visual-review.json") },
     { label: "Scene approval steps", url: url("scene-workflow.json") },
@@ -132,15 +152,15 @@ export async function produceConcept(input: {
     ...(sequence ? [{ label: "Complete production sequence (simulation)", url: url("production-sequence.json") },
       ...(sequence.rendered ? [{ label: "Offline sequence test video (test voice)", url: url("production-sequence/preview.mp4") }] : [])] : []),
     { label: "Generation plan (not submitted)", url: url("generation-plan.json") },
-    { label: "Pipeline rehearsal (simulation)", url: url("generation-rehearsal.json") },
-    { label: "Budget checks (simulation)", url: url("budget-rehearsal.json") },
-    ...(voice !== "silent" ? [{ label: "File transfer & voice sync checks (simulation)", url: url("delivery-rehearsal.json") }] : []),
+    ...(!imported ? [{ label: "Pipeline rehearsal (simulation)", url: url("generation-rehearsal.json") },
+    { label: "Budget checks (simulation)", url: url("budget-rehearsal.json") }] : [{ label: "Recording review", url: url("narration-review.json") }]),
+    ...(!imported && voice !== "silent" ? [{ label: "File transfer & voice sync checks (simulation)", url: url("delivery-rehearsal.json") }] : []),
     { label: "Shot contact sheet", url: url("controls/shots.png") },
     ...(board.shots.length > 1 ? [{ label: "Transition contact sheet", url: url("controls/transitions.png") }] : []),
     { label: "Timing", url: url("timing.json") }, { label: "Quality checks", url: url("controls/report.json") },
     { label: "Subtitles (SRT)", url: url("captions.srt") }, { label: "Subtitles (VTT)", url: url("captions.vtt") },
     { label: "Media provenance", url: url("provenance.json") },
-    ...(voice !== "silent" ? [{ label: "Listen to test voice", url: url("assets/narration.wav") }] : []),
+    ...(audible ? [{ label: imported ? "Listen to imported recording" : "Listen to test voice", url: url("assets/narration.wav") }] : []),
     { label: "Download preview", url: url("preview.mp4") },
   ] };
 }

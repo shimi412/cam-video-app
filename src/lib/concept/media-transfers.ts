@@ -67,15 +67,16 @@ export async function boundedMedia(response: Response, limit: number) {
 }
 
 const exec = promisify(execFile);
-async function normalizeAudio(bytes: Buffer, directory: string): Promise<AudioAsset> {
+export async function normalizeAudio(bytes: Buffer, directory: string): Promise<AudioAsset> {
+  if (!bytes.length || bytes.length > 64 * 1024 * 1024) throw new Error("Use an audio file under 64 MB.");
   const temporary = path.join(directory, `${randomUUID()}.upload`), output = path.join(directory, `${randomUUID()}.wav`);
   try {
     await writeFile(temporary, bytes, { flag: "wx" });
-    const { stdout } = await exec("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=duration:stream=codec_type,channels", "-of", "json", temporary], { timeout: 15_000 });
+    const { stdout } = await exec("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-format_whitelist", "wav,mp3,flac,ogg,mov,aac,aiff", "-show_entries", "format=duration:stream=codec_type,channels", "-of", "json", temporary], { timeout: 15_000 });
     const probe = z.object({ format: z.object({ duration: z.string() }), streams: z.array(z.object({ codec_type: z.string(), channels: z.number().optional() })).length(1) }).parse(JSON.parse(stdout));
     const duration = Number(probe.format.duration);
     if (probe.streams[0].codec_type !== "audio" || !probe.streams[0].channels || probe.streams[0].channels > 2 || !Number.isFinite(duration) || duration < .2 || duration > 600) throw new Error("Use a mono/stereo voice recording lasting 0.2 to 600 seconds.");
-    await exec("ffmpeg", ["-y", "-loglevel", "error", "-protocol_whitelist", "file", "-i", temporary, "-map", "0:a:0", "-map_metadata", "-1", "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", output], { timeout: 60_000 });
+    await exec("ffmpeg", ["-y", "-loglevel", "error", "-protocol_whitelist", "file", "-format_whitelist", "wav,mp3,flac,ogg,mov,aac,aiff", "-i", temporary, "-map", "0:a:0", "-map_metadata", "-1", "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", output], { timeout: 60_000 });
     const { stdout: measured } = await exec("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", output], { timeout: 10_000 });
     const seconds = Number(measured.trim());
     if (!Number.isFinite(seconds) || Math.abs(seconds - duration) > .1) throw new Error("Voice duration changed during normalization.");

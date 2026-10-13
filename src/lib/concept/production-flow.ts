@@ -1,5 +1,5 @@
 import path from "node:path";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import type { ProductionParams } from "../brain";
 import type { Recipe } from "../recipes";
@@ -24,6 +24,7 @@ import { checkpointedRender } from "./render-checkpoint";
 import { renderConcept } from "./render";
 import { controls, validateTiming } from "./controls";
 import { subtitleFile } from "./existing-run";
+import { selectedNarration } from "./narration";
 
 export type FlowPlan = ReturnType<typeof generationPlan>;
 export type FlowReview = { stage: "script" | "voice" | "direction" | "start" | "end" | "clip"; scene: number | null; target: string;
@@ -118,20 +119,27 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
     const phrases = board.shots.map((s) => s.narration);
     let plan = generationPlan(input.script, input.params, board, placeholderTiming(phrases), input.references);
     const scriptDecision = await review("script", null, { script: input.script, voice: CAM_VOICE, format: input.params.aspectRatio });
-    const voice = await execute(plan, plan.operations[0], {}, { script: scriptDecision });
-    const recording = await receive(voice);
-    if (!recording.audio) throw new Error("No normalized voice recording.");
-    const audio = recording.audio, voiceFile = path.join(recording.directory, "narration.wav");
-    const voiceUrl = await upload(voiceFile, audio.sha256, "audio/wav");
-    const transcript = await execute(plan, plan.operations[1], { "output:voice": voiceUrl }, { audio: audio.sha256 });
-    const alignment = whisperAlignment(JSON.parse(transcript.output), { audioSha256: audio.sha256, scriptSha256: scriptHash(phrases), voiceId: CAM_VOICE.voiceId,
-      requestId: transcript.requestId, source: services.mode === "simulation" ? "simulation-fixture" : "fal-whisper" });
+    const importedVoice = await selectedNarration(jobId, phrases, input.params);
+    const recording = importedVoice ? null : await receive(await execute(plan, plan.operations[0], {}, { script: scriptDecision }));
+    const audio = importedVoice?.audio ?? recording?.audio;
+    if (!audio) throw new Error("No normalized voice recording.");
+    const voiceFile = importedVoice?.file ?? path.join(recording!.directory, "narration.wav");
+    let alignment = importedVoice?.alignment;
+    if (importedVoice) events.push({ stage: "reuse-reviewed-recording", fingerprint: importedVoice.target, reused: true });
+    else {
+      const voiceUrl = await upload(voiceFile, audio.sha256, "audio/wav");
+      const transcript = await execute(plan, plan.operations[1], { "output:voice": voiceUrl }, { audio: audio.sha256 });
+      alignment = whisperAlignment(JSON.parse(transcript.output), { audioSha256: audio.sha256, scriptSha256: scriptHash(phrases), voiceId: CAM_VOICE.voiceId,
+        requestId: transcript.requestId, source: services.mode === "simulation" ? "simulation-fixture" : "fal-whisper" });
+    }
+    if (!alignment) throw new Error("Missing voice alignment.");
     const timing = alignVoice(phrases, audio, alignment, services.mode);
-    const voiceDecision = await review("voice", null, { script: scriptDecision, audio: audio.sha256, alignment: alignmentHash(alignment), voice: CAM_VOICE },
+    const voiceDecision = await review("voice", null, { script: scriptDecision, audio: audio.sha256, alignment: alignmentHash(alignment), voice: CAM_VOICE, ...(importedVoice ? { importedReview: importedVoice.target, decision: importedVoice.narration.reviews.at(-1)!.id } : {}) },
       { audio: { file: voiceFile, sha256: audio.sha256, duration: audio.duration }, timing });
     if (sha256(await readFile(voiceFile)) !== audio.sha256) throw new Error("Reviewed recording changed before scene generation.");
     plan = alignedGenerationPlan({ script: input.script, params: input.params, board, references: input.references, audio, alignment, mode: services.mode,
       approval: { approved: true, mode: services.mode, voiceId: CAM_VOICE.voiceId, scriptSha256: alignment.scriptSha256, audioSha256: audio.sha256, alignmentSha256: alignmentHash(alignment) } }).plan;
+    if (importedVoice) plan = generationPlan(input.script, input.params, board, timing, input.references, importedVoice.evidence);
     if (plan.operations.some((op) => op.gates.includes("split-scene"))) throw new Pause({ status: "blocked-duration", phase: "split-scenes", plan });
     const media: Record<string, SceneMedia> = {}, referenceUrls: Record<string, string> = {};
     for (const shot of board.shots) {
@@ -190,11 +198,12 @@ export async function renderProductionFlow(packet: RenderPacket, workspace: stri
   assertTransportMode(packet.mode); await assertOwned();
   const { fingerprint, ...content } = packet;
   if (sha256(JSON.stringify(content)) !== fingerprint) throw new Error("Render packet changed.");
-  if (sha256(await readFile(packet.voiceFile)) !== packet.audioSha256) throw new Error("Reviewed voice changed before montage.");
+  const voiceBytes = await readFile(packet.voiceFile);
+  if (sha256(voiceBytes) !== packet.audioSha256) throw new Error("Reviewed voice changed before montage.");
   if (packet.board.shots.some((s) => !packet.media[s.index])) throw new Error("A scene has no approved media.");
   for (const decision of packet.reviews) if (Decision.parse(decision).mode !== packet.mode || decision.decision !== "approved") throw new Error("Invalid production review.");
   await mkdir(path.join(workspace, "assets"), { recursive: true });
-  await copyFile(packet.voiceFile, path.join(workspace, "assets/narration.wav"));
+  await writeFile(path.join(workspace, "assets/narration.wav"), voiceBytes);
   const durations = packet.timing.phrases.map((p, i) => (packet.timing.phrases[i + 1]?.start ?? packet.timing.duration) - (i === 0 ? 0 : p.start));
   const staged = await stageSceneMedia(packet.jobId, packet.media, workspace, durations);
   const composition = await writeMontage(workspace, packet.board, packet.timing, packet.aspectRatio, staged);

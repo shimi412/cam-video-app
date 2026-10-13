@@ -7,6 +7,7 @@ import { planConcept } from "@/lib/concept/storyboard";
 import { generationPlan } from "@/lib/concept/generation-plan";
 import { lockedAssets } from "@/lib/concept/assets";
 import { placeholderTiming } from "@/lib/concept/timing";
+import { selectedNarration } from "@/lib/concept/narration";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
@@ -18,7 +19,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   if (!recipe?.concept || params.previewSource === "existing") return Response.json({ error: "This export is for a new CAM Clay script." }, { status: 409 });
   try {
     const board = planConcept(job.script, recipe, params.aspectRatio, params.sceneDirections);
-    const plan = generationPlan(job.script, params, board, placeholderTiming(board.shots.map((s) => s.narration)), await lockedAssets());
+    const phrases = board.shots.map((s) => s.narration), voice = await selectedNarration(id, phrases, params);
+    const plan = generationPlan(job.script, params, board, voice?.timing ?? placeholderTiming(phrases), await lockedAssets(), voice?.evidence);
     return Response.json(plan, { headers: { "Cache-Control": "no-store", "Content-Disposition": 'attachment; filename="cam-generation-plan.json"' } });
   } catch {
     return Response.json({ error: "Restore the locked CAM references before exporting." }, { status: 409 });

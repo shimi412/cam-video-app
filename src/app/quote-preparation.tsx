@@ -14,7 +14,7 @@ export function QuotePreparationPanel({ quote, jobId, editable, disabled, onChan
     <h4 className="font-medium">Quote preparation · free preview $0</h4>
     <p className="text-muted">Provider prices have not been requested. Enter planning estimates if available, then download the worksheet. Dollars and Higgsfield credits are kept separate.</p>
     {(quote.state === "stale" || quote.state === "expired") && <p role="status" className="text-accent">{quote.state === "stale" ? "The scenes or approvals changed. The previous estimate is out of date." : "The planning estimate is over 24 hours old. Review the amounts again."} Download the worksheet to retain the previous version.</p>}
-    <p className="text-muted">{quote.missingPrices} prices missing · {quote.importedScenes.length} complete imported scenes reused. Animation durations stay provisional until the final Bram recording is synchronized.</p>
+    <p className="text-muted">{quote.missingPrices} prices missing · {quote.importedScenes.length} complete imported scenes reused. {quote.lines.some((line) => line.provisionalDuration) ? "Animation durations stay provisional until the final recording is synchronized." : "The current plan uses the reviewed files and available timing."}</p>
     <div className="flex flex-wrap gap-4">{quote.totals.map((total) => <div key={total.unit}>
       <p className="font-medium">{currency(total.unit)}: {total.total === null ? "Incomplete" : amount(total.total)}</p>
       {total.missing > 0 && <p className="text-xs text-muted">Entered subtotal: {amount(total.subtotal)} · {total.missing} missing</p>}

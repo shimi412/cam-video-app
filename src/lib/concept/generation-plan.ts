@@ -78,12 +78,14 @@ export function generationPlan(script: string, params: ProductionParams, board: 
       input: { prompt: shot.motionPrompt, duration: String(seconds), generate_audio: false },
       bindings: { start_image_url: `output:${id}-start`, ...(shot.endImagePrompt ? { end_image_url: `output:${id}-end` } : {}) } });
   }
-  const content = { script, aspectRatio: params.aspectRatio, board, references, operations, importedMedia: params.sceneMedia ?? {} };
+  const reusedVoice = params.useImportedNarration && params.narration && voiceEvidence?.source === "reviewed" && voiceEvidence.audioSha256 === params.narration.audio.sha256
+    ? { id: params.narration.id, audioSha256: voiceEvidence.audioSha256, alignmentSha256: voiceEvidence.alignmentSha256, declaredSpeaker: params.narration.speaker, reviewId: params.narration.reviews.at(-1)?.id, identityVerified: false } : null;
+  const content = { script, aspectRatio: params.aspectRatio, board, references, operations, importedMedia: params.sceneMedia ?? {}, ...(reusedVoice ? { reusedVoice } : {}) };
   return {
     version: 1, mode: "planning-only", canExecute: false, costUsd: 0, liveQuote: null,
     fingerprint: createHash("sha256").update(JSON.stringify(content)).digest("hex"),
     voice: CAM_VOICE, voiceEvidence: voiceEvidence ?? null, timingBasis: voiceEvidence?.source === "reviewed" ? "reviewed-voice-alignment" : voiceEvidence ? "simulation-alignment" : "provisional-not-final-voice",
-    blockers, references, reusedScenes, importedMedia: params.sceneMedia ?? {}, operations,
+    blockers, references, reusedScenes, reusedVoice, importedMedia: params.sceneMedia ?? {}, operations,
   } as const;
 }
 

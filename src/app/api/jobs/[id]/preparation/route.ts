@@ -127,6 +127,7 @@ async function update(request: Request, context: { params: Promise<{ id: string 
         const voice = parsed.data.previewVoice;
         if (voice !== "silent" && !(await availableLocalVoices()).includes(voice)) throw new Error("This Mac test voice is unavailable.");
         params.previewVoice = voice;
+        params.useImportedNarration = false;
       } else if ("scene" in parsed.data) {
         const { scene, direction } = parsed.data;
         if (!preparation.shots.some((shot) => shot.index === scene)) throw new Error("Unknown scene.");

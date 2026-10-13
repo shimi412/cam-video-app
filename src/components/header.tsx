@@ -6,7 +6,9 @@ import { useEffect, useState } from "react";
 
 const NAV = [
   { href: "/", label: "Studio" },
+  { href: "/productions", label: "Productions" },
   { href: "/library", label: "Library" },
+  { href: "/help", label: "Help" },
   { href: "/admin", label: "Admin" },
 ] as const;
 
@@ -27,16 +29,17 @@ export function Header() {
 
   return (
     <header className="border-b border-line bg-surface">
-      <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-8">
+      <div className="max-w-5xl mx-auto px-6 py-3 min-h-14 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 sm:gap-8 flex-wrap">
           <Link href="/" className="font-semibold tracking-tight">
             CAM <span className="text-accent">Video</span>
           </Link>
-          <nav className="flex gap-1">
+          <nav aria-label="Main navigation" className="flex gap-1 flex-wrap">
             {NAV.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={pathname === item.href ? "page" : undefined}
                 className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
                   pathname === item.href
                     ? "bg-accent-soft text-foreground"

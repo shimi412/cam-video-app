@@ -15,6 +15,29 @@ pnpm dev:preview
 
 The old five styles are archived in the database and the source catalogue. They remain available to the explicit offline CLI below for regression checks. The client library and new-production endpoints do not offer them. CAM Clay offers free local previews; its live production gate remains closed.
 
+The latest instruction is to finish the authorized local production work autonomously, without asking Shimi to approve each development step. Zero provider-credit spending and no paid trials remain binding. The in-app **Help** page explains the available workflow; it does not claim the complete contracted product is delivered.
+
+## Imported narration, production dossier and saved productions
+
+In **Your scenes and voice**, **Use an existing voice recording · $0** accepts audio already available locally. Choose its declared speaker and record its source. The server decodes the actual bytes, rejects audio playlists and normalizes to 48 kHz mono WAV without retiming or trimming the reading. Source and normalized hashes are retained. Files remain under the gitignored `storage/narration/<job>/<recording>/` tree.
+
+Supply every word's start/end time in the table or import the downloaded JSON template after completing it. The template binds both script and normalized audio. Missing/extra words, overlaps and intervals outside the recording are refused. This is operator-supplied timing, not free transcription, forced alignment or proof of the speaker's identity. A Bram declaration alone is never a final voice approval.
+
+Listen and check the timings, approve, then select **Use reviewed recording in preview**. Review decisions bind the exact recording, timings, source declaration and script. Replacing audio or changing timing requires another review; stale tabs cannot overwrite newer timings. Changes after confirmation are refused. The selected recording is checked again before confirmation, rendering and recovery; a missing/changed file blocks use instead of silently switching voices. The normalized WAV is copied unchanged into the montage and reused on recovery.
+
+Reviewed imports bypass both voice generation and paid transcription in the full sequence. Their two quote rows show quantity and cost zero. Their recording, timing and review IDs invalidate dependent animation approvals and prepared quotes when changed. The ordinary imported-recording preview uses the selected local scenes and does not create additional calibration videos. All local tests retain `finalBramVoiceApproved: false`.
+
+**Production preparation** lists unreviewed inputs and placeholder scenes. **Download production dossier** gathers the script, declared audio provenance, timing, scene reviews and quote worksheet in a single JSON document. It verifies selected/approved files and cannot authorize spending. The rendered result contains an immutable attempt snapshot plus MP4, WAV, subtitles and review reports.
+
+**Productions** lists the local CAM Clay drafts and results, with script search, status filters and keyset pagination. A link opens the selected draft/result independently of the last-opened browser item; **New production** starts a clean draft. Download links only point to files present under local storage. This catalogue is disabled in live mode until account scoping exists. No cleanup policy, authentication or remote hosting is implied.
+
+```bash
+pnpm test:narration
+pnpm test:production-history
+```
+
+Verified October 13: **103 unit tests**, lint and TypeScript/build passed. Narration integration `d06a90fd-7360-4ee1-9f9f-7db78782cb50` rendered 5.236583 seconds using Daniel and approximate fixture timestamps. It covers import/review/select, stale timing edits, changed bytes before/after confirmation, full-sequence reuse with no submissions/transfers, unchanged normalized WAV, cached recovery, quotes and dossier. History integration verifies filters, literal search, pagination, playable downloads and the live-mode block. Regression `3631bc89-74d3-417d-91cc-66f35114f45f` covers the seven-operation simulated sequence, and `52604328-bf28-4534-9080-70491aad6fa1` the scene workflow. Application fetch, customer ledger entries and billed costs stayed at zero. Browser job `ce602807-a807-4cf9-954d-e77f3fd64d7c` verifies imports, review, reload, export and playback; its review notes explicitly identify technical test fixtures. Proof files: `storage/qa/cam-narration-proof.json`, `cam-production-flow-proof.json`, `cam-production-history-2026-10-13.png` and `cam-help-2026-10-13.png`. Build still emits nonfatal Turbopack warnings about dynamic runtime-storage tracing; runtime media remain excluded from output file traces in `next.config.ts`.
+
 ## Existing CAM characters and voice
 
 In the Studio, choose **Load CAM example**, **Prepare existing film · $0**, then **Rebuild existing film · $0**. The app reconstructs a 52.25-second vertical film from the 12 existing animated clips and the recorded Dylan voice. This is local editing of existing media, not fresh generation. The last confirmed production is restored on reload in the same browser. If the local server stopped during work, the Studio offers **Resume free preview** after restart.
@@ -144,7 +167,7 @@ This integration needs the local database, macOS Daniel, Sharp, FFmpeg and Hyper
 
 Verified on October 13: **95 unit tests**, TypeScript/build and lint passed. Complete-flow job `daae7e12-7b04-4a8f-90ab-4502911c1833` rendered 6.440125 seconds; local-media/recovery regression `a8dffcf8-b83d-4949-973f-803d38da7801` and review/recovery regression `a51e611a-bb1d-4bb2-b319-3ba7239cf013` passed. All three recorded zero application fetch attempts, customer ledger entries and billed cost. Browser job `d03dddbe-0391-4dfd-bad0-ec8172ef0961` completed with both videos; the full-sequence player loaded 6.467 seconds without error. Screenshot: `storage/qa/cam-complete-production-2026-10-13.png`.
 
-Still required before real execution: a new Bram reading and its review, real complete quotes and cost receipts, trusted provider reconciliation, the operator UI for generated audio/results, explicit spending authorization, and validation against actual provider outputs. No credit, paid trial, live generation, push or deployment was used for this milestone.
+Still required before real execution: a new Bram reading and its review, real complete quotes and cost receipts, trusted provider reconciliation, automatic delivery of generated results to the review UI, explicit spending authorization, and validation against actual provider outputs. Local audio/result imports and reviews are now available as described above. No credit, paid trial, live generation, push or deployment was used for this milestone.
 
 ## Verification
 

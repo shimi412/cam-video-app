@@ -11,6 +11,7 @@ import type { ProductionParams } from "@/lib/brain";
 import { prepareConcept } from "@/lib/concept/preparation";
 import { verifiedSceneMedia } from "@/lib/concept/imported-media";
 import { verifyWorkflowFiles } from "@/lib/concept/workflow-files";
+import { selectedNarration } from "@/lib/concept/narration";
 
 export async function POST(
   _request: Request,
@@ -41,6 +42,8 @@ export async function POST(
     const input = job.params as ProductionParams;
     if (recipe.concept && input.previewSource !== "existing") {
       const prep = await prepareConcept(job.script, input, recipe, id);
+      try { await selectedNarration(id, prep.shots.map((s) => s.narration), input); }
+      catch { return Response.json({ error: "The selected recording or its word timings changed. Review them again before starting." }, { status: 409 }); }
       const pending = prep.shots.filter((shot) => shot.media && shot.review?.status !== "approved");
       if (pending.length) return Response.json({ error: `Review the visuals in scenes ${pending.map((s) => s.index).join(", ")} before starting the preview.` }, { status: 409 });
       for (const shot of prep.shots) if (input.sceneMediaWorkflow?.[shot.index]) {
