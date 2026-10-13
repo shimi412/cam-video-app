@@ -8,6 +8,7 @@ Local development of CAM's video production tool. Read `BLUEPRINT.md` before cha
 pnpm install --frozen-lockfile
 pnpm db:start
 pnpm db:seed
+pnpm db:migrate
 pnpm dev:preview
 ```
 
@@ -21,7 +22,17 @@ The latest instruction is to finish the authorized local production work autonom
 
 Run `pnpm db:migrate` after updating an existing database. Auth.js protects data routes and media, with invited client/admin accounts and a dedicated CAM workspace. The client has no access to internal administration. `dev:preview` keeps loopback development convenient; production always requires authentication. Configure `APP_URL`, `AUTH_URL`, a random `AUTH_SECRET` and the trusted proxy before any deployment. `pnpm admin:bootstrap <administrator-email>` prepares the first one-use invitation in a private, gitignored `.secrets` file; it sends no email. After first sign-in, manage invitations and disabled accounts in Admin → Manage workspace access. Password resets use fresh invitations and revoke old sessions. Detailed status and official implementation sources: `docs/client-readiness.md`.
 
-`pnpm test:access` exercises actual local HTTP authentication and permissions using temporary accounts and a separate build directory. It never opens a provider connection, sends email or activates payments. The current local access checks and 107 unit tests pass.
+`pnpm test:access` exercises actual local HTTP authentication and permissions using temporary accounts and a separate build directory. It never opens a provider connection, sends email or activates payments. The local access checks and 108 unit tests pass, including strict origins with the Next.js loopback-host normalization.
+
+## Conversations, references and campaigns
+
+**Conversations** saves notes and scripts, reference links/files and the associated production versions. A user can prepare an exact narration in the existing Studio or derive a fresh draft with a different script/format. The parent remains unchanged; media/voice approvals and quotes are not silently inherited. Creation retries use stable request IDs: repeated identical requests reuse their result and changed payloads are refused. Message/draft creation is transactional. Acknowledgements are deterministic local responses, not an active free-form LLM assistant.
+
+Reference uploads are bounded to 16 MB, 30 references per conversation. Still PNG/JPEG/WebP are decoded, resized and stripped of metadata; images and PDFs have content hashes checked at download. PDFs are download-only under a restrictive content policy, not parsed or presented as verified evidence. HTTPS links reject embedded credentials and are never fetched. References do not automatically become approved scene inputs. File paths are generated server-side and confined to `storage/references/<conversation>/`. Data and downloads require workspace access.
+
+**Campaigns** produces exactly three editable editorial outlines from the topic, audience and objective, without inventing evidence or generating paid content. Each brief has a narration draft and its own conversation. Reopening a brief reuses the same conversation; subsequent brief edits append a snapshot without changing prior video scripts. These scaffolds are local rules, not a claim of fully automatic editorial generation.
+
+Run `pnpm db:migrate` for migration 002, then `pnpm test:workspace`. The offline integration covers concurrent retries, mismatched retry rejection, parent-version preservation, image validation, altered-file refusal, PDF download headers, links without fetching, three briefs and conversation/brief synchronization. No external fetch or credit-ledger change is allowed. Proof: `storage/qa/cam-workspace-proof.json`. The first-admin bootstrap reserves its private output file before issuing an invitation so a failed rerun cannot invalidate the existing link.
 
 ## Imported narration, production dossier and saved productions
 
@@ -35,7 +46,7 @@ Reviewed imports bypass both voice generation and paid transcription in the full
 
 **Production preparation** lists unreviewed inputs and placeholder scenes. **Download production dossier** gathers the script, declared audio provenance, timing, scene reviews and quote worksheet in a single JSON document. It verifies selected/approved files and cannot authorize spending. The rendered result contains an immutable attempt snapshot plus MP4, WAV, subtitles and review reports.
 
-**Productions** lists the local CAM Clay drafts and results, with script search, status filters and keyset pagination. A link opens the selected draft/result independently of the last-opened browser item; **New production** starts a clean draft. Download links only point to files present under local storage. This catalogue is disabled in live mode until account scoping exists. No cleanup policy, authentication or remote hosting is implied.
+**Productions** lists the local CAM Clay drafts and results, with script search, status filters and keyset pagination. A link opens the selected draft/result independently of the last-opened browser item; **New production** starts a clean draft. Download links only point to files present under local storage. This catalogue remains disabled in live mode. Authentication is implemented separately above; no cleanup policy or remote hosting is implied.
 
 ```bash
 pnpm test:narration
@@ -74,7 +85,7 @@ The October narrator, monster, effigy and CAM logo are pinned in `public/recipes
 
 Framing a new script now shows a persistent preparation card before confirmation: unchanged narration split into scenes, estimated timings, pinned character references, and the selected Bram voice with its existing provider sample. Unconfirmed drafts follow the current voice choice on reload; completed results retain their original preparation. The displayed duration uses the same timing calculation as the preview. The preparation remains visible with the result after reload and does not authorize generation.
 
-Still required before live production: editorial approval of new scene drafts, generated and approved keyframes and new Bram readings, validation of the protected provider transports with real outputs and cost receipts, a reviewed Bram reading with measured word timestamps, subtitle-face checks, full flash detection, automatic multi-format exports and a final price cap. Bram is the target selected on October 13; the historical Dylan recording is not renamed. Authentication, payments, hosting and the other two styles remain separate work.
+Still required before live production: editorial approval of new scene drafts, generated and approved keyframes and new Bram readings, validation of the protected provider transports with real outputs and cost receipts, a reviewed Bram reading with measured word timestamps, subtitle-face checks, full flash detection, automatic multi-format exports and a final price cap. Bram is the target selected on October 13; the historical Dylan recording is not renamed. Production account provisioning, payments, hosting and the other two styles remain separate work.
 
 ## New scripts with local scenes and a test voice
 

@@ -9,6 +9,7 @@ import type { Estimate } from "@/lib/pricing";
 type MediaSummary = { id: string; label: string; voice: string; duration: number; shots: number; source: "existing" };
 type Example = MediaSummary & { available: boolean; reason: string | null; script: string; voiceUrl: string | null };
 type Framing = {
+  conversationId?: string;
   preparation?: ConceptPreparation | null;
   simulation: boolean;
   media?: MediaSummary | null;
@@ -48,6 +49,7 @@ type SheetEntry = {
   notes?: string;
 };
 type JobState = {
+  conversationId?: string;
   draft?: Framing | null;
   preparation?: ConceptPreparation | null;
   id?: string;
@@ -261,6 +263,7 @@ export default function StudioPage() {
         </p>
       </div>
 
+      {(framing?.conversationId || job?.conversationId) && <a href={`/conversations/${framing?.conversationId || job?.conversationId}`} className="inline-block text-accent text-sm">Open conversation, references and video versions</a>}
       {/* Step 1: script + mode */}
       {example && !framing && !job && !restoring && <section className="bg-surface border border-accent/40 rounded-xl p-5 space-y-3">
         <div className="flex items-start justify-between gap-4">

@@ -2,7 +2,7 @@ process.env.PROVIDER_MODE = "dryrun"; process.env.BRAIN_MODE = "mock";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, open } from "node:fs/promises";
 import { eq, inArray } from "drizzle-orm";
 import { db, pool, schema } from "../src/db";
 import { acceptInvitation, authenticate, hashPassword, invite } from "../src/lib/accounts";
@@ -13,10 +13,12 @@ globalThis.fetch = (input, options) => { const url = new URL(typeof input === "s
 async function main() {
   const hash = await hashPassword(password);
   await mkdir(".next-access-test", {recursive:true});
-  await writeFile(".next-access-test/tsconfig.json", JSON.stringify({ extends:"../tsconfig.json", compilerOptions:{baseUrl:".."}, include:["../src/**/*.ts","../src/**/*.tsx","../next-env.d.ts"],exclude:["../node_modules"] }));
+  await writeFile("tsconfig.access-test.json", JSON.stringify({ extends:"./tsconfig.json", compilerOptions:{baseUrl:"."}, include:["src/**/*.ts","src/**/*.tsx","next-env.d.ts"],exclude:["node_modules"] }));
   const users = await db.insert(schema.users).values(emails.slice(0,2).map((email, index) => ({ email, name: "Offline access test", passwordHash: hash, role: index ? "client" : "admin" }))).returning();
+  await mkdir("storage/qa", { recursive: true });
+  const serverLog = await open("storage/qa/access-server.log", "w", 0o600);
   const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1", "--port", "3197"], {
-    env: { ...process.env, CAM_NEXT_DIR: ".next-access-test", CAM_TS_CONFIG: ".next-access-test/tsconfig.json", CAM_AUTH_MODE: "required", AUTH_SECRET: randomBytes(32).toString("hex"), AUTH_TRUST_HOST: "true", APP_URL: origin, AUTH_URL: origin, PROVIDER_MODE: "dryrun", BRAIN_MODE: "mock", NEXT_TELEMETRY_DISABLED: "1" }, stdio: "ignore",
+    env: { ...process.env, CAM_NEXT_DIR: ".next-access-test", CAM_TS_CONFIG: "tsconfig.access-test.json", CAM_AUTH_MODE: "required", AUTH_SECRET: randomBytes(32).toString("hex"), AUTH_TRUST_HOST: "true", APP_URL: origin, AUTH_URL: origin, PROVIDER_MODE: "dryrun", BRAIN_MODE: "mock", NEXT_TELEMETRY_DISABLED: "1" }, stdio: ["ignore", serverLog.fd, serverLog.fd],
   });
   async function client() {
     const cookies = new Map<string,string>();
@@ -31,7 +33,7 @@ async function main() {
   }
   try {
     let ready = false;
-    for (let tries=0;tries<90;tries++) { if (server.exitCode !== null) throw new Error("Access-test server stopped"); try { const response = await fetch(origin + "/api/auth/csrf"); if (response.ok) { ready=true;break; } } catch {} await new Promise(r => setTimeout(r,500)); }
+    for (let tries=0;tries<90;tries++) { if (server.exitCode !== null) throw new Error("Access-test server stopped"); try { const response = await fetch(origin + "/api/auth/csrf", { signal: AbortSignal.timeout(3000) }); if (response.ok) { ready=true;break; } } catch {} await new Promise(r => setTimeout(r,500)); }
     assert(ready, "Access-test server ready"); const anonymous = await client(), admin = await client(), user = await client();
     assert.equal((await anonymous.request("/api/jobs")).status,401);
     assert.equal((await anonymous.request("/api/media/outputs/missing.mp4")).status,401);
@@ -59,6 +61,7 @@ async function main() {
     await mkdir("storage/qa",{recursive:true}); await writeFile("storage/qa/cam-access-proof.json",JSON.stringify(proof,null,2)); console.log(JSON.stringify(proof));
   } finally {
     server.kill("SIGTERM"); await new Promise<void>(resolve=> { if (server.exitCode !== null) resolve(); else { server.once("exit",()=>resolve()); setTimeout(()=>{server.kill("SIGKILL");resolve();},5000).unref(); } });
+    await serverLog.close();
     await db.delete(schema.invitations).where(inArray(schema.invitations.email,emails)); await db.delete(schema.users).where(inArray(schema.users.email,emails)); await pool.end();
   }
 }

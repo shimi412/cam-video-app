@@ -9,6 +9,7 @@ import {
   index,
   boolean,
   integer,
+  unique,
 } from "drizzle-orm/pg-core";
 
 export const jobStatus = pgEnum("job_status", [
@@ -143,3 +144,24 @@ export const invitations = pgTable("app_invitations", {
 export const authLimits = pgTable("auth_limits", {
   key: text("key").primaryKey(), count: integer("count").notNull(), expiresAt: timestamp("expires_at").notNull(),
 });
+
+/** References belong to the conversation, never implicitly to a generated scene. */
+export const attachments = pgTable("conversation_attachments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  label: text("label").notNull(), kind: text("kind").notNull(),
+  file: text("file"), sha256: text("sha256"), size: integer("size"), url: text("url"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [index("attachments_conversation_idx").on(t.conversationId)]);
+
+export const campaigns = pgTable("campaigns", {
+  id: uuid("id").primaryKey().defaultRandom(), title: text("title").notNull(),
+  topic: text("topic").notNull(), audience: text("audience").notNull(), objective: text("objective").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export const campaignBriefs = pgTable("campaign_briefs", {
+  id: uuid("id").primaryKey().defaultRandom(), campaignId: uuid("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), title: text("title").notNull(), angle: text("angle").notNull(),
+  script: text("script").notNull().default(""), conversationId: uuid("conversation_id").references(() => conversations.id),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => [unique("campaign_briefs_campaign_id_position_key").on(t.campaignId, t.position)]);

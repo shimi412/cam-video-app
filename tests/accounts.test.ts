@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { hashPassword, verifyPassword } from "../src/lib/accounts";
-import { allowedOrigin, localAccess, safeReturn } from "../src/lib/auth-policy";
+import { allowedOrigin, localAccess, localRequestOrigin, safeReturn } from "../src/lib/auth-policy";
 afterEach(() => vi.unstubAllEnvs());
 describe("Workspace access boundaries", () => {
   it("local access cannot open production or a non-loopback host", () => {
@@ -18,6 +18,16 @@ describe("Workspace access boundaries", () => {
   });
   it("return paths cannot redirect off site", () => {
     expect(safeReturn("//evil.example")).toBe("/"); expect(safeReturn("/\\evil.example")).toBe("/"); expect(safeReturn("https://evil.example")).toBe("/"); expect(safeReturn("/productions?q=test")).toBe("/productions?q=test");
+  });
+  it("loopback previews use their own origin even when APP_URL points to deployment", () => {
+    vi.stubEnv("CAM_AUTH_MODE", "local"); vi.stubEnv("PROVIDER_MODE", "dryrun"); vi.stubEnv("NODE_ENV", "development"); vi.stubEnv("APP_URL", "https://cam.example");
+    const write = (origin: string) => new Request("http://127.0.0.1:3106/api/campaigns", { method: "POST", headers: { origin } });
+    expect(allowedOrigin(write("http://127.0.0.1:3106"))).toBe(true);
+    expect(allowedOrigin(write("http://127.0.0.1:3107"))).toBe(false);
+    expect(allowedOrigin(write("https://cam.example"))).toBe(false);
+    const normalized = new Request("http://localhost:3106/api/test", { method: "POST", headers: { host: "127.0.0.1:3106", origin: "http://127.0.0.1:3106" } });
+    expect(allowedOrigin(normalized)).toBe(true);
+    expect(localRequestOrigin(new Request("http://localhost:3106/api/test", { headers: { host: "external.example" } }))).toBe(null);
   });
   it("salted passwords verify only the original password", async () => {
     const password = "offline-test-password-only", one = await hashPassword(password), two = await hashPassword(password);

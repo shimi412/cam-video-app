@@ -26,7 +26,8 @@
     "test:production-history": "tsx --env-file-if-exists=.env scripts/check-production-history.ts",
     "test:access": "tsx --env-file-if-exists=.env scripts/check-access.ts",
     "dryrun": "tsx --env-file-if-exists=.env scripts/dryrun.ts",
-    "dev:preview": "CAM_AUTH_MODE=local PROVIDER_MODE=dryrun BRAIN_MODE=mock next dev --hostname 127.0.0.1"
+    "dev:preview": "CAM_AUTH_MODE=local PROVIDER_MODE=dryrun BRAIN_MODE=mock next dev --hostname 127.0.0.1",
+    "test:workspace": "tsx --env-file-if-exists=.env scripts/check-workspace.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.39",

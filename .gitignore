@@ -49,3 +49,5 @@ storage/
 # env
 .env
 !.env.example
+
+/tsconfig.access-test.json

@@ -1,0 +1,94 @@
+process.env.PROVIDER_MODE = "dryrun";
+process.env.BRAIN_MODE = "mock";
+process.env.CAM_AUTH_MODE = "local";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import sharp from "sharp";
+import { eq, inArray, sql } from "drizzle-orm";
+import { db, pool, schema } from "../src/db";
+import { POST as createConversation } from "../src/app/api/conversations/route";
+import { POST as message } from "../src/app/api/conversations/[id]/messages/route";
+import { GET as conversation } from "../src/app/api/conversations/[id]/route";
+import { POST as attachment } from "../src/app/api/conversations/[id]/attachments/route";
+import { GET as download } from "../src/app/api/attachments/[id]/route";
+import { POST as production } from "../src/app/api/productions/route";
+import { POST as createCampaign } from "../src/app/api/campaigns/route";
+import { GET as campaign } from "../src/app/api/campaigns/[id]/route";
+import { PATCH as editBrief, POST as startBrief } from "../src/app/api/campaigns/[id]/briefs/[briefId]/route";
+import { getBalanceUsd } from "../src/lib/credits";
+
+const conversationId = randomUUID(), campaignId = randomUUID(), script = "Read the full passage. Check the original source before sharing a claim.";
+const conversationIds = [conversationId], jobIds: string[] = [];
+const context = (id: string) => ({ params: Promise.resolve({ id }) });
+const request = (body: unknown, url = "http://localhost/api/test", method = "POST") => new Request(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+globalThis.fetch = async () => { throw new Error("External fetch forbidden during the offline workspace check."); };
+async function body(response: Response, status = 200) {
+  const data = await response.json(); assert.equal(response.status, status, JSON.stringify(data)); return data;
+}
+async function main() {
+  const balance = await getBalanceUsd(), [{ count: calls }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.apiCalls);
+  try {
+    const create = () => createConversation(request({ id: conversationId, title: "Offline workspace check" }));
+    const copies = await Promise.all([create(), create()]);
+    assert.equal((await body(copies[0])).id, (await body(copies[1])).id);
+    await body(await createConversation(request({ id: conversationId, title: "Changed duplicate" })), 409);
+    const note = { id: randomUUID(), text: "Preserve source documents; this is an offline test." };
+    await Promise.all([message(request(note), context(conversationId)), message(request(note), context(conversationId))]).then(async (values) => { for (const response of values) await body(response); });
+    await body(await message(request({ ...note, text: "Changed duplicate" }), context(conversationId)), 409);
+    let view = await body(await conversation(new Request("http://localhost"), context(conversationId)));
+    assert.equal(view.messages.length, 2, "Retry must not duplicate the user note or acknowledgement");
+    await body(await attachment(request({ label: "Invalid URL", url: "javascript:alert(1)" }), context(conversationId)), 400);
+    await body(await attachment(request({ label: "Credentials URL", url: "https://user:secret@example.com" }), context(conversationId)), 400);
+    await body(await attachment(request({ label: "Source link", url: "https://example.com/reference" }), context(conversationId)));
+    const image = await sharp({ create: { width: 40, height: 60, channels: 3, background: "#ffffff" } }).png().toBuffer();
+    const upload = (bytes: Buffer, label: string) => attachment(new Request(`http://localhost/api/test?${new URLSearchParams({ label })}`, { method: "POST", body: new Uint8Array(bytes) }), context(conversationId));
+    const picture = await body(await upload(image, "Test reference.png"));
+    const file = await download(new Request("http://localhost"), context(picture.id)); assert.equal(file.status, 200); assert.equal(file.headers.get("content-type"), "image/png");
+    await body(await upload(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'/>"), "disallowed.svg"), 400);
+    await body(await upload(Buffer.from("not a PDF"), "fake.pdf"), 400);
+    const pdf = await body(await upload(Buffer.from("%PDF-1.4\n% offline download fixture\n%%EOF"), "Document.pdf"));
+    const pdfResponse = await download(new Request("http://localhost"), context(pdf.id)); assert.match(pdfResponse.headers.get("content-disposition")!, /^attachment;/); assert.match(pdfResponse.headers.get("content-security-policy")!, /sandbox/);
+    await writeFile(path.join("storage/references", conversationId, `${picture.id}.png`), "changed");
+    await body(await download(new Request("http://localhost"), context(picture.id)), 409);
+    const jobId = randomUUID(); jobIds.push(jobId);
+    const draftRequest = { script, conversationId, requestId: jobId, mode: "auto", overrides: { aspectRatio: "9:16" } };
+    const drafts = await Promise.all([production(request(draftRequest)), production(request(draftRequest))]);
+    for (const result of drafts) assert.equal((await body(result)).jobId, jobId);
+    await body(await production(request({ ...draftRequest, script: script + " A changed instruction." })), 409);
+    const [original] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, jobId));
+    const derivedId = randomUUID(); jobIds.push(derivedId);
+    const derived = await body(await production(request({ ...draftRequest, requestId: derivedId, parentJobId: jobId, overrides: { aspectRatio: "1:1" } })));
+    assert.equal(derived.params.aspectRatio, "1:1");
+    assert.deepEqual((await db.select().from(schema.jobs).where(eq(schema.jobs.id, jobId)))[0], original, "A new version cannot mutate its source");
+    await body(await production(request({ ...draftRequest, requestId: randomUUID(), parentJobId: randomUUID() })), 400);
+    view = await body(await conversation(new Request("http://localhost"), context(conversationId)));
+    assert.equal(view.jobs.length, 2); assert.equal(view.attachments.length, 3); assert.equal(view.messages.length, 6);
+    const campaignInput = { id: campaignId, title: "Offline campaign", topic: "Source verification before sharing online", audience: "Adult readers", objective: "Read the original source" };
+    for (const response of await Promise.all([createCampaign(request(campaignInput)), createCampaign(request(campaignInput))])) await body(response);
+    await body(await createCampaign(request({ ...campaignInput, title: "Changed duplicate" })), 409);
+    const campaignView = await body(await campaign(new Request("http://localhost"), context(campaignId)));
+    assert.equal(campaignView.briefs.length, 3);
+    const brief = campaignView.briefs[0], briefContext = { params: Promise.resolve({ id: campaignId, briefId: brief.id }) };
+    await body(await editBrief(request({ title: brief.title, angle: brief.angle, script }, undefined, "PATCH"), briefContext));
+    const opened = await Promise.all([startBrief(request({}), briefContext), startBrief(request({}), briefContext)]);
+    const first = await body(opened[0]), second = await body(opened[1]); conversationIds.push(first.conversationId);
+    assert.equal(first.conversationId, second.conversationId, "Opening a brief twice must reuse its conversation");
+    const changed = { title: brief.title, angle: brief.angle + " Add the original context.", script };
+    await body(await editBrief(request(changed, undefined, "PATCH"), briefContext));
+    await body(await editBrief(request(changed, undefined, "PATCH"), briefContext));
+    const briefView = await body(await conversation(new Request("http://localhost"), context(first.conversationId)));
+    assert.equal(briefView.messages.length, 2, "Save retries must not duplicate the updated brief"); assert.equal(briefView.messages.at(-1).content.script, script);
+    assert.equal(await getBalanceUsd(), balance); assert.equal((await db.select({ count: sql<number>`count(*)::int` }).from(schema.apiCalls))[0].count, calls);
+    const proof = { status: "passed", conversationsResume: true, concurrentMessageAndDraftRetries: true, changedRetryRejected: true, linkedVersionsPreserveOriginal: true, referenceLinksNotFetched: true, rasterValidation: true, fileIntegrityChecked: true, pdfDownloadOnly: true, threeCampaignBriefs: true, campaignConversationReused: true, briefUpdatesPreserveExistingScripts: true, externalRequests: 0, creditsSpent: 0, paidTrials: 0 };
+    await mkdir("storage/qa", { recursive: true }); await writeFile("storage/qa/cam-workspace-proof.json", JSON.stringify(proof, null, 2)); console.log(JSON.stringify(proof));
+  } finally {
+    await db.delete(schema.campaigns).where(eq(schema.campaigns.id, campaignId));
+    if (jobIds.length) await db.delete(schema.jobs).where(inArray(schema.jobs.id, jobIds));
+    await db.delete(schema.conversations).where(inArray(schema.conversations.id, conversationIds));
+    await Promise.all(conversationIds.map((id) => rm(path.join("storage/references", id), { recursive: true, force: true })));
+    await pool.end();
+  }
+}
+main().catch((error) => { console.error(error instanceof Error ? error.message : "Workspace check failed."); process.exitCode = 1; });
