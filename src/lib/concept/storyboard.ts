@@ -1,6 +1,7 @@
 import type { Recipe, AspectRatio } from "../recipes";
 import { buildImagePrompt, buildMotionPrompt } from "../recipes";
-import { BoardSchema, type ConceptBoard } from "./types";
+import { BoardSchema, type ConceptBoard, type SceneDirection } from "./types";
+import { suggestDirection } from "./direction";
 import { conceptPhrases, estimatedSpeechSeconds, normalizedText } from "./text";
 import eyal from "./eyal-phrases.json";
 
@@ -28,22 +29,26 @@ export function assertNarrationPreserved(script: string, narrations: string[]): 
   }
 }
 
-/** Free planning uses the approved example or explicit neutral placeholders. No hidden LLM call. */
-export function planConcept(script: string, recipe: Recipe, aspect: AspectRatio): ConceptBoard {
+/** Free editorial suggestions. Review is mandatory; no hidden LLM or media call. */
+export function planConcept(script: string, recipe: Recipe, aspect: AspectRatio, directions: Record<string, SceneDirection> = {}): ConceptBoard {
   const isExample = normalizedText(script) === normalizedText(eyal.join(" "));
   const phrases = isExample ? eyal : conceptPhrases(script);
+  if (Object.keys(directions).some((key) => !/^[1-9]\d*$/.test(key) || Number(key) > phrases.length)) throw new Error("Unknown scene direction.");
   const board = BoardSchema.parse({ shots: phrases.map((narration, i) => ({
+    ...(directions[i + 1] ?? (!isExample ? suggestDirection(narration) : {
+      scene: EYAL_SCENES[i],
+      motion: i === 12 ? "Continuous single take. The board slowly reshapes into an empty smartphone screen. Reach the final shape before the clip ends." : "Continuous single take. Subtle breathing and one restrained gesture towards the scene's main object. Static camera, no zoom, no cuts.",
+      references: i >= 1 && i <= 7 ? (i <= 3 ? ["narrator", "monster", "effigy"] : ["narrator", "monster"]) : ["narrator"],
+      endScene: i === 12 ? "Same locked narrator, stage, light and camera; the presentation board is now a clay smartphone with a blank screen." : null,
+      overlay: ({ 0: "“THE TALMUD PERMITS PEDOPHILIA.”", 4: "HERE’S HOW THE LIE WORKS.", 11: "A FABRICATED CLAIM", 13: "EXPOSE IT." } as Record<number, string>)[i] ?? null,
+      strike: i === 0,
+    })),
+    // Directions can never replace narration, including persisted legacy input.
     narration,
-    scene: isExample ? EYAL_SCENES[i] : "The locked clay narrator beside a closed book on a warm clay stage. Neutral planning placeholder; a director must stage this sentence before generation.",
-    motion: isExample && i === 12 ? "Continuous single take. The board slowly reshapes into an empty smartphone screen. Reach the final shape before the clip ends." : "Continuous single take. Subtle breathing and one restrained gesture towards the scene's main object. Static camera, no zoom, no cuts.",
-    references: isExample && i >= 1 && i <= 7 ? (i <= 3 ? ["narrator", "monster", "effigy"] : ["narrator", "monster"]) : ["narrator"],
-    endScene: isExample && i === 12 ? "Same locked narrator, stage, light and camera; the presentation board is now a clay smartphone with a blank screen." : null,
-    overlay: isExample ? ({ 0: "“THE TALMUD PERMITS PEDOPHILIA.”", 4: "HERE’S HOW THE LIE WORKS.", 11: "A FABRICATED CLAIM", 13: "EXPOSE IT." } as Record<number, string>)[i] ?? null : null,
-    strike: isExample && i === 0,
   })) });
   assertNarrationPreserved(script, board.shots.map((s) => s.narration));
   return {
-    source: isExample ? "validated-example" : "offline-placeholder",
+    source: Object.keys(directions).length ? "edited-draft" : isExample ? "validated-example" : "offline-draft",
     requiresReview: true,
     shots: board.shots.map((shot, index) => ({
       ...shot, index: index + 1,

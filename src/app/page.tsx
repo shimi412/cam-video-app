@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PreparationReview } from "./preparation-review";
 import type { ConceptPreparation } from "@/lib/concept/preparation";
+import type { Estimate } from "@/lib/pricing";
 
-type EstimateLine = { label: string; quantity: number; billedUsd: number };
 type MediaSummary = { id: string; label: string; voice: string; duration: number; shots: number; source: "existing" };
 type Example = MediaSummary & { available: boolean; reason: string | null; script: string; voiceUrl: string | null };
 type Framing = {
@@ -23,7 +23,7 @@ type Framing = {
     shotCount: number;
   };
   template: { slug: string; name: string; description: string } | null;
-  estimate: { lines: EstimateLine[]; totalBilledUsd: number };
+  estimate: Estimate;
   balance: number;
   canConfirm: boolean;
 };
@@ -436,8 +436,9 @@ export default function StudioPage() {
                       <td className="text-right font-mono">${l.billedUsd.toFixed(2)}</td>
                     </tr>
                   ))}
+                  {framing.estimate.unpriced?.map((label) => <tr key={label}><td className="text-muted py-0.5">{label}</td><td className="text-right">Pending</td></tr>)}
                   <tr className="border-t border-line">
-                    <td className="pt-2 font-medium">Estimated total</td>
+                    <td className="pt-2 font-medium">{framing.estimate.unpriced?.length ? "Provisional subtotal · voice excluded" : "Estimated total"}</td>
                     <td className="pt-2 text-right font-mono font-semibold text-accent">
                       ${framing.estimate.totalBilledUsd.toFixed(2)}
                     </td>

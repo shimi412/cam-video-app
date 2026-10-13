@@ -17,6 +17,9 @@ import { localNarration } from "./local-voice";
 import { LOCAL_VOICES, PreviewVoiceSchema } from "./preview-inputs";
 import { stageSceneMedia } from "./imported-media";
 import { prepareConcept } from "./preparation";
+import { generationPlan } from "./generation-plan";
+import { CAM_VOICE } from "./cam-voice";
+import { rehearseGeneration } from "./rehearsal";
 
 export async function produceConcept(input: {
   jobId: string; script: string; params: ProductionParams; recipe: Recipe;
@@ -33,7 +36,7 @@ export async function produceConcept(input: {
   await mkdir(path.dirname(outputPath), { recursive: true });
   await setStep("storyboard", "running");
   const references = await lockedAssets();
-  const board = planConcept(script, recipe, params.aspectRatio);
+  const board = planConcept(script, recipe, params.aspectRatio, params.sceneDirections);
   await writeFile(path.join(root, "storyboard.json"), JSON.stringify(board, null, 2));
   await writeFile(path.join(root, "references.json"), JSON.stringify(references.map(({ id, path: assetPath, sha256 }) => ({ id, path: assetPath, sha256 })), null, 2));
   await setStep("storyboard", "done");
@@ -44,9 +47,13 @@ export async function produceConcept(input: {
     directory: input.checkpointDir ?? path.join(root, "checkpoints"), assertOwned: input.assertOwned ?? (async () => {}),
   });
   await writeFile(path.join(root, "timing.json"), JSON.stringify(timing, null, 2));
+  const plan = generationPlan(script, params, board, timing, references);
+  await writeFile(path.join(root, "generation-plan.json"), JSON.stringify(plan, null, 2));
+  const rehearsal = await rehearseGeneration(plan, path.join(input.checkpointDir ?? path.join(root, "checkpoints"), "simulated-requests"), input.assertOwned ?? (async () => {}));
+  await writeFile(path.join(root, "generation-rehearsal.json"), JSON.stringify(rehearsal, null, 2));
   if (voice === "silent") await silentVoice(path.join(root, "assets/narration.wav"), timing.duration);
   await setStep("voice", "done");
-  const sheet: SheetEntry[] = [{ step: 1, kind: "tts", falModel: voice === "silent" ? "fal-ai/elevenlabs/tts/eleven-v3" : "local/macos-say", higgsfieldEquivalent: voice === "silent" ? "ElevenLabs voice-over (planned)" : `${LOCAL_VOICES[voice].name} · local test voice`, prompt: script, durationSeconds: timing.duration, notes: voice === "silent" ? "Planning only. Dylan voice ID remains unverified. Preview audio is silent; timings are estimates." : "Offline Mac speech, zero cost. No Dylan identity or final voice approval. Phrase durations measured; word positions approximate." }];
+  const sheet: SheetEntry[] = [{ step: 1, kind: "tts", falModel: voice === "silent" ? "higgsfield/seed_audio (no fal equivalent verified)" : "local/macos-say", higgsfieldEquivalent: voice === "silent" ? "Dylan · Seed Audio · planned" : `${LOCAL_VOICES[voice].name} · local test voice`, prompt: script, durationSeconds: timing.duration, notes: voice === "silent" ? `Dylan preset ${CAM_VOICE.voiceId} verified. New reading and pacing require review. Preview silent; no request sent.` : "Offline Mac speech, zero cost. No Dylan identity or final voice approval. Phrase durations measured; word positions approximate." }];
   await setStep("keyframes", "running");
   for (const shot of board.shots) {
     if (params.sceneMedia?.[shot.index]) {
@@ -80,9 +87,14 @@ export async function produceConcept(input: {
   await input.meter("render", { filePath: outputPath, realCostUsd: 0, provider: "hyperframes", model: "concept-local-preview", meta: { previewVoice: voice, importedScenes: Object.keys(staged).length, estimatedWordTiming: true, measuredSceneTiming: voice !== "silent", visualApproval: false } });
   await setStep("montage", "done");
   const url = (file: string) => `/api/media/${path.relative(path.join(process.cwd(), "storage"), root).split(path.sep).join("/")}/${file}`;
+  const preparation = await prepareConcept(script, params, recipe, jobId, voice === "silent" ? undefined : timing);
+  // Results link to the exact measured snapshot used by this attempt.
+  preparation.generation.downloadUrl = url("generation-plan.json");
   return { outputPath, renderReused: rendering.reused, durationSeconds: timing.duration, board, sheet, sheetUrl, media: null,
-    preparation: await prepareConcept(script, params, recipe, jobId, voice === "silent" ? undefined : timing), artifacts: [
+    preparation, artifacts: [
     { label: "Storyboard", url: url("storyboard.json") },
+    { label: "Generation plan (not submitted)", url: url("generation-plan.json") },
+    { label: "Pipeline rehearsal (simulation)", url: url("generation-rehearsal.json") },
     { label: "Shot contact sheet", url: url("controls/shots.png") },
     ...(board.shots.length > 1 ? [{ label: "Transition contact sheet", url: url("controls/transitions.png") }] : []),
     { label: "Timing", url: url("timing.json") }, { label: "Quality checks", url: url("controls/report.json") },

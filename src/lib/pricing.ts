@@ -15,6 +15,7 @@ export type EstimateLine = {
 
 export type Estimate = {
   lines: EstimateLine[];
+  unpriced?: string[];
   totalRealUsd: number;
   totalBilledUsd: number;
 };
@@ -51,12 +52,12 @@ export function estimateProduction(params: ProductionParams, marginMultiplier: n
   if (params.concept) {
     push("Images (including possible end frames)", params.concept.imageCount, UNIT.imageUsd);
     push("Animation (seconds)", params.concept.videoSeconds, UNIT.kling3UsdPerSecond);
-    push("Voice-over", 1, characterCount / 1000 * UNIT.elevenV3UsdPer1000Chars);
+    // Dylan is a Higgsfield Seed Audio preset. An ElevenLabs price is not its quote.
     const media = lines.reduce((sum, line) => sum + line.quantity * line.realUnitUsd, 0);
     push("Allowance for retries (30%)", 1, media * .3);
     // Budget allowance, not a claimed unit price. Exact metering is not yet wired.
     push("Planning, transcription & rendering allowance", 1, 1);
-    return { lines, totalRealUsd: Number(lines.reduce((sum,l) => sum+l.quantity*l.realUnitUsd,0).toFixed(4)), totalBilledUsd: Number(lines.reduce((sum,l)=>sum+l.billedUsd,0).toFixed(2)) };
+    return { lines, unpriced: ["Dylan voice · quote required"], totalRealUsd: Number(lines.reduce((sum,l) => sum+l.quantity*l.realUnitUsd,0).toFixed(4)), totalBilledUsd: Number(lines.reduce((sum,l)=>sum+l.billedUsd,0).toFixed(2)) };
   }
 
   if (family === "whiteboard") {

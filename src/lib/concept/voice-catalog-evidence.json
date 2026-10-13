@@ -1,0 +1,20 @@
+{
+  "verifiedAt": "2026-10-13",
+  "sources": [
+    "Higgsfield MCP list_voices (read-only)",
+    "Higgsfield MCP models_explore seed_audio (read-only)",
+    "storage/cam-oct05-v2/higgsfield-media.json"
+  ],
+  "voice": {
+    "name": "Dylan",
+    "voice_id": "b847bc29-f184-583a-8ad9-d1f1e16d1a60",
+    "voice_type": "preset",
+    "gender": "male"
+  },
+  "model": {
+    "id": "seed_audio",
+    "name": "Seed Audio 1.0",
+    "provider": "ByteDance"
+  },
+  "note": "Identity match only. No audio generation submitted, no new reading approved. Candidate rate 22 comes from the existing CAM demo manifest; that recording also includes local pause processing."
+}

@@ -11,10 +11,13 @@ import { prepareConcept } from "@/lib/concept/preparation";
 import { availableLocalVoices } from "@/lib/concept/local-voice";
 import { PreviewVoiceSchema, mediaFile, type SceneMedia } from "@/lib/concept/preview-inputs";
 import { importSceneMedia, MAX_MEDIA_BYTES } from "@/lib/concept/imported-media";
+import { DirectionSchema } from "@/lib/concept/types";
 
 const settingsSchema = z.union([
   z.object({ previewVoice: PreviewVoiceSchema }).strict(),
   z.object({ removeScene: z.number().int().min(1).max(36) }).strict(),
+  z.object({ scene: z.number().int().min(1).max(36), direction: DirectionSchema }).strict(),
+  z.object({ resetDirection: z.number().int().min(1).max(36) }).strict(),
 ]);
 
 async function boundedBody(request: Request, limit: number) {
@@ -50,12 +53,19 @@ async function update(request: Request, context: { params: Promise<{ id: string 
     }
     const preparation = await prepareConcept(job.script, params, recipe, id);
     if (request.method === "PATCH") {
-      const parsed = settingsSchema.safeParse(JSON.parse((await boundedBody(request, 2048)).toString()));
-      if (!parsed.success) throw new Error("Choose a local preview voice or a scene to remove.");
+      const parsed = settingsSchema.safeParse(JSON.parse((await boundedBody(request, 32768)).toString()));
+      if (!parsed.success) throw new Error("Invalid preparation settings.");
       if ("previewVoice" in parsed.data) {
         const voice = parsed.data.previewVoice;
         if (voice !== "silent" && !(await availableLocalVoices()).includes(voice)) throw new Error("This Mac test voice is unavailable.");
         params.previewVoice = voice;
+      } else if ("scene" in parsed.data) {
+        const { scene, direction } = parsed.data;
+        if (!preparation.shots.some((shot) => shot.index === scene)) throw new Error("Unknown scene.");
+        params.sceneDirections = { ...params.sceneDirections, [scene]: direction };
+      } else if ("resetDirection" in parsed.data) {
+        params.sceneDirections = { ...params.sceneDirections };
+        delete params.sceneDirections[parsed.data.resetDirection];
       } else {
         params.sceneMedia = { ...params.sceneMedia };
         delete params.sceneMedia[parsed.data.removeScene];
@@ -76,7 +86,7 @@ async function update(request: Request, context: { params: Promise<{ id: string 
     saved = true;
     return Response.json({ preparation: next });
   } catch {
-    return Response.json({ error: "Could not save this preparation. Use an installed test voice, a still PNG/JPEG/WebP, or an MP4 up to 60 seconds and 32 MB." }, { status: 400 });
+    return Response.json({ error: "Could not save. Check the scene number and direction fields, or use an installed test voice and a supported visual under 32 MB." }, { status: 400 });
   } finally {
     try { if (imported && !saved) await rm(path.join(process.cwd(), "storage/imports", id, mediaFile(imported)), { force: true }); }
     finally { await lock.release(); }

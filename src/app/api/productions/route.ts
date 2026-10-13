@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { db, schema } from "@/db";
 import { frameProduction } from "@/lib/brain-llm";
 import { estimateProduction } from "@/lib/pricing";
@@ -56,9 +57,10 @@ export async function POST(request: Request) {
     analysis.reason = "Reuse the existing CAM film with its recorded Dylan voice and 12 animated clips. Local montage, no new generation.";
   }
   const recipe = getActiveRecipe(params.templateSlug)!;
+  const jobId = randomUUID();
   let preparation = null;
   if (recipe.concept && previewSource === "planning") {
-    try { preparation = await prepareConcept(script, params, recipe); }
+    try { preparation = await prepareConcept(script, params, recipe, jobId); }
     catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to prepare this script." }, { status: 409 }); }
     params.durationSeconds = preparation.durationSeconds;
     analysis.durationSeconds = preparation.durationSeconds;
@@ -82,7 +84,7 @@ export async function POST(request: Request) {
     template: template ? { slug: template.slug, name: template.name, description: template.description } : null,
     estimate, balance, brain, simulation: isSimulation(),
     media: previewSource === "existing" ? existingMediaSummary() : null,
-    canConfirm: isSimulation() || balance >= estimate.totalBilledUsd,
+    canConfirm: isSimulation() || (!estimate.unpriced?.length && balance >= estimate.totalBilledUsd),
   };
 
   await db.insert(schema.messages).values({
@@ -94,6 +96,7 @@ export async function POST(request: Request) {
   const [job] = await db
     .insert(schema.jobs)
     .values({
+      id: jobId,
       conversationId: conversation.id,
       templateId: template?.id,
       status: "estimated",
@@ -121,6 +124,6 @@ export async function POST(request: Request) {
     simulation: isSimulation(),
     preparation,
     media: previewSource === "existing" ? existingMediaSummary() : null,
-    canConfirm: isSimulation() || balance >= estimate.totalBilledUsd,
+    canConfirm: isSimulation() || (!estimate.unpriced?.length && balance >= estimate.totalBilledUsd),
   });
 }

@@ -24,7 +24,7 @@ it("preserves the approved 14 beats and the board-to-phone end frame", () => {
 it("does not apply Eyal's scenes to an unrelated script, or silently lose long sentences", () => {
   const script = "Evidence helps people understand an issue. "+Array(65).fill("context").join(" ")+".";
   const board = planConcept(script, getRecipe("cam-clay")!, "1:1");
-  expect(board.source).toBe("offline-placeholder");
+  expect(board.source).toBe("offline-draft");
   expect(board.shots.every((s)=>s.overlay===null)).toBe(true);
   expect(normalizedText(board.shots.map((s)=>s.narration).join(" "))).toBe(normalizedText(script));
 });

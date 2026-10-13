@@ -15,6 +15,7 @@ import {
 } from "./recipes";
 import { conceptPhrases, estimatedSpeechSeconds } from "./concept/text";
 import type { PreviewVoice, SceneMedia } from "./concept/preview-inputs";
+import type { SceneDirection } from "./concept/types";
 
 export type ProductionParams = {
   templateSlug: string;
@@ -36,6 +37,7 @@ export type ProductionParams = {
   previewSource?: "planning" | "existing";
   previewVoice?: PreviewVoice;
   sceneMedia?: Record<string, SceneMedia>;
+  sceneDirections?: Record<string, SceneDirection>;
 };
 
 export type Overrides = Partial<

@@ -17,6 +17,9 @@ import { acquireJobLock } from "../src/lib/job-lock";
 import { runJob } from "../src/lib/runner";
 import type { ConceptPreparation } from "../src/lib/concept/preparation";
 import { normalizedText } from "../src/lib/concept/text";
+import { GET as exportPlan } from "../src/app/api/jobs/[id]/generation-plan/route";
+import { GET as voiceReference } from "../src/app/api/cam-voice/route";
+import { suggestDirection } from "../src/lib/concept/direction";
 
 const exec = promisify(execFile);
 let networkAttempts = 0;
@@ -29,10 +32,23 @@ async function main() {
   const framed = await frame(new Request("http://localhost/api/productions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, mode: "auto", overrides: { aspectRatio: "16:9" } }) }));
   assert.equal(framed.status, 200);
   const draft = await framed.json(), id = draft.jobId;
+  assert.equal(draft.preparation.generation.downloadUrl, `/api/jobs/${id}/generation-plan`);
+  assert(draft.estimate.unpriced.includes("Dylan voice · quote required"));
   const context = { params: Promise.resolve({ id }) };
   const settings = (body: unknown) => PATCH(new Request("http://localhost/preparation", { method: "PATCH", body: JSON.stringify(body) }), context);
   assert.equal((await settings({ previewVoice: "local-en" })).status, 200);
   assert.equal((await settings({ previewVoice: "fal/dylan" })).status, 400);
+  const beforePlan = await (await exportPlan(new Request("http://localhost/plan"), context)).json();
+  const direction = { ...suggestDirection("context"), overlay: "CHECK THE CONTEXT", endScene: "The paper strip now sits inside the open book, with the narrator in the same pose." };
+  assert.equal((await settings({ scene: 3, direction: { ...direction, narration: "Changed words" } })).status, 400);
+  assert.equal((await settings({ scene: 36, direction })).status, 400);
+  assert.equal((await settings({ scene: 3, direction })).status, 200);
+  const afterPlan = await (await exportPlan(new Request("http://localhost/plan"), context)).json();
+  assert.notEqual(afterPlan.fingerprint, beforePlan.fingerprint);
+  assert.equal(afterPlan.operations[0].input.voice_id, "b847bc29-f184-583a-8ad9-d1f1e16d1a60");
+  assert(afterPlan.operations.some((op: { id: string }) => op.id === "scene-3-end"));
+  const recording = await voiceReference(new Request("http://localhost/voice", { headers: { range: "bytes=0-43" } }));
+  assert.equal(recording.status, 206); assert.equal((await recording.arrayBuffer()).byteLength, 44);
   const send = async (scene: number, bytes: Buffer, name: string) => {
     const form = new FormData(); form.set("scene", String(scene)); form.set("file", new File([new Uint8Array(bytes)], name));
     return upload(new Request("http://localhost/preparation", { method: "POST", body: form }), context);
@@ -49,6 +65,8 @@ async function main() {
   assert.equal((await send(1, image, "image.png")).status, 200);
   const restored = await (await readJob(new Request("http://localhost/job"), context)).json();
   assert.equal(restored.draft.preparation.voice.preview, "local-en");
+  assert.equal(restored.draft.preparation.shots[2].scene, direction.scene);
+  assert.equal(restored.draft.preparation.shots[2].overlay, direction.overlay);
   assert.equal(restored.draft.preparation.shots.filter((s: { media: unknown }) => s.media).length, 2);
   const editing = await acquireJobLock(id);
   assert(editing);
@@ -59,6 +77,7 @@ async function main() {
   assert.equal(JSON.parse(importedProbe).streams.some((s: { codec_type: string }) => s.codec_type === "audio"), false);
   await db.update(schema.jobs).set({ status: "confirmed", confirmedAt: new Date() }).where(eq(schema.jobs.id, id));
   assert.equal((await settings({ previewVoice: "silent" })).status, 409);
+  assert.equal((await settings({ scene: 3, direction })).status, 409);
   console.log(`Rendering local voice/import proof ${id}`);
   const started = Date.now();
   await Promise.all([runJob(id), runJob(id)]);
@@ -70,6 +89,13 @@ async function main() {
   const artifact = (label: string) => path.join(process.cwd(), "storage", params.artifacts.find((a) => a.label === label)!.url.replace("/api/media/", ""));
   const provenance = JSON.parse(await readFile(artifact("Media provenance"), "utf8"));
   const qc = JSON.parse(await readFile(artifact("Quality checks"), "utf8"));
+  const generation = JSON.parse(await readFile(artifact("Generation plan (not submitted)"), "utf8"));
+  const rehearsal = JSON.parse(await readFile(artifact("Pipeline rehearsal (simulation)"), "utf8"));
+  assert.equal(params.preparation.generation.downloadUrl, params.artifacts.find((a) => a.label === "Generation plan (not submitted)")!.url);
+  assert.equal(generation.canExecute, false); assert.equal(generation.reusedScenes.length, 2);
+  assert.equal(rehearsal.mediaGenerated, false); assert.equal(rehearsal.paidRequests, 0);
+  assert.equal(rehearsal.operations.length, 4);
+  assert.equal(params.preparation.shots[2].scene, direction.scene);
   assert((await readFile(artifact("Subtitles (SRT)"), "utf8")).includes("Read the original passage"));
   assert.equal(provenance.voice.name, "Daniel");
   assert(provenance.scenes[1].media.heldSeconds > 0);
