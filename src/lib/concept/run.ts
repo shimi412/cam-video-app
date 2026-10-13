@@ -15,13 +15,14 @@ import { saveSheet, type SheetEntry } from "../sheet";
 import { produceExistingConcept, subtitleFile } from "./existing-run";
 import { localNarration } from "./local-voice";
 import { LOCAL_VOICES, PreviewVoiceSchema } from "./preview-inputs";
-import { stageSceneMedia } from "./imported-media";
+import { stageSceneMedia, verifiedSceneMedia } from "./imported-media";
 import { prepareConcept } from "./preparation";
 import { generationPlan } from "./generation-plan";
 import { CAM_VOICE } from "./cam-voice";
 import { rehearseGeneration } from "./rehearsal";
 import { rehearsalBudget } from "./rehearsal-budget";
 import { rehearseDelivery } from "./delivery-rehearsal";
+import { sceneWorkflow } from "./scene-workflow";
 
 export async function produceConcept(input: {
   jobId: string; script: string; params: ProductionParams; recipe: Recipe;
@@ -39,6 +40,15 @@ export async function produceConcept(input: {
   await setStep("storyboard", "running");
   const references = await lockedAssets();
   const board = planConcept(script, recipe, params.aspectRatio, params.sceneDirections);
+  // A file or reference can change after confirmation or between attempts.
+  // Recheck approvals before rendering or exporting them as reusable assets.
+  for (const shot of board.shots) {
+    const workflow = sceneWorkflow({ jobId, shot, params, references });
+    const binding = params.sceneMediaWorkflow?.[shot.index];
+    const clip = workflow.stages.find((step) => step.stage === "clip")!;
+    if (binding && (clip.status !== "approved" || clip.target !== binding)) throw new Error("A selected animation's scene approvals changed. Its saved approvals cannot be reused.");
+    for (const step of workflow.stages) if (step.status === "approved" && step.media) await verifiedSceneMedia(jobId, step.media);
+  }
   await writeFile(path.join(root, "storyboard.json"), JSON.stringify(board, null, 2));
   await writeFile(path.join(root, "references.json"), JSON.stringify(references.map(({ id, path: assetPath, sha256 }) => ({ id, path: assetPath, sha256 })), null, 2));
   await setStep("storyboard", "done");
@@ -103,10 +113,19 @@ export async function produceConcept(input: {
   }, null, 2));
   // Results link to the exact measured snapshot used by this attempt.
   preparation.generation.downloadUrl = url("generation-plan.json");
+  if (preparation.quote) {
+    preparation.quote = { ...preparation.quote, downloadUrl: url("quote-preparation.json") };
+    await writeFile(path.join(root, "quote-preparation.json"), JSON.stringify(preparation.quote, null, 2));
+  }
+  await writeFile(path.join(root, "scene-workflow.json"), JSON.stringify({ paidGenerationAuthorized: false,
+    scenes: preparation.shots.map((shot) => shot.workflow), history: params.sceneWorkflow ?? {},
+  }, null, 2));
   return { outputPath, renderReused: rendering.reused, durationSeconds: timing.duration, board, sheet, sheetUrl, media: null,
     preparation, artifacts: [
     { label: "Storyboard", url: url("storyboard.json") },
     { label: "Visual review record", url: url("visual-review.json") },
+    { label: "Scene approval steps", url: url("scene-workflow.json") },
+    { label: "Quote worksheet (not authorized)", url: url("quote-preparation.json") },
     { label: "Generation plan (not submitted)", url: url("generation-plan.json") },
     { label: "Pipeline rehearsal (simulation)", url: url("generation-rehearsal.json") },
     { label: "Budget checks (simulation)", url: url("budget-rehearsal.json") },

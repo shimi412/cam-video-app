@@ -1,0 +1,144 @@
+/** Real local routes, PostgreSQL and media decoding; all external fetch is forbidden. */
+process.env.PROVIDER_MODE = "dryrun";
+process.env.BRAIN_MODE = "mock";
+import assert from "node:assert/strict";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import path from "node:path";
+import sharp from "sharp";
+import { eq } from "drizzle-orm";
+import { db, schema } from "../src/db";
+import { POST as frame } from "../src/app/api/productions/route";
+import { PATCH, POST as upload } from "../src/app/api/jobs/[id]/preparation/route";
+import { GET as readJob } from "../src/app/api/jobs/[id]/route";
+import { GET as exportQuote, PATCH as saveQuote } from "../src/app/api/jobs/[id]/quote/route";
+import { POST as confirm } from "../src/app/api/jobs/[id]/confirm/route";
+import type { Stage } from "../src/lib/concept/scene-workflow";
+import type { ConceptPreparation } from "../src/lib/concept/preparation";
+import type { ProductionParams } from "../src/lib/brain";
+import { mediaFile } from "../src/lib/concept/preview-inputs";
+import { runJob } from "../src/lib/runner";
+
+let networkAttempts = 0;
+globalThis.fetch = async () => { networkAttempts++; throw new Error("External fetch forbidden."); };
+async function main() {
+  const qa = path.join(process.cwd(), "storage/qa"); await mkdir(qa, { recursive: true });
+  const script = "Offline test: review each scene step. Prepare the missing price estimates.";
+  const response = await frame(new Request("http://localhost/productions", { method: "POST", body: JSON.stringify({ script, mode: "auto", overrides: { aspectRatio: "16:9" } }) }));
+  assert.equal(response.status, 200); const { jobId: id } = await response.json();
+  const context = { params: Promise.resolve({ id }) };
+  const current = async (): Promise<ConceptPreparation> => (await (await readJob(new Request("http://localhost/job"), context)).json()).draft.preparation;
+  const settings = (body: unknown) => PATCH(new Request("http://localhost/preparation", { method: "PATCH", body: JSON.stringify(body) }), context);
+  const quote = (body: unknown) => saveQuote(new Request("http://localhost/quote", { method: "PATCH", body: JSON.stringify(body) }), context);
+  const download = () => exportQuote(new Request("http://localhost/quote"), context);
+  const step = async (stage: Stage) => (await current()).shots[0].workflow!.stages.find((s) => s.stage === stage)!;
+  const review = async (stage: Stage, decision = "approved", note = "Offline fixture only, not final CAM artwork.") => settings({ workflow: { scene: 1, stage, target: (await step(stage)).target, decision, note } });
+  const send = async (stage: Stage, bytes: Buffer, target?: string) => {
+    const form = new FormData(); form.set("scene", "1"); form.set("stage", stage); form.set("target", target ?? (await step(stage)).uploadTarget ?? "0".repeat(64)); form.set("file", new File([new Uint8Array(bytes)], "offline-test"));
+    return upload(new Request("http://localhost/preparation", { method: "POST", body: form }), context);
+  };
+  const shot = (await current()).shots[0];
+  const direction = { scene: shot.scene, motion: shot.motion, references: shot.references, endScene: shot.scene, overlay: "OFFLINE TEST", strike: false };
+  assert.equal((await settings({ scene: 1, direction })).status, 200);
+  const png = await sharp({ create: { width: 960, height: 540, channels: 3, background: "#293850" } }).composite([{ input: Buffer.from('<svg width="960" height="540"><rect x="30" y="30" width="900" height="480" fill="none" stroke="#54c2b4" stroke-width="8"/><text x="480" y="270" fill="white" font-family="sans-serif" font-size="54" text-anchor="middle">OFFLINE TEST</text><text x="480" y="330" fill="white" font-family="sans-serif" font-size="28" text-anchor="middle">Scene approvals and quote preparation</text></svg>') }]).png().toBuffer();
+  await writeFile(path.join(qa, "scene-workflow-test.png"), png);
+  const clipPath = path.join(qa, "scene-workflow-test.mp4");
+  await promisify(execFile)("ffmpeg", ["-y", "-loglevel", "error", "-loop", "1", "-i", path.join(qa, "scene-workflow-test.png"), "-vf", "scale=640:360", "-r", "30", "-t", "1.5", "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", clipPath]);
+  const clip = await readFile(clipPath);
+  assert.equal((await send("start", png)).status, 409);
+  assert.equal((await review("clip")).status, 409);
+  assert.equal((await review("direction", "rejected", "")).status, 400);
+  assert.equal((await review("direction")).status, 200);
+  const directionToken = (await step("direction")).token;
+  assert.equal((await review("direction")).status, 200); assert.equal((await step("direction")).token, directionToken);
+  assert.equal((await send("start", clip)).status, 400);
+  assert.equal((await send("start", png)).status, 200);
+  assert.equal((await send("end", png)).status, 409);
+  assert.equal((await review("start")).status, 200);
+  const oldStartTarget = (await step("start")).target;
+  assert.equal((await send("end", png)).status, 200);
+  assert.equal((await review("end")).status, 200);
+  const oldEndUploadTarget = (await step("end")).uploadTarget!;
+  // Tampering invalidates confirmation/export; replacement still works.
+  const media = (await step("start")).media!;
+  await writeFile(path.join(process.cwd(), "storage/imports", id, mediaFile(media)), "tampered offline QA file");
+  assert.equal((await review("start")).status, 400); assert.equal((await download()).status, 400);
+  assert.equal((await send("start", png)).status, 200);
+  assert.equal((await step("end")).status, "stale");
+  assert.equal((await settings({ workflow: { scene: 1, stage: "start", target: oldStartTarget, decision: "approved", note: "stale tab" } })).status, 409);
+  assert.equal((await review("start")).status, 200);
+  assert.equal((await send("end", png, oldEndUploadTarget)).status, 409);
+  assert.equal((await send("end", png)).status, 200);
+  assert.equal((await review("end")).status, 200);
+  assert.equal((await send("clip", png)).status, 400);
+  assert.equal((await send("clip", clip)).status, 200);
+  assert.equal((await review("clip")).status, 200);
+  let prep = await current(), worksheet = prep.quote!;
+  assert.equal(prep.shots[0].workflow!.completed, 4);
+  assert.equal(worksheet.lines.filter((l) => l.scene === 1 && l.reuse).length, 3);
+  assert(worksheet.missingPrices > 0); assert(worksheet.totals.some((t) => t.total === null));
+  const estimate = { basis: worksheet.basis, amounts: Object.fromEntries(worksheet.lines.filter((l) => !l.reuse).map((l) => [l.fingerprint, "1.25"])), caps: { usd: "0.25", "higgsfield-credit": "0.25" }, note: "OFFLINE TEST: invented numbers to verify arithmetic, not provider prices." };
+  assert.equal((await quote({ ...estimate, source: "provider" })).status, 400);
+  assert.equal((await quote({ ...estimate, note: "" })).status, 400);
+  assert.equal((await quote({ ...estimate, amounts: { ...estimate.amounts, ["0".repeat(64)]: "0" } })).status, 400);
+  assert.equal((await quote(estimate)).status, 200);
+  worksheet = (await current()).quote!;
+  assert.equal(worksheet.state, "current"); assert.equal(worksheet.missingPrices, 0);
+  assert(worksheet.totals.every((t) => t.overCap)); assert.equal(worksheet.canReserve, false);
+  assert.equal(worksheet.paidGenerationAuthorized, false); assert.equal(worksheet.providerQuoteComplete, false);
+  const exported = await download(); assert.equal(exported.status, 200); assert.match(exported.headers.get("content-disposition")!, /attachment/);
+  const selectedClip = (await step("clip")).target;
+  assert.equal((await settings({ useAnimation: 1, target: selectedClip })).status, 200);
+  prep = await current(); assert.equal(prep.shots[0].review!.status, "approved"); assert.equal(prep.quote!.state, "stale");
+  assert.equal((await quote(estimate)).status, 409);
+  // Editing direction cannot be bypassed using the preview's direct approval.
+  assert.equal((await settings({ scene: 1, direction: { ...direction, overlay: "OFFLINE TEST REVISED" } })).status, 200);
+  prep = await current();
+  assert.equal((await settings({ reviewScene: 1, target: prep.shots[0].review!.target, decision: "approved", note: "Bypass attempt" })).status, 409);
+  assert.equal((await confirm(new Request("http://localhost/confirm", { method: "POST" }), context)).status, 409);
+  assert.equal((await review("direction")).status, 200);
+  assert.equal((await current()).shots[0].media, null);
+  for (const stage of ["start", "end", "clip"] as const) {
+    assert.equal((await send(stage, stage === "clip" ? clip : png)).status, 200);
+    assert.equal((await review(stage)).status, 200);
+  }
+  assert.equal((await settings({ useAnimation: 1, target: (await step("clip")).target })).status, 200);
+  prep = await current(); worksheet = prep.quote!;
+  assert.equal(prep.shots[0].workflow!.completed, 4);
+  assert.equal((await quote({ ...estimate, basis: worksheet.basis, amounts: Object.fromEntries(worksheet.lines.filter((l) => !l.reuse).map((l) => [l.fingerprint, l.unit === "usd" ? "0.05" : "0.15"])), caps: { usd: "2", "higgsfield-credit": "1" } })).status, 200);
+  const ledger = await db.select().from(schema.creditLedger).where(eq(schema.creditLedger.jobId, id));
+  assert.equal(ledger.length, 0); assert.equal(networkAttempts, 0);
+  const proof = { jobId: id, sequentialSteps: true, tamperedFileBlocked: true, replacementRecovery: true, staleTabBlocked: true, downstreamInvalidation: true, directApprovalBypassBlocked: true, worksheetReusesApprovedFiles: true, missingPricesStayUnknown: true, separateCeilings: true, staleQuoteBlocked: true, networkAttempts, ledgerEntries: ledger.length, paidRequests: 0 };
+  if (process.argv.includes("--prepare-only")) {
+    await writeFile(path.join(qa, "cam-workflow-browser-fixture.json"), JSON.stringify(proof, null, 2)); console.log(JSON.stringify(proof, null, 2)); return;
+  }
+  // Next's after() requires an HTTP request context; exercise the local worker
+  // directly after all route guards above, as the other integration checks do.
+  const frozenReview = { workflow: { scene: 1, stage: "direction", target: (await step("direction")).target, decision: "approved", note: "Late change" } };
+  await db.update(schema.jobs).set({ status: "confirmed", confirmedAt: new Date() }).where(eq(schema.jobs.id, id));
+  assert.equal((await settings(frozenReview)).status, 409); assert.equal((await quote(estimate)).status, 409);
+  const approvedStart = prep.shots[0].workflow!.stages.find((s) => s.stage === "start")!.media!;
+  const approvedFile = path.join(process.cwd(), "storage/imports", id, mediaFile(approvedStart));
+  const savedBytes = await readFile(approvedFile);
+  await writeFile(approvedFile, "changed after confirmation");
+  await runJob(id);
+  const [stopped] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, id));
+  assert.equal(stopped.status, "failed", "The worker must recheck approved bytes after confirmation.");
+  await writeFile(approvedFile, savedBytes);
+  await runJob(id, { resume: true });
+  const [completed] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, id));
+  assert.equal(completed.status, "succeeded", completed.error ?? "Failed");
+  const preparation = (completed.params as ProductionParams & { preparation: ConceptPreparation }).preparation;
+  assert.match(preparation.quote!.downloadUrl, /quote-preparation\.json$/);
+  const quoteFile = path.join(process.cwd(), "storage", preparation.quote!.downloadUrl.replace("/api/media/", ""));
+  const snapshot = JSON.parse(await readFile(quoteFile, "utf8")); assert.equal(snapshot.paidGenerationAuthorized, false);
+  const reviewFile = path.join(path.dirname(quoteFile), "scene-workflow.json");
+  const approvals = JSON.parse(await readFile(reviewFile, "utf8")); assert.equal(approvals.scenes[0].completed, 4);
+  assert(approvals.history[1].direction.length >= 2);
+  assert.equal(Number(completed.billedUsd), 0); assert.equal(networkAttempts, 0);
+  assert.equal((await db.select().from(schema.creditLedger).where(eq(schema.creditLedger.jobId, id))).length, 0);
+  await writeFile(path.join(qa, "cam-scene-workflow-proof.json"), JSON.stringify({ ...proof, workerRecheck: true, resumedWithOriginalBytes: true, status: completed.status, snapshotsSaved: true, billedUsd: 0 }, null, 2));
+  console.log(JSON.stringify({ ...proof, workerRecheck: true, resumedWithOriginalBytes: true, status: completed.status, snapshotsSaved: true, billedUsd: 0 }, null, 2));
+}
+main().then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });

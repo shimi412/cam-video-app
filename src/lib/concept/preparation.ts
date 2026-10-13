@@ -10,6 +10,8 @@ import { generationPlan } from "./generation-plan";
 import { DEMO_SCRIPT } from "./existing";
 import { normalizedText } from "./text";
 import { importedVisualTarget, visualReview } from "./visual-review";
+import { sceneWorkflow } from "./scene-workflow";
+import { prepareQuote } from "./quote-preparation";
 
 /** A reviewable, free preparation, never an approval to generate media. */
 export async function prepareConcept(script: string, params: ProductionParams, recipe: Recipe, jobId?: string, measuredTiming?: ConceptTiming) {
@@ -18,12 +20,14 @@ export async function prepareConcept(script: string, params: ProductionParams, r
   const references = await lockedAssets();
   const preview: PreviewVoice = params.previewVoice ?? "silent";
   const plan = generationPlan(script, params, board, timing, references);
+  const workflows = jobId ? board.shots.map((shot) => sceneWorkflow({ jobId, shot, params, references })) : [];
   return {
     version: 1 as const,
     source: board.source,
     durationSeconds: timing.duration,
     measuredScenes: Boolean(measuredTiming),
     canGenerate: false as const,
+    quote: jobId ? prepareQuote(jobId, plan, workflows, params) : null,
     voice: { status: "identity-verified" as const, name: preview === "silent" ? "Bram" : LOCAL_VOICES[preview].name, preview,
       cam: await camVoiceReference(),
       message: preview === "silent" ? "Bram's exact preset has been identified. A new reading still needs a paid generation and review. This free preview will be silent."
@@ -37,6 +41,7 @@ export async function prepareConcept(script: string, params: ProductionParams, r
       endScene: shot.endScene, overlay: shot.overlay, strike: shot.strike,
       references: shot.references, start: timing.phrases[i].start, end: timing.phrases[i].end,
       estimatedClipSeconds: shot.clipSeconds,
+      workflow: workflows.find((w) => w.scene === shot.index) ?? null,
       media: jobId && params.sceneMedia?.[shot.index] ? { ...params.sceneMedia[shot.index], url: sceneMediaUrl(jobId, params.sceneMedia[shot.index]) } : null,
       review: jobId && params.sceneMedia?.[shot.index] ? visualReview(importedVisualTarget(jobId, shot, params, references)!, params.sceneReviews?.[shot.index]) : null,
       editorialStatus: params.sceneDirections?.[shot.index] ? "edited-draft" as const : normalizedText(script) === normalizedText(DEMO_SCRIPT) ? "example-plan" as const : "suggested-draft" as const,

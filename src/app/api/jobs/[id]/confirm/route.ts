@@ -10,6 +10,7 @@ import { isSimulation, providerMode } from "@/lib/providers/mode";
 import type { ProductionParams } from "@/lib/brain";
 import { prepareConcept } from "@/lib/concept/preparation";
 import { verifiedSceneMedia } from "@/lib/concept/imported-media";
+import { verifyWorkflowFiles } from "@/lib/concept/workflow-files";
 
 export async function POST(
   _request: Request,
@@ -42,6 +43,12 @@ export async function POST(
       const prep = await prepareConcept(job.script, input, recipe, id);
       const pending = prep.shots.filter((shot) => shot.media && shot.review?.status !== "approved");
       if (pending.length) return Response.json({ error: `Review the visuals in scenes ${pending.map((s) => s.index).join(", ")} before starting the preview.` }, { status: 409 });
+      for (const shot of prep.shots) if (input.sceneMediaWorkflow?.[shot.index]) {
+        const clip = shot.workflow?.stages.find((step) => step.stage === "clip");
+        if (clip?.status !== "approved" || clip.target !== input.sceneMediaWorkflow[shot.index]) return Response.json({ error: "An animation's scene approvals changed. Review its steps before continuing." }, { status: 409 });
+        try { await verifyWorkflowFiles(id, shot.workflow!); }
+        catch { return Response.json({ error: "A reviewed scene file changed. Replace it and review the scene again." }, { status: 409 }); }
+      }
       try { for (const media of Object.values(input.sceneMedia ?? {})) await verifiedSceneMedia(id, media); }
       catch { return Response.json({ error: "An imported visual is missing or changed. Import and review it again." }, { status: 409 }); }
     }

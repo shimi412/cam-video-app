@@ -110,6 +110,22 @@ With local PostgreSQL running, this creates a test preview, kills its worker aft
 
 This is explicit local recovery, not an unattended production queue. Durable provider IDs, cross-job budget reservations and spending caps are exercised in simulation. Live reconciliation and automatic background recovery remain unavailable.
 
+## Scene approvals and quote preparation
+
+For each draft scene, **Step-by-step scene review** now checks direction, start image, optional end image, then animation. Import local images or MP4s at the unlocked step; approve or reject each file explicitly. Decisions form a chain tied to the exact normalized bytes and scene. Replacing or withdrawing an earlier approval makes later steps stale, even if the same image is later approved again. The previous files and decision history remain available. Corrupt files cannot be approved or exported as reusable assets; replacing a corrupt current file remains possible. An approved animation is selected for the free montage with **Use approved animation in preview**. An invalidated workflow cannot be bypassed with the preview's direct visual approval. Imported shortcuts and placeholders still work for free previews.
+
+**Quote preparation** lists the current operations and their quantities, including Bram and word timing. Approved local stage files have no new generation quantity in this planning worksheet; complete selected scenes are excluded from remaining generation. All other prices start unknown. Optional manual amounts require a source or assumption. Enter the total per operation, not a unit rate. USD and Higgsfield credits have separate totals and planning ceilings, calculated in integer millionths. Missing prices never become zero. Changed scenes, approvals, files or timing invalidate the worksheet; manual estimates also expire after 24 hours. The previous estimate remains in the JSON export for reference.
+
+This is a planning worksheet, not a supplier quote, customer selling price, budget reservation or spending approval. It never calls a provider or opens a trial. The existing paid-generation gate remains closed even when every amount is filled in. Reuse at individual image stages is a planning assumption until the future paid executor consumes these approved files; the local rehearsal still exercises its original operation plan. Final Bram audio, timing approval and real provider price/cost evidence remain outstanding.
+
+The Studio saves drafts under the same job lock as uploads and confirmation. Completed previews expose immutable `scene-workflow.json` and `quote-preparation.json` snapshots. The old provisional rate table is hidden for these new Clay drafts; other templates retain their existing behavior.
+
+```bash
+pnpm test:scene-workflow
+```
+
+The integration check creates clearly marked offline calibration media, exercises every step (including the optional end image), tests stale tabs, tampering, replacement, bypass rejection, worksheet totals and stale quotes, then renders locally and verifies both snapshots. Approved bytes are also rechecked by the worker after confirmation and on resume; a file changed on disk stops the attempt. The check restores the original test bytes and resumes successfully. It forbids external application fetch and checks no customer credit movements or billed cost. Proof: `storage/qa/cam-scene-workflow-proof.json`. `--prepare-only` leaves an unconfirmed QA draft instead of rendering.
+
 ## Verification
 
 ### Visual reviews and interrupted requests

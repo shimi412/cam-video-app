@@ -18,6 +18,7 @@
     "test:recovery": "tsx --env-file-if-exists=.env scripts/check-recovery.ts",
     "test:local-media": "tsx --env-file-if-exists=.env scripts/check-local-media.ts",
     "test:review-recovery": "tsx --env-file-if-exists=.env scripts/check-review-recovery.ts",
+    "test:scene-workflow": "tsx --env-file-if-exists=.env scripts/check-scene-workflow.ts",
     "dryrun": "tsx --env-file-if-exists=.env scripts/dryrun.ts",
     "dev:preview": "PROVIDER_MODE=dryrun BRAIN_MODE=mock next dev --hostname 127.0.0.1"
   },

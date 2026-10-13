@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import type { ConceptPreparation } from "@/lib/concept/preparation";
 import type { PreviewVoice } from "@/lib/concept/preview-inputs";
 import type { SceneDirection } from "@/lib/concept/types";
+import { SceneWorkflowReview, type WorkflowChange } from "./scene-workflow-review";
+import { QuotePreparationPanel } from "./quote-preparation";
 
 export function PreparationReview({ preparation, jobId, disabled, onChange, onBusy }: {
   preparation: ConceptPreparation; jobId?: string; disabled?: boolean;
@@ -18,7 +20,7 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
     if (jobId) fetch("/api/preview-options").then((r) => r.json()).then(setOptions).catch(() => setError("Preview options could not load. Reload to try again."));
   }, [jobId]);
   const editable = Boolean(jobId && options.imports && onChange);
-  async function save(body: FormData | { previewVoice: string } | { removeScene: number } | { scene: number; direction: SceneDirection } | { resetDirection: number } | { reviewScene: number; target: string; decision: "approved" | "rejected"; note: string }) {
+  async function save(body: FormData | WorkflowChange | { previewVoice: string } | { removeScene: number } | { scene: number; direction: SceneDirection } | { resetDirection: number } | { reviewScene: number; target: string; decision: "approved" | "rejected"; note: string }) {
     setBusy(true); setError(null);
     try {
       const isUpload = body instanceof FormData;
@@ -56,6 +58,7 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
       <p className="text-muted">Review the proposed scenes below. Paid generation remains disabled while the voice, images and budget need approval.</p>
       {preparation.generation.downloadUrl && <a href={preparation.generation.downloadUrl} download="cam-generation-plan.json" className="text-accent">Download generation plan</a>}
     </div>}
+    {preparation.quote && <QuotePreparationPanel quote={preparation.quote} jobId={jobId} editable={editable} disabled={busy || Boolean(disabled) || editing !== null} onChange={onChange} onBusy={setBusy} />}
     <div className="flex flex-wrap gap-4">
       {preparation.references.filter((reference) => reference.id !== "logo").map((reference) => <div key={reference.id} className="text-xs text-muted text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -105,6 +108,8 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
               </div>
             </fieldset>
           </form>}
+          {shot.workflow && <SceneWorkflowReview workflow={shot.workflow} editable={editable} disabled={busy || Boolean(disabled) || editing !== null} save={save} onError={setError} />}
+          <p className="text-xs font-medium">Free preview visual · choose an existing file or a reviewed animation</p>
           {shot.media ? <div className="space-y-2">
             {shot.media.kind === "video" ? <video src={shot.media.url} controls muted className="max-h-40 max-w-full rounded bg-black" /> :
               // eslint-disable-next-line @next/next/no-img-element

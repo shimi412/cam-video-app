@@ -398,7 +398,7 @@ export default function StudioPage() {
       {/* Step 2: framing + estimate */}
       {framing && !job && (
         <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
-          <h2 className="font-medium">2. Framing &amp; price</h2>
+          <h2 className="font-medium">{framing.preparation?.quote ? "2. Scene plan & quote preparation" : "2. Framing & price"}</h2>
           {framing.simulation && <p className="text-sm text-muted">{framing.media ? "Existing animated characters and the original Dylan recording will be assembled locally. No new media will be generated. No credits will be deducted." : "Free local preview. Choose a test voice and add visuals below. The prices are provisional estimates for future generation; this preview costs $0."}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-surface-2 border border-line rounded-lg p-4 space-y-2 text-sm">
@@ -430,7 +430,11 @@ export default function StudioPage() {
               )}
             </div>
             <div className="bg-surface-2 border border-line rounded-lg p-4 text-sm">
-              <table className="w-full">
+              {framing.preparation?.quote ? <div className="space-y-2">
+                <p className="font-medium text-accent">Free local preview · $0</p>
+                <p className="text-muted">Future generation needs a complete provider quote. Prepare it below using the current scenes and approved files.</p>
+                <p className="text-muted">{framing.preparation.quote.missingPrices} prices missing. Saving a planning estimate does not authorize spending.</p>
+              </div> : <table className="w-full">
                 <tbody>
                   {framing.estimate.lines.map((l) => (
                     <tr key={l.label}>
@@ -446,7 +450,7 @@ export default function StudioPage() {
                     </td>
                   </tr>
                 </tbody>
-              </table>
+              </table>}
             </div>
           </div>
           {!framing.canConfirm && (

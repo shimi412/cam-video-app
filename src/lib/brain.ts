@@ -17,6 +17,8 @@ import { conceptPhrases, estimatedSpeechSeconds } from "./concept/text";
 import type { PreviewVoice, SceneMedia } from "./concept/preview-inputs";
 import type { SceneDirection } from "./concept/types";
 import type { VisualDecision } from "./concept/visual-review";
+import type { SceneWorkflow } from "./concept/scene-workflow";
+import type { QuoteDraft } from "./concept/quote-preparation";
 
 export type ProductionParams = {
   templateSlug: string;
@@ -40,6 +42,9 @@ export type ProductionParams = {
   sceneMedia?: Record<string, SceneMedia>;
   sceneDirections?: Record<string, SceneDirection>;
   sceneReviews?: Record<string, VisualDecision[]>;
+  sceneWorkflow?: Record<string, SceneWorkflow>;
+  sceneMediaWorkflow?: Record<string, string>;
+  quoteDraft?: QuoteDraft;
 };
 
 export type Overrides = Partial<
