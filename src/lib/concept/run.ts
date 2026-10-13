@@ -10,19 +10,21 @@ import { writeMontage } from "./montage";
 import { controls, validateTiming } from "./controls";
 import { renderConcept, silentVoice } from "./render";
 import { lockedAssets } from "./assets";
+import { checkpointedRender } from "./render-checkpoint";
 import { saveSheet, type SheetEntry } from "../sheet";
 import { produceExistingConcept } from "./existing-run";
 
 export async function produceConcept(input: {
   jobId: string; script: string; params: ProductionParams; recipe: Recipe;
+  workspace?: string; checkpointDir?: string; assertOwned?: () => Promise<void>;
   meter: (kind: "image" | "video" | "tts" | "render", media: MediaResult) => Promise<void>;
   setStep: (key: string, status: "pending" | "running" | "done" | "failed") => Promise<void>;
 }) {
   if (!isSimulation()) throw new Error("CAM Clay is preview-only until its voice, storyboard and paid pipeline are approved.");
   if (input.params.previewSource === "existing") return produceExistingConcept(input);
   const { jobId, script, params, recipe, setStep } = input;
-  const root = path.join(process.cwd(), "storage/concepts", jobId);
-  const outputPath = path.join(process.cwd(), "storage/outputs", `${jobId}.mp4`);
+  const root = input.workspace ?? path.join(process.cwd(), "storage/concepts", jobId);
+  const outputPath = path.join(root, "rendered.mp4");
   await mkdir(path.join(root, "assets"), { recursive: true });
   await mkdir(path.dirname(outputPath), { recursive: true });
   await setStep("storyboard", "running");
@@ -51,13 +53,17 @@ export async function produceConcept(input: {
   await setStep("montage", "running");
   const composition = await writeMontage(root, board, timing, params.aspectRatio);
   validateTiming(timing, composition.captions);
-  await renderConcept(root, outputPath);
+  const rendering = await checkpointedRender({ project: root, output: outputPath,
+    checkpointDir: input.checkpointDir ?? path.join(root, "checkpoints"),
+    assertOwned: input.assertOwned ?? (async () => {}),
+    render: (output) => renderConcept(root, output),
+  });
   await controls(outputPath, root, composition.cues.map((s)=>s.start), composition.width, composition.height, timing.duration);
   await copyFile(outputPath, path.join(root, "preview.mp4"));
   await input.meter("render", { filePath: outputPath, realCostUsd: 0, provider: "hyperframes", model: "concept-placeholder-preview", meta: { estimatedTiming: true, visualApproval: false } });
   await setStep("montage", "done");
-  const url = (file: string) => `/api/media/concepts/${jobId}/${file}`;
-  return { outputPath, durationSeconds: timing.duration, board, sheet, sheetUrl, media: null, artifacts: [
+  const url = (file: string) => `/api/media/${path.relative(path.join(process.cwd(), "storage"), root).split(path.sep).join("/")}/${file}`;
+  return { outputPath, renderReused: rendering.reused, durationSeconds: timing.duration, board, sheet, sheetUrl, media: null, artifacts: [
     { label: "Storyboard", url: url("storyboard.json") },
     { label: "Shot contact sheet", url: url("controls/shots.png") },
     ...(board.shots.length > 1 ? [{ label: "Transition contact sheet", url: url("controls/transitions.png") }] : []),

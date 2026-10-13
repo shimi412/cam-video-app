@@ -51,7 +51,7 @@ it("budgets the new video model, end frames and retries; uses 1080 canvases", ()
   const { params } = resolveParams(eyal.join("\n"),"auto");
   const estimate = estimateProduction(params,2.5);
   expect(params.shotCount).toBe(14);
-  expect(estimate.lines.find((l)=>l.label==="Animated clips")?.realUnitUsd).toBe(.112);
+  expect(estimate.lines.find((l)=>l.label==="Animation (seconds)")?.realUnitUsd).toBe(.112);
   expect(estimate.lines.some((l)=>l.label.includes("30%"))).toBe(true);
   expect(conceptCanvas("9:16")).toEqual({width:1080,height:1920});
   expect(conceptCanvas("16:9")).toEqual({width:1920,height:1080});

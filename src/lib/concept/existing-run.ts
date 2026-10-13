@@ -7,6 +7,7 @@ import { lockedAssets } from "./assets";
 import { planConcept } from "./storyboard";
 import { validateTiming, controls } from "./controls";
 import { renderConcept } from "./render";
+import { checkpointedRender } from "./render-checkpoint";
 import { saveSheet, type SheetEntry } from "../sheet";
 import type { Caption } from "./montage";
 
@@ -22,8 +23,8 @@ export function subtitleFile(captions: Caption[], kind: "vtt" | "srt") {
 export async function produceExistingConcept(input: Parameters<typeof produceConcept>[0]) {
   assertExistingSelection(input.script, input.params);
   const { jobId, recipe, script, setStep } = input;
-  const root = path.join(process.cwd(), "storage/concepts", jobId);
-  const outputPath = path.join(process.cwd(), "storage/outputs", `${jobId}.mp4`);
+  const root = input.workspace ?? path.join(process.cwd(), "storage/concepts", jobId);
+  const outputPath = path.join(root, "rendered.mp4");
   await mkdir(root, { recursive: true });
   await mkdir(path.dirname(outputPath), { recursive: true });
   await setStep("storyboard", "running");
@@ -49,14 +50,18 @@ export async function produceExistingConcept(input: Parameters<typeof produceCon
   const sheetUrl = await saveSheet(jobId, sheet);
   await setStep("clips", "done");
   await setStep("montage", "running");
-  await renderConcept(root, outputPath);
+  const rendering = await checkpointedRender({ project: root, output: outputPath,
+    checkpointDir: input.checkpointDir ?? path.join(root, "checkpoints"),
+    assertOwned: input.assertOwned ?? (async () => {}),
+    render: (output) => renderConcept(root, output),
+  });
   const captionBoards = await controls(outputPath, root, composition.cues.map((s) => s.start), 1080, 1920, DEMO_DURATION, { estimatedTiming: false, captions: composition.captions, requireAudibleVoice: true });
   await copyFile(outputPath, path.join(root, "preview.mp4"));
   const media = existingMediaSummary();
   await input.meter("render", { filePath: outputPath, realCostUsd: 0, provider: "hyperframes", model: "concept-existing-media", meta: { ...media, estimatedTiming: false, visualApproval: false } });
   await setStep("montage", "done");
-  const url = (file: string) => `/api/media/concepts/${jobId}/${file}`;
-  return { outputPath, durationSeconds: DEMO_DURATION, board, sheet, sheetUrl, media, artifacts: [
+  const url = (file: string) => `/api/media/${path.relative(path.join(process.cwd(), "storage"), root).split(path.sep).join("/")}/${file}`;
+  return { outputPath, renderReused: rendering.reused, durationSeconds: DEMO_DURATION, board, sheet, sheetUrl, media, artifacts: [
     { label: "Download film", url: url("preview.mp4") },
     { label: "Voice recording", url: url("assets/narration.wav") },
     { label: "Subtitles (SRT)", url: url("captions.srt") },

@@ -161,3 +161,21 @@ Preuves :
 - Piste exportée comparée à la voix source en PCM mono 8 kHz : corrélation 0,99926 sur 50,65 s à décalage nul. Volume moyen −22,3 dB, crête −1,3 dB. Les planches finales de sous-titres et de raccords ont été relues. `visualApproval: false` reste conservé : l'inspection technique ne constitue pas une nouvelle validation client.
 
 **Limite du jalon :** le logiciel remonte maintenant un film à partir de médias existants. Produire de nouvelles scènes et faire dire un nouveau texte à la voix approuvée nécessitent encore les adaptateurs réels, les validations éditoriales, la reprise durable, les limites de coûts puis un essai payant expressément autorisé. Aucun de ces éléments n'est déclaré livré par la démonstration locale.
+
+
+### Chantier 1, troisième jalon du 13/10 : préparation lisible et reprise locale
+
+- Cadrage d’un nouveau texte : découpage visible avant confirmation, narration conservée, durées estimées cohérentes avec l’aperçu, références des personnages et statut explicite de la voix encore à choisir. Ce dossier de préparation est conservé avec le job et retrouve sa place après rechargement. Aucun accord de génération n’est inféré.
+- Reprise manuelle des aperçus Clay interrompus ou en échec, par « Resume free preview ». Le serveur et le navigateur doivent retrouver le même stockage et la même base. Reprise refusée en mode payant, après changement de mode ou pour une recette archivée.
+- Verrou PostgreSQL par job, partagé entre processus, conservé pendant le travail. Les écritures du job utilisent la connexion qui détient le verrou. Le suivi d’avancement lit `pg_locks` sans verrouiller : correction d’une collision observée pendant le test navigateur. La reprise repasse en file avant la réponse HTTP, ce qui évite que le navigateur s’arrête sur l’ancien état d’échec. Grâce de cinq secondes pour un job nouvellement confirmé.
+- Dossiers isolés par tentative ; montage achevé sauvegardé avec empreintes de la composition, des médias et du MP4. Il est réutilisé si intact, sinon recalculé localement. Les contrôles sont toujours rejoués. Les étapes de préparation peu coûteuses sont recalculées ; il ne s’agit pas encore d’une reprise payante plan par plan avec identifiants fournisseur.
+- Prix affichés : l’unité des animations est maintenant nommée « seconds » pour éviter de confondre secondes facturées et nombre de plans. La grille reste provisoire.
+
+Vérifications du 13/10 :
+
+- `pnpm test:recovery` : arrêt forcé d’un processus après le montage, puis deux demandes concurrentes ; job `c0b00965-0d85-4d6b-b541-0187d8c8a010`, deux tentatives au total, montage réutilisé, une seule opération de rendu comptabilisée, aucun débit. Preuve `storage/qa/cam-recovery-proof.json`.
+- Navigateur, job `7756d914-e2d9-46ce-8db3-cd2be9e91b9d` : nouveau texte préparé en 16:9, arrêt brutal du serveur pendant la production, détection de l’interruption après redémarrage et reprise. Une simulation supplémentaire d’échec après rendu a vérifié le bouton jusqu’au résultat récupéré sans rechargement manuel.
+- Régression du film existant : job `d12073dd-3f4b-4d0f-883e-57c609210e19`, 95 s pour reconstruire personnages et voix, un seul rendu malgré deux appels concurrents, aucun appel fetch externe du processus applicatif, zéro dépense et zéro débit.
+- Tests unitaires, lint et build vérifiés. Captures du parcours dans `storage/qa/cam-preparation-2026-10-13.png` et `storage/qa/cam-recovery-2026-10-13.png`.
+
+Limites maintenues : narration d’un nouveau texte avec une voix approuvée, scènes créatives et images finales, adaptateurs payants avec reprise des requêtes, réservation du budget et plafonds. Pas de génération payante, de push ni de déploiement pendant ce jalon.

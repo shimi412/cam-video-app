@@ -8,6 +8,7 @@ import { getActiveRecipe, activeRecipes, RecipeUnavailableError } from "@/lib/re
 import { providerMode, isSimulation } from "@/lib/providers/mode";
 import { eq } from "drizzle-orm";
 import { assertExistingSelection, existingParams, verifyExistingAssets, existingMediaSummary } from "@/lib/concept/existing";
+import { prepareConcept } from "@/lib/concept/preparation";
 
 const bodySchema = z.object({
   script: z.string().min(40, "Script too short: paste the full script from your monitoring app.").max(6000),
@@ -54,6 +55,14 @@ export async function POST(request: Request) {
     analysis.durationSeconds = params.durationSeconds;
     analysis.reason = "Reuse the existing CAM film with its recorded Dylan voice and 12 animated clips. Local montage, no new generation.";
   }
+  const recipe = getActiveRecipe(params.templateSlug)!;
+  let preparation = null;
+  if (recipe.concept && previewSource === "planning") {
+    try { preparation = await prepareConcept(script, params, recipe); }
+    catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to prepare this script." }, { status: 409 }); }
+    params.durationSeconds = preparation.durationSeconds;
+    analysis.durationSeconds = preparation.durationSeconds;
+  }
   const marginMultiplier = await getMarginMultiplier();
   const estimate = estimateProduction(params, marginMultiplier);
   const balance = await getBalanceUsd();
@@ -81,7 +90,7 @@ export async function POST(request: Request) {
       templateId: template?.id,
       status: "estimated",
       script,
-      params: { ...params, executionMode: providerMode() },
+      params: { ...params, executionMode: providerMode(), preparation },
       estimateUsd: estimate.totalBilledUsd.toFixed(2),
     })
     .returning();
@@ -102,6 +111,7 @@ export async function POST(request: Request) {
     balance,
     brain,
     simulation: isSimulation(),
+    preparation,
     media: previewSource === "existing" ? existingMediaSummary() : null,
     canConfirm: isSimulation() || balance >= estimate.totalBilledUsd,
   });

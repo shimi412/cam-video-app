@@ -50,7 +50,7 @@ export function estimateProduction(params: ProductionParams, marginMultiplier: n
 
   if (params.concept) {
     push("Images (including possible end frames)", params.concept.imageCount, UNIT.imageUsd);
-    push("Animated clips", params.concept.videoSeconds, UNIT.kling3UsdPerSecond);
+    push("Animation (seconds)", params.concept.videoSeconds, UNIT.kling3UsdPerSecond);
     push("Voice-over", 1, characterCount / 1000 * UNIT.elevenV3UsdPer1000Chars);
     const media = lines.reduce((sum, line) => sum + line.quantity * line.realUnitUsd, 0);
     push("Allowance for retries (30%)", 1, media * .3);

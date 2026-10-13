@@ -1,4 +1,6 @@
 import { and, eq } from "drizzle-orm";
+import { after } from "next/server";
+import { z } from "zod";
 import { db, schema } from "@/db";
 import { getBalanceUsd } from "@/lib/credits";
 import { runJob } from "@/lib/runner";
@@ -10,6 +12,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  if (!z.uuid().safeParse(id).success) return Response.json({ error: "Invalid production ID." }, { status: 400 });
   const [job] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, id));
   if (!job) return Response.json({ error: "Job not found" }, { status: 404 });
   if (job.status !== "estimated") {
@@ -43,8 +46,7 @@ export async function POST(
     .returning({ id: schema.jobs.id });
   if (claimed.length === 0) return Response.json({ error: "Production already confirmed." }, { status: 409 });
 
-  // Fire and forget: the UI polls GET /api/jobs/:id for progress.
-  void runJob(id);
+  after(() => runJob(id));
 
   return Response.json({ ok: true });
 }

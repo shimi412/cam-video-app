@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ConceptPreparation } from "@/lib/concept/preparation";
 
 type EstimateLine = { label: string; quantity: number; billedUsd: number };
 type MediaSummary = { id: string; label: string; voice: string; duration: number; shots: number; source: "existing" };
 type Example = MediaSummary & { available: boolean; reason: string | null; script: string; voiceUrl: string | null };
 type Framing = {
+  preparation?: ConceptPreparation | null;
   simulation: boolean;
   media?: MediaSummary | null;
   jobId: string;
@@ -44,6 +46,11 @@ type SheetEntry = {
   notes?: string;
 };
 type JobState = {
+  preparation?: ConceptPreparation | null;
+  id?: string;
+  canResume?: boolean;
+  interrupted?: boolean;
+  renderReused?: boolean;
   script?: string;
   aspectRatio?: AspectRatio;
   media?: MediaSummary | null;
@@ -195,6 +202,24 @@ export default function StudioPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function resume() {
+    if (!job?.id) return;
+    stopPolling();
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/jobs/${job.id}/resume`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) {
+        if (data.code === "already-running") { watchJob(job.id); return; }
+        throw new Error(data.error ?? "Could not resume this preview.");
+      }
+      setJob({ ...job, status: "running", canResume: false, interrupted: false, error: null });
+      watchJob(job.id);
+    } catch (error) { setError(error instanceof Error ? error.message : "Could not resume this preview."); }
+    finally { setLoading(false); }
   }
 
   function reset() {
@@ -421,6 +446,7 @@ export default function StudioPage() {
               Insufficient credits (balance ${framing.balance.toFixed(2)}). Top up in Admin.
             </p>
           )}
+          {framing.preparation && <PreparationReview preparation={framing.preparation} />}
           <div className="flex gap-3">
             <button
               onClick={confirm}
@@ -440,6 +466,10 @@ export default function StudioPage() {
       {job && (
         <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
           <h2 className="font-medium">3. Production</h2>
+          {job.canResume && <div role="status" className="bg-surface-2 border border-accent/40 rounded-lg p-4 space-y-3">
+            <p className="text-sm">{job.interrupted ? "This preview was interrupted. Resume it using the saved script and media." : "You can retry this local preview after fixing the issue below."} A completed render will be reused if its files are unchanged. No credits will be charged.</p>
+            <button onClick={resume} disabled={loading} className="bg-accent text-white rounded-lg px-4 py-2 text-sm disabled:opacity-40">{loading ? "Resuming…" : "Resume free preview"}</button>
+          </div>}
           <ul className="space-y-2 text-sm">
             {(job.progress ?? []).map((s) => (
               <li key={s.key} className="flex items-center gap-3">
@@ -467,6 +497,7 @@ export default function StudioPage() {
 
           {job.status === "succeeded" && job.outputUrl && (
             <div className="space-y-3">
+              {job.renderReused && <p className="text-sm text-muted">The saved render was recovered and its quality checks completed.</p>}
               <video
                 src={job.outputUrl}
                 controls
@@ -480,7 +511,7 @@ export default function StudioPage() {
             </div>
           )}
 
-          {(job.status === "succeeded" || job.status === "failed") && (
+          {(job.status === "succeeded" || job.status === "failed" || job.interrupted) && (
             <button
               onClick={reset}
               className="bg-surface-2 border border-line hover:border-accent rounded-lg px-5 py-2 text-sm"
@@ -490,6 +521,7 @@ export default function StudioPage() {
           )}
         </section>
       )}
+      {job?.preparation && <PreparationReview preparation={job.preparation} />}
 
       {/* Dry-run: production sheet (debug view of the exact fal.ai requests) */}
       {job?.status === "succeeded" && job.sheet && job.sheet.length > 0 && (
@@ -553,4 +585,36 @@ export default function StudioPage() {
       )}
     </div>
   );
+}
+
+function PreparationReview({ preparation }: { preparation: ConceptPreparation }) {
+  return <section aria-label="Script preparation" className="bg-surface-2 border border-line rounded-xl p-4 space-y-4">
+    <div>
+      <h3 className="font-medium">Your script, ready to review</h3>
+      <p className="text-sm text-muted mt-1">{preparation.shots.length} scenes · about {Math.round(preparation.durationSeconds)} seconds, including pauses. Timing will be adjusted to the final narration.</p>
+    </div>
+    <div className="border border-line rounded-lg p-3 text-sm">
+      <p className="font-medium">Voice to confirm</p>
+      <p className="text-muted mt-1">{preparation.voice.message}</p>
+    </div>
+    <div className="flex flex-wrap gap-4">
+      {preparation.references.filter((reference) => reference.id !== "logo").map((reference) => <div key={reference.id} className="text-xs text-muted text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={reference.url} alt={`CAM ${reference.id} reference`} className="w-16 h-20 object-contain rounded-lg mb-1 bg-surface" />
+        <span className="capitalize">{reference.id}</span>
+      </div>)}
+    </div>
+    <p className="text-sm text-muted">{preparation.source === "offline-placeholder" ? "The text has been split into scenes without changing its words. Visual staging still needs to be prepared; the free preview uses placeholders." : "This follows the CAM example's scene plan. The free planning preview uses placeholders; select the existing film to hear its recorded voice."}</p>
+    <details>
+      <summary className="text-sm text-accent cursor-pointer">Read the scene-by-scene plan</summary>
+      <ol className="mt-3 space-y-3 max-h-96 overflow-y-auto">
+        {preparation.shots.map((shot) => <li key={shot.index} className="border border-line rounded-lg p-3 text-sm space-y-1">
+          <p className="text-muted">Scene {shot.index} · {shot.start.toFixed(1)}–{shot.end.toFixed(1)} s</p>
+          <p>{shot.narration}</p>
+          <p className="text-xs text-muted">Characters: {shot.references.join(", ")}</p>
+          {shot.editorialStatus === "needs-staging" ? <p className="text-xs text-muted">Visual staging to prepare</p> : <p className="text-xs text-muted">{shot.scene}</p>}
+        </li>)}
+      </ol>
+    </details>
+  </section>;
 }

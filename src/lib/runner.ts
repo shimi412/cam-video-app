@@ -8,10 +8,13 @@
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, copyFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { schema, type Database } from "@/db";
+import { randomUUID } from "node:crypto";
+import { acquireJobLock } from "./job-lock";
+import { recoveryAllowed } from "./job-recovery";
 import { getProviders } from "./providers";
 import type { MediaResult } from "./providers/types";
 import type { ProductionParams } from "./brain";
@@ -44,14 +47,14 @@ const STEPS: Array<Pick<JobStep, "key" | "label">> = [
 /** Breathing room added after each narration segment, in seconds. */
 const TAIL_SECONDS = 0.35;
 
-async function setProgress(jobId: string, params: Record<string, unknown>, steps: JobStep[]) {
+async function setProgress(jobId: string, params: Record<string, unknown>, steps: JobStep[], db: Database) {
   await db
     .update(schema.jobs)
     .set({ params: { ...params, progress: steps } })
     .where(eq(schema.jobs.id, jobId));
 }
 
-async function meter(jobId: string, kind: "image" | "video" | "tts" | "render", r: MediaResult, marginMultiplier: number): Promise<number> {
+async function meter(jobId: string, kind: "image" | "video" | "tts" | "render", r: MediaResult, marginMultiplier: number, db: Database): Promise<number> {
   const billed = billedFromRealCost(r.realCostUsd, marginMultiplier);
   await db.insert(schema.apiCalls).values({
     jobId,
@@ -83,9 +86,18 @@ function clipSecondsFor(audioSeconds: number): number {
   return audioSeconds + TAIL_SECONDS <= 5 ? 5 : 10;
 }
 
-export async function runJob(jobId: string): Promise<void> {
+export async function runJob(jobId: string, options: { resume?: boolean } = {}): Promise<void> {
+  const lock = await acquireJobLock(jobId);
+  if (!lock) return;
+  try { await executeJob(jobId, lock, options); }
+  finally { await lock.release(); }
+}
+
+async function executeJob(jobId: string, lock: NonNullable<Awaited<ReturnType<typeof acquireJobLock>>>, options: { resume?: boolean }) {
+  const db = lock.db;
   const [job] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, jobId));
-  if (!job || job.status !== "confirmed") return;
+  if (!job) return;
+  if (options.resume ? !recoveryAllowed(job) : job.status !== "confirmed") return;
 
   const params = job.params as Record<string, unknown> & ProductionParams;
   const recipe = getRecipe(params.templateSlug);
@@ -105,7 +117,7 @@ export async function runJob(jobId: string): Promise<void> {
   const setStep = async (key: string, status: JobStep["status"]) => {
     const step = steps.find((s) => s.key === key);
     if (step) step.status = status;
-    await setProgress(jobId, params, steps);
+    await setProgress(jobId, params, steps, db);
   };
 
   try {
@@ -115,24 +127,39 @@ export async function runJob(jobId: string): Promise<void> {
       throw new Error("This video model is archived.");
     }
     if (recipe.concept?.previewOnly && !simulation) throw new Error("This style is currently available for free previews only.");
-    const claimed = await db.update(schema.jobs).set({ status: "running" })
-      .where(and(eq(schema.jobs.id, jobId), eq(schema.jobs.status, "confirmed")))
+    const attemptId = randomUUID();
+    params.execution = { attemptId, attempts: Number((params.execution as { attempts?: number } | undefined)?.attempts ?? 0) + 1, startedAt: new Date().toISOString(), resumed: Boolean(options.resume) };
+    const claimed = await db.update(schema.jobs).set({ status: "running", error: null, finishedAt: null, params })
+      .where(and(eq(schema.jobs.id, jobId), eq(schema.jobs.status, job.status)))
       .returning({ id: schema.jobs.id });
     if (claimed.length === 0) return;
 
     let outputPath: string;
     if (recipe.concept) {
       const result = await produceConcept({ jobId, script: job.script, params, recipe, setStep,
-        meter: async (kind, media) => { totalBilled += await meter(jobId, kind, media, marginMultiplier); },
+        workspace: path.join(STORAGE, "concepts", jobId, "attempts", attemptId),
+        checkpointDir: path.join(STORAGE, "concepts", jobId, "checkpoints"),
+        assertOwned: lock.assertOwned,
+        meter: async (kind, media) => {
+          await db.delete(schema.apiCalls).where(and(eq(schema.apiCalls.jobId, jobId), eq(schema.apiCalls.kind, "render")));
+          totalBilled += await meter(jobId, kind, media, marginMultiplier, db);
+        },
       });
-      outputPath = result.outputPath;
+      await lock.assertOwned();
+      outputPath = path.join(STORAGE, "outputs", `${jobId}.mp4`);
+      await mkdir(path.dirname(outputPath), { recursive: true });
+      const publishingPath = `${outputPath}.${attemptId}.tmp`;
+      await copyFile(result.outputPath, publishingPath);
+      await lock.assertOwned();
+      await rename(publishingPath, outputPath);
+      params.renderReused = result.renderReused;
       params.storyboard = result.board;
       params.finalDurationSeconds = result.durationSeconds;
       params.sheet = result.sheet;
       params.sheetUrl = result.sheetUrl;
       params.artifacts = result.artifacts;
       params.media = result.media;
-      await setProgress(jobId, params, steps);
+      await setProgress(jobId, params, steps, db);
     } else if (recipe.collage) {
       // Whiteboard family: collage engine (score → elements → HyperFrames render).
       const r = await produceCollage({
@@ -142,7 +169,7 @@ export async function runJob(jobId: string): Promise<void> {
         recipe,
         providers,
         meter: async (kind, media) => {
-          totalBilled += await meter(jobId, kind, media, marginMultiplier);
+          totalBilled += await meter(jobId, kind, media, marginMultiplier, db);
         },
         setStep,
         tailSeconds: TAIL_SECONDS,
@@ -151,7 +178,7 @@ export async function runJob(jobId: string): Promise<void> {
       params.storyboard = { brain: r.score.brain, engine: "collage", elements: r.score.elements, shots: r.score.shots };
       params.fallbacks = r.fallbacks;
       params.finalDurationSeconds = r.durationSeconds;
-      await setProgress(jobId, params, steps);
+      await setProgress(jobId, params, steps, db);
     } else {
     // 1. Storyboard: the director brain stages the script inside the style bible.
     await setStep("storyboard", "running");
@@ -171,7 +198,7 @@ export async function runJob(jobId: string): Promise<void> {
         providers.tts.synthesize({ text: shot.narration, voiceId: params.voiceId, language: params.language }),
       ),
     );
-    for (const v of voices) totalBilled += await meter(jobId, "tts", v, marginMultiplier);
+    for (const v of voices) totalBilled += await meter(jobId, "tts", v, marginMultiplier, db);
     const audioSeconds = await Promise.all(voices.map((v) => mediaDuration(v.filePath)));
     if (dryRun) {
       shots.forEach((shot, i) =>
@@ -232,11 +259,11 @@ export async function runJob(jobId: string): Promise<void> {
       }
     };
     const first = await generateKeyframe(0);
-    totalBilled += await meter(jobId, "image", first, marginMultiplier);
+    totalBilled += await meter(jobId, "image", first, marginMultiplier, db);
     const rest = await Promise.all(
       shots.slice(1).map(async (_, i) => {
         const r = await generateKeyframe(i + 1, first.filePath);
-        totalBilled += await meter(jobId, "image", r, marginMultiplier);
+        totalBilled += await meter(jobId, "image", r, marginMultiplier, db);
         return r;
       }),
     );
@@ -292,7 +319,7 @@ export async function runJob(jobId: string): Promise<void> {
               tier: params.tier,
               aspectRatio: params.aspectRatio,
             });
-            totalBilled += await meter(jobId, "video", clip, marginMultiplier);
+            totalBilled += await meter(jobId, "video", clip, marginMultiplier, db);
             return clip.filePath;
           } catch (err) {
             const reason = err instanceof Error ? err.message : String(err);
@@ -362,7 +389,7 @@ export async function runJob(jobId: string): Promise<void> {
       jobId,
       "render",
       { filePath: outputPath, realCostUsd: 0.05, provider: "hyperframes", model: "local-cpu-montage" },
-      marginMultiplier,
+      marginMultiplier, db,
     );
     params.finalDurationSeconds = Number(audioSeconds.reduce((s, d) => s + d + TAIL_SECONDS, 0).toFixed(2));
     await setStep("montage", "done");
@@ -373,14 +400,14 @@ export async function runJob(jobId: string): Promise<void> {
       const sheetUrl = await saveSheet(jobId, sheet);
       params.sheet = sheet;
       params.sheetUrl = sheetUrl;
-      await setProgress(jobId, params, steps);
+      await setProgress(jobId, params, steps, db);
     }
 
     // Billing: consume credits at the metered billed total.
     const billed = simulation ? 0 : Number(totalBilled.toFixed(2));
     if (simulation) {
       params.simulatedBilledUsd = Number(totalBilled.toFixed(2));
-      await setProgress(jobId, params, steps);
+      await setProgress(jobId, params, steps, db);
     }
     // Debit and success are committed together. Simulation never writes the ledger.
     await db.transaction(async (tx) => {
@@ -406,7 +433,7 @@ export async function runJob(jobId: string): Promise<void> {
     // Technical failure: nothing is billed (rule from the devis).
     const failing = steps.find((s) => s.status === "running");
     if (failing) failing.status = "failed";
-    await setProgress(jobId, params, steps);
+    await setProgress(jobId, params, steps, db);
     await db
       .update(schema.jobs)
       .set({
