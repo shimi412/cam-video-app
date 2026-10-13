@@ -4,15 +4,23 @@ import { advanceSimulatedRequest } from "./request-journal";
 import { isSimulation } from "../providers/mode";
 import { bramQueue, falQueue, type JsonRequest, type McpCall } from "./provider-transports";
 import path from "node:path";
+import { transcriptionQueue } from "./transcription";
+import { budgetedQueue } from "./budget";
+import type { rehearsalBudget } from "./rehearsal-budget";
+import type { ConceptTiming } from "./types";
+import { placeholderTiming } from "./timing";
+import { conceptPhrases } from "./text";
 
 /** Exercise dependencies, payload contracts and durable receipts. Fake URLs are
  * never fetched or exposed as media. This is not a keyframe or voice approval.
  */
-export async function rehearseGeneration(plan: ReturnType<typeof generationPlan>, directory: string, assertOwned: () => Promise<void>) {
+export async function rehearseGeneration(plan: ReturnType<typeof generationPlan>, directory: string, assertOwned: () => Promise<void>, options?: { budget: Awaited<ReturnType<typeof rehearsalBudget>>; timing: ConceptTiming }) {
   if (!isSimulation()) throw new Error("Generation rehearsal only runs offline.");
   const urls = Object.fromEntries(plan.references.map((ref) => [`reference:${ref.id}`, `https://simulation.invalid/references/${ref.sha256}.png`]));
   const complete = new Set<string>();
-  const results: { operation: string; requestId?: string; state: string; reused: boolean }[] = [];
+  const results: { operation: string; requestId?: string; output?: string; state: string; reused: boolean }[] = [];
+  const timing = options?.timing ?? placeholderTiming(conceptPhrases(String(plan.operations[0].input.prompt)));
+  const transcript = { text: timing.phrases.map((p) => p.text).join(" "), chunks: timing.words.map((w) => ({ text: w.word, timestamp: [w.start, w.end] })) };
   for (const operation of plan.operations) {
     if (operation.gates.includes("split-scene")) {
       results.push({ operation: operation.id, state: "blocked-duration", reused: false });
@@ -25,17 +33,23 @@ export async function rehearseGeneration(plan: ReturnType<typeof generationPlan>
     const fal: JsonRequest = async (url, init) => {
       if (init.method === "POST") return { request_id: requestId };
       if (url.endsWith("/status")) return { status: "COMPLETED", request_id: requestId };
+      if (operation.kind === "alignment") return transcript;
       return operation.kind === "image" ? { images: [{ url: output }] } : { video: { url: output } };
     };
     const higgsfield: McpCall = async (name) => ({ structuredContent: name === "generate_audio"
       ? { results: [{ id: requestId, type: "audio", model: "text2speech_v2" }] }
       : { jobs: [{ index: 0, job_id: requestId, status: "completed", type: "audio", model: "text2speech_v2", result_url: output }] } });
-    const queue = operation.kind === "voice" ? bramQueue(payload, "simulation", higgsfield) : falQueue(operation, payload, "simulation", fal);
+    const queue = operation.kind === "voice" ? bramQueue(payload, "simulation", higgsfield) : operation.kind === "alignment" ? transcriptionQueue(payload, "simulation", fal) : falQueue(operation, payload, "simulation", fal);
     // Isolate receipts from the older direct fake-queue rehearsal.
-    const result = await advanceSimulatedRequest({ directory: path.join(directory, "provider-contracts-v1"), fingerprint: operation.fingerprint, assertOwned, queue });
-    if (result.output) urls[`output:${operation.id}`] = result.output;
+    const result = await advanceSimulatedRequest({ directory: path.join(directory, options ? "provider-contracts-budgeted-v2" : "provider-contracts-v2"), fingerprint: operation.fingerprint, assertOwned,
+      queue: options ? budgetedQueue(queue, options.budget.budget, options.budget.approval.id, operation.fingerprint) : queue });
+    if (options && result.state === "complete") {
+      const line = options.budget.quote.lines.find((line) => line.operation === operation.fingerprint)!;
+      await options.budget.budget.settle(options.budget.approval.id, operation.fingerprint, { unit: line.unit, actual: line.maximum, evidence: `simulation-only:${result.requestId}` });
+    }
+    if (result.output && operation.kind !== "alignment") urls[`output:${operation.id}`] = result.output;
     complete.add(operation.id);
-    results.push({ operation: operation.id, requestId: result.requestId, state: result.state ?? "pending", reused: result.reused });
+    results.push({ operation: operation.id, requestId: result.requestId, output: result.output, state: result.state ?? "pending", reused: result.reused });
   }
   return { mode: "simulation", transportContracts: ["fal-queue-rest", "higgsfield-mcp"], mediaGenerated: false, paidRequests: 0, costUsd: 0, planFingerprint: plan.fingerprint, operations: results };
 }

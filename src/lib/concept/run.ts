@@ -20,6 +20,8 @@ import { prepareConcept } from "./preparation";
 import { generationPlan } from "./generation-plan";
 import { CAM_VOICE } from "./cam-voice";
 import { rehearseGeneration } from "./rehearsal";
+import { rehearsalBudget } from "./rehearsal-budget";
+import { rehearseDelivery } from "./delivery-rehearsal";
 
 export async function produceConcept(input: {
   jobId: string; script: string; params: ProductionParams; recipe: Recipe;
@@ -49,8 +51,16 @@ export async function produceConcept(input: {
   await writeFile(path.join(root, "timing.json"), JSON.stringify(timing, null, 2));
   const plan = generationPlan(script, params, board, timing, references);
   await writeFile(path.join(root, "generation-plan.json"), JSON.stringify(plan, null, 2));
-  const rehearsal = await rehearseGeneration(plan, path.join(input.checkpointDir ?? path.join(root, "checkpoints"), "simulated-requests"), input.assertOwned ?? (async () => {}));
+  const assertOwned = input.assertOwned ?? (async () => {});
+  const checkpoints = input.checkpointDir ?? path.join(root, "checkpoints");
+  const reserved = await rehearsalBudget(plan, jobId, checkpoints, assertOwned);
+  const rehearsal = await rehearseGeneration(plan, path.join(checkpoints, "simulated-requests"), assertOwned, { budget: reserved, timing });
   await writeFile(path.join(root, "generation-rehearsal.json"), JSON.stringify(rehearsal, null, 2));
+  await writeFile(path.join(root, "budget-rehearsal.json"), JSON.stringify({ note: "SIMULATION ONLY. Artificial amounts, no provider quote or customer debit.", book: await reserved.budget.snapshot() }, null, 2));
+  if (voice !== "silent") {
+    const delivery = await rehearseDelivery({ jobId, directory: path.join(checkpoints, "delivery-rehearsal"), voiceFile: path.join(root, "assets/narration.wav"), script, params, board, plan, rehearsal, assertOwned });
+    await writeFile(path.join(root, "delivery-rehearsal.json"), JSON.stringify(delivery, null, 2));
+  }
   if (voice === "silent") await silentVoice(path.join(root, "assets/narration.wav"), timing.duration);
   await setStep("voice", "done");
   const sheet: SheetEntry[] = [{ step: 1, kind: "tts", falModel: voice === "silent" ? "higgsfield/text2speech_v2 (Bram preset)" : "local/macos-say", higgsfieldEquivalent: voice === "silent" ? "Bram · Text to Speech V2 · planned" : `${LOCAL_VOICES[voice].name} · local test voice`, prompt: script, durationSeconds: timing.duration, notes: voice === "silent" ? `Bram preset ${CAM_VOICE.voiceId} verified. New reading and pacing require review. Preview silent; no request sent.` : "Offline Mac speech, zero cost. No Bram identity or final voice approval. Phrase durations measured; word positions approximate." }];
@@ -95,6 +105,8 @@ export async function produceConcept(input: {
     { label: "Storyboard", url: url("storyboard.json") },
     { label: "Generation plan (not submitted)", url: url("generation-plan.json") },
     { label: "Pipeline rehearsal (simulation)", url: url("generation-rehearsal.json") },
+    { label: "Budget checks (simulation)", url: url("budget-rehearsal.json") },
+    ...(voice !== "silent" ? [{ label: "File transfer & voice sync checks (simulation)", url: url("delivery-rehearsal.json") }] : []),
     { label: "Shot contact sheet", url: url("controls/shots.png") },
     ...(board.shots.length > 1 ? [{ label: "Transition contact sheet", url: url("controls/transitions.png") }] : []),
     { label: "Timing", url: url("timing.json") }, { label: "Quality checks", url: url("controls/report.json") },

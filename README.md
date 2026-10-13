@@ -45,7 +45,7 @@ The October narrator, monster, effigy and CAM logo are pinned in `public/recipes
 
 Framing a new script now shows a persistent preparation card before confirmation: unchanged narration split into scenes, estimated timings, pinned character references, and the selected Bram voice with its existing provider sample. Unconfirmed drafts follow the current voice choice on reload; completed results retain their original preparation. The displayed duration uses the same timing calculation as the preview. The preparation remains visible with the result after reload and does not authorize generation.
 
-Still required before live production: editorial approval of new scene drafts, generated and approved keyframes and new Bram readings, provider asset uploads/downloads, complete cost metering and reservation, measured voice alignment, subtitle-face checks, full flash detection, automatic multi-format exports and a final price cap. Bram is the target selected on October 13; the historical Dylan recording is not renamed. Authentication, payments, hosting and the other two styles remain separate work.
+Still required before live production: editorial approval of new scene drafts, generated and approved keyframes and new Bram readings, validation of the protected provider transports with real outputs and cost receipts, a reviewed Bram reading with measured word timestamps, subtitle-face checks, full flash detection, automatic multi-format exports and a final price cap. Bram is the target selected on October 13; the historical Dylan recording is not renamed. Authentication, payments, hosting and the other two styles remain separate work.
 
 ## New scripts with local scenes and a test voice
 
@@ -76,9 +76,23 @@ Per-operation receipts persist before submission and after acknowledgement. Save
 
 `src/lib/providers/cam.ts` contains the future REST/MCP connection wiring, using MCP SDK 1.32.1 with no automatic authentication, redirects or reconnection retries. An unconditional CAM gate stops before credentials are read or a connection is opened, in every environment mode. The same gate protects every live adapter call. No environment variable, populated `.env` or subscription enables it. The rehearsal injects fake transports; it never opens this connection.
 
-Still to connect before real execution: upload the hash-checked references, download and normalize generated assets, align and approve a new Bram recording, bind approvals to the exact files, reserve a complete provider budget, meter costs, and reconcile ambiguous submissions. These are not implemented by the response adapters. Higgsfield credits and fal USD must stay separate until an explicit pricing policy is established.
+The file transfer, budget reservation and voice synchronization modules below are now connected to free preview rehearsals. Real execution remains closed: it needs current complete provider quotes, explicit spending/recording approvals, real cost evidence and an operator reconciliation path for ambiguous submissions. Higgsfield credits and fal USD remain separate; no conversion rate is assumed.
 
 Provider field contracts checked 2026-10-13 against [Nano Banana Pro edit](https://fal.ai/models/fal-ai/nano-banana-pro/edit/api), [Kling 3 Pro image-to-video](https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video/api) and the read-only Higgsfield model catalogue. No account credits were consumed.
+
+## File transfer, budget caps and Bram synchronization
+
+`media-transfers.ts` uploads only hash-matching references, checkpoints acknowledged URLs and rejects expired/ambiguous uploads. Its transport uses fal CDN v3 initiate + PUT, with credentials sent only to `rest.fal.ai`. It strips credentials from object-storage requests, refuses redirects and limits streams before decoding. Downloads are separate from generation: retries reuse a valid local file, never submit a second generation. Image/video bytes use the existing decoder and normalization, removing metadata and clip audio. Voice files must contain one audible mono/stereo audio stream, last 0.2–600 seconds, and stay below 64 MB. They become 48 kHz mono WAV without changing speed, adding pauses or trimming words. Source and normalized hashes are retained; corruption blocks reuse. The real transfer factory stays behind the same unconditional CAM gate.
+
+`budget.ts` requires a complete quote and approval bound to the exact plan, operation fingerprints and expiry. USD and Higgsfield credits use separate integer millionths. A transaction-scoped PostgreSQL advisory lock serializes reservations across jobs and processes; the state lives in dedicated `settings` keys, separate from customer credit movements. Each budget-wrapped generation/transcription submission consumes its reservation before sending. Unknown outcomes and failures keep the maximum held until cost evidence is reconciled; they are never automatically refunded. Actual costs settle idempotently. Overruns are recorded in full and block further submissions. Explicit cancellation can release only operations never attempted, and released approvals cannot submit later. The store includes an account cap and each approval has a production cap. Real provider cost retrieval is not inferred from queue completion.
+
+The generation bundle now includes a distinct word-level Whisper request after Bram, with `task=transcribe`, `chunk_level=word`, and diarization off. No transcription has been purchased; its quote remains pending in the Studio. The queue journals its ID and transcript. `voice-alignment.ts` checks the script hash, normalized audio hash, every original word, ordered non-overlapping timestamps and the recording duration. Missing/extra/different words, segment-level or null timestamps and a different recording stop for review. Case and punctuation may differ in recognition; captions preserve the original text. This is strict transcript matching, not a local speech recognition model or automatic verification that the speaker is Bram.
+
+A voice approval is bound to the audio, script and alignment hashes. `alignedGenerationPlan` then recalculates scene and clip durations, covering leading silence, pauses and tail without speeding up speech. Changed audio/timing invalidates animation fingerprints and their quotes even when rounded durations match. Clips over 15 seconds remain blocked for splitting. The same timing structure feeds the existing montage and captions. Simulation alignments and approvals cannot validate a final voice.
+
+Every free preview now emits **Budget checks (simulation)**. A preview with a Mac test voice also emits **File transfer & voice sync checks (simulation)**: fake uploads/downloads backed by local character/audio files, normalization, hash checks and a synchronized generation bundle. These QA files are never assigned to new scenes or presented as generated Bram media. Amounts are deliberately artificial, words use the test voice's estimated timing, and final Bram approval stays false. Recovery reuses the transferred bytes and settled simulation budget. The standalone contract tests exercise failures; `pnpm test:local-media` additionally races two actual PostgreSQL reservations, transfers a clip with unwanted audio, renders, resumes and checks zero application fetch attempts/customer debits.
+
+Contracts checked against the installed fal client 1.10.1 (`storage.ts`/`config.ts`) and [Whisper's official schema](https://fal.ai/models/fal-ai/whisper/api). These integration checks use local media only and make no application-process external fetch.
 
 ## Recovering interrupted local previews
 
@@ -94,7 +108,7 @@ pnpm test:recovery
 
 With local PostgreSQL running, this creates a test preview, kills its worker after the render checkpoint, then starts two recovery workers. It verifies one recovery, unchanged cached render, final quality checks, one completed-render meter entry and zero credit movements. Proof: `storage/qa/cam-recovery-proof.json`.
 
-This is explicit local recovery, not an unattended production queue. Paid request IDs, cross-job budget reservations, spending caps and automatic background recovery still need implementation.
+This is explicit local recovery, not an unattended production queue. Durable provider IDs, cross-job budget reservations and spending caps are exercised in simulation. Live reconciliation and automatic background recovery remain unavailable.
 
 ## Verification
 
@@ -123,4 +137,4 @@ This blocks Node fetch, submits the same job twice concurrently, renders a place
 
 A paid test still requires Shimon's approval of its script, style, voice and estimated budget. No paid generation is part of the development checks above.
 
-A production snapshots its execution mode. Confirmation and execution refuse a mode change, archived styles cannot be confirmed, and duplicate confirmations/executions are claimed atomically. The successful job update and the credit debit share one transaction. Local concept previews can now be recovered explicitly. Durable paid-provider resumption, budget reservations between different jobs, price caps and complete provider metering remain work for the concept engine.
+A production snapshots its execution mode. Confirmation and execution refuse a mode change, archived styles cannot be confirmed, and duplicate confirmations/executions are claimed atomically. The successful job update and the credit debit share one transaction. Local concept previews can now be recovered explicitly. The concept engine now journals provider requests, reserves separate provider budgets and accepts cost receipts. Connecting real quotes/cost evidence and validating an explicitly authorized live run remain outstanding; simulation never debits customer credits.

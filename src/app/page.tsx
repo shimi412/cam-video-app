@@ -438,7 +438,7 @@ export default function StudioPage() {
                   ))}
                   {framing.estimate.unpriced?.map((label) => <tr key={label}><td className="text-muted py-0.5">{label}</td><td className="text-right">Pending</td></tr>)}
                   <tr className="border-t border-line">
-                    <td className="pt-2 font-medium">{framing.estimate.unpriced?.length ? "Provisional subtotal · voice excluded" : "Estimated total"}</td>
+                    <td className="pt-2 font-medium">{framing.estimate.unpriced?.length ? "Provisional subtotal · unpriced steps excluded" : "Estimated total"}</td>
                     <td className="pt-2 text-right font-mono font-semibold text-accent">
                       ${framing.estimate.totalBilledUsd.toFixed(2)}
                     </td>

@@ -45,7 +45,7 @@ export function providerOutputUrl(value: unknown, provider: "fal" | "higgsfield"
  * Transport functions are injected: offline rehearsals use in-memory fixtures.
  */
 export function falQueue(operation: GenerationOperation, input: Record<string, unknown>, mode: TransportMode, request: JsonRequest): QueueRequest {
-  if ((operation.kind === "image" && operation.model !== IMAGE_ENDPOINT) || (operation.kind === "video" && operation.model !== VIDEO_ENDPOINT) || operation.kind === "voice" || operation.transport !== "fal-queue") throw new Error("Unsupported CAM scene model.");
+  if ((operation.kind === "image" && operation.model !== IMAGE_ENDPOINT) || (operation.kind === "video" && operation.model !== VIDEO_ENDPOINT) || !["image", "video"].includes(operation.kind) || operation.transport !== "fal-queue") throw new Error("Unsupported CAM scene model.");
   const payload = operation.kind === "image" ? ImageRequestSchema.parse(input) : VideoRequestSchema.parse(input);
   // Queue retrieval uses the owner/alias, without the endpoint's subpath.
   const base = `https://queue.fal.run/${operation.model.split("/").slice(0, 2).join("/")}`;

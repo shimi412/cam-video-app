@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ConceptBoard, ConceptTiming } from "./types";
 import type { ProductionParams } from "../brain";
 import { CAM_VOICE } from "./cam-voice";
+import { ALIGNMENT_ENDPOINT, TranscriptionRequest } from "./transcription";
 
 export const IMAGE_ENDPOINT = "fal-ai/nano-banana-pro/edit";
 export const VIDEO_ENDPOINT = "fal-ai/kling-video/v3/pro/image-to-video";
@@ -23,8 +24,9 @@ export const VideoRequestSchema = z.object({
 }).strict();
 
 type Reference = { id: string; url: string; sha256: string };
+export type VoiceEvidence = { audioSha256: string; alignmentSha256: string; source: "simulation" | "reviewed" };
 export type GenerationOperation = {
-  id: string; fingerprint: string; kind: "voice" | "image" | "video";
+  id: string; fingerprint: string; kind: "voice" | "alignment" | "image" | "video";
   transport: "higgsfield-mcp" | "fal-queue"; model: string; scene: number | null;
   dependsOn: string[]; gates: string[]; input: Record<string, unknown>;
   // Keys identify exact locked references or prior outputs, never guessed URLs.
@@ -32,7 +34,7 @@ export type GenerationOperation = {
 };
 
 /** No network or SDK imports. A plan is never a budget authorization. */
-export function generationPlan(script: string, params: ProductionParams, board: ConceptBoard, timing: ConceptTiming, references: Reference[]) {
+export function generationPlan(script: string, params: ProductionParams, board: ConceptBoard, timing: ConceptTiming, references: Reference[], voiceEvidence?: VoiceEvidence) {
   const operations: GenerationOperation[] = [];
   const blockers = ["Paid execution disabled", "Review scene directions", "Review new Bram reading and pacing", "Align the final voice before fixing clip durations", "Approve keyframes before animation", "Approve a complete provider quote and budget"];
   const add = (op: Omit<GenerationOperation, "fingerprint">) => {
@@ -41,7 +43,7 @@ export function generationPlan(script: string, params: ProductionParams, board: 
       if (!parent) throw new Error(`Missing operation dependency: ${id}`);
       return parent.fingerprint;
     });
-    const fingerprint = createHash("sha256").update(JSON.stringify({ op, references, parents })).digest("hex");
+    const fingerprint = createHash("sha256").update(JSON.stringify({ op, references, parents, ...(op.kind === "alignment" || op.kind === "video" ? { voiceEvidence } : {}) })).digest("hex");
     operations.push({ ...op, fingerprint });
   };
   add({ id: "voice", kind: "voice", transport: "higgsfield-mcp", model: CAM_VOICE.model, scene: null, dependsOn: [],
@@ -49,6 +51,9 @@ export function generationPlan(script: string, params: ProductionParams, board: 
     input: { model: CAM_VOICE.model, prompt: script, voice_type: CAM_VOICE.voiceType, voice_id: CAM_VOICE.voiceId,
       variant: CAM_VOICE.variant, count: 1 },
   });
+  add({ id: "voice-alignment", kind: "alignment", transport: "fal-queue", model: ALIGNMENT_ENDPOINT, scene: null,
+    dependsOn: ["voice"], gates: ["verified-voice-file", "paid-budget"],
+    input: { task: "transcribe", chunk_level: "word", diarize: false }, bindings: { audio_url: "output:voice" } });
   const reusedScenes: number[] = [];
   for (const shot of board.shots) {
     if (params.sceneMedia?.[shot.index]) { reusedScenes.push(shot.index); continue; }
@@ -68,7 +73,7 @@ export function generationPlan(script: string, params: ProductionParams, board: 
     const seconds = Math.max(3, Math.ceil((timing.phrases[shot.index]?.start ?? timing.duration) - (shot.index === 1 ? 0 : timing.phrases[shot.index - 1].start)));
     if (seconds > 15) blockers.push(`Scene ${shot.index} lasts ${seconds}s: split it before animation (15s maximum)`);
     add({ id: `${id}-clip`, kind: "video", transport: "fal-queue", model: VIDEO_ENDPOINT, scene: shot.index,
-      dependsOn: ["voice", `${id}-start`, ...(shot.endImagePrompt ? [`${id}-end`] : [])],
+      dependsOn: ["voice-alignment", `${id}-start`, ...(shot.endImagePrompt ? [`${id}-end`] : [])],
       gates: ["final-voice-alignment", "keyframe-review", "paid-budget", ...(seconds > 15 ? ["split-scene"] : [])],
       input: { prompt: shot.motionPrompt, duration: String(seconds), generate_audio: false },
       bindings: { start_image_url: `output:${id}-start`, ...(shot.endImagePrompt ? { end_image_url: `output:${id}-end` } : {}) } });
@@ -77,7 +82,7 @@ export function generationPlan(script: string, params: ProductionParams, board: 
   return {
     version: 1, mode: "planning-only", canExecute: false, costUsd: 0, liveQuote: null,
     fingerprint: createHash("sha256").update(JSON.stringify(content)).digest("hex"),
-    voice: CAM_VOICE, timingBasis: "provisional-not-final-voice",
+    voice: CAM_VOICE, voiceEvidence: voiceEvidence ?? null, timingBasis: voiceEvidence?.source === "reviewed" ? "reviewed-voice-alignment" : voiceEvidence ? "simulation-alignment" : "provisional-not-final-voice",
     blockers, references, reusedScenes, importedMedia: params.sceneMedia ?? {}, operations,
   } as const;
 }
@@ -94,5 +99,6 @@ export function materializeRequest(operation: GenerationOperation, urls: Record<
   }
   if (operation.kind === "image") return ImageRequestSchema.parse(input);
   if (operation.kind === "video") return VideoRequestSchema.parse(input);
+  if (operation.kind === "alignment") return TranscriptionRequest.parse(input);
   return BramRequestSchema.parse(input);
 }

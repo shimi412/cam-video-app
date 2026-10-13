@@ -57,7 +57,7 @@ it("binds all locked references and the approved start to the end image, then bo
   expect(plan.operations[0].input).toMatchObject({ model: "text2speech_v2", variant: "elevenlabs", voice_type: "preset", voice_id: "549ff70a-3ee7-4f04-a4d9-89a24fab7709" });
   expect(plan.liveQuote).toBeNull(); expect(plan.canExecute).toBe(false);
   const estimate = estimateProduction(params, 2.5);
-  expect(estimate.unpriced).toEqual(["Bram voice · quote required"]);
+  expect(estimate.unpriced).toEqual(["Bram voice · quote required", "Voice synchronization · quote required"]);
   expect(estimate.lines.some((line) => line.label === "Voice-over")).toBe(false);
 });
 
@@ -89,7 +89,7 @@ it("rehearses and resumes the full chain without a network call or a second subm
     const { plan } = fixture();
     const first = await rehearseGeneration(plan, dir, async () => {});
     const resumed = await rehearseGeneration(plan, dir, async () => {});
-    expect(first.operations).toHaveLength(7);
+    expect(first.operations).toHaveLength(8);
     expect(first.operations.every((op) => op.state === "complete" && !op.reused)).toBe(true);
     expect(resumed.operations.every((op) => op.reused)).toBe(true);
     expect(first).toMatchObject({ mediaGenerated: false, paidRequests: 0, costUsd: 0 });

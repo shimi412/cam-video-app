@@ -13,8 +13,10 @@ export async function currentDraft(job: { id: string; status: string; script: st
   const preparation = await prepareConcept(job.script, params, recipe, job.id);
   const draft = params.draft;
   const estimate = draft?.estimate as Record<string, unknown> | undefined;
+  const lines = Array.isArray(estimate?.lines) ? estimate.lines.map((line) => ({ ...line,
+    label: line.label === "Planning, transcription & rendering allowance" ? "Planning & rendering allowance" : line.label })) : estimate?.lines;
   return {
     preparation,
-    draft: draft ? { ...draft, estimate: estimate ? { ...estimate, unpriced: [`${CAM_VOICE.name} voice · quote required`] } : estimate } : undefined,
+    draft: draft ? { ...draft, estimate: estimate ? { ...estimate, lines, unpriced: [`${CAM_VOICE.name} voice · quote required`, "Voice synchronization · quote required"] } : estimate } : undefined,
   };
 }

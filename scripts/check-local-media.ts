@@ -20,6 +20,12 @@ import { normalizedText } from "../src/lib/concept/text";
 import { GET as exportPlan } from "../src/app/api/jobs/[id]/generation-plan/route";
 import { GET as voiceReference } from "../src/app/api/cam-voice/route";
 import { suggestDirection } from "../src/lib/concept/direction";
+import { randomUUID } from "node:crypto";
+import { createBudget, quoteHash, budgetUsage, type BudgetQuote } from "../src/lib/concept/budget";
+import { postgresBudgetStore } from "../src/lib/concept/budget-store";
+import { downloadResult, type AssetTransport } from "../src/lib/concept/media-transfers";
+import { sha256 } from "../src/lib/concept/checkpoints";
+import { verifiedSceneMedia } from "../src/lib/concept/imported-media";
 
 const exec = promisify(execFile);
 let networkAttempts = 0;
@@ -32,6 +38,19 @@ async function main() {
   const framed = await frame(new Request("http://localhost/api/productions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, mode: "auto", overrides: { aspectRatio: "16:9" } }) }));
   assert.equal(framed.status, 200);
   const draft = await framed.json(), id = draft.jobId;
+  // Two workers compete for a shared provider cap in actual PostgreSQL.
+  const budgetScope = `test-${randomUUID()}`, caps = { usd: 100, "higgsfield-credit": 100 };
+  const createReservation = () => {
+    const plan = sha256(randomUUID()), fingerprint = sha256("fake-operation");
+    const quote: BudgetQuote = { plan, source: "simulation-fixture", expiresAt: Date.now() + 60_000, lines: [{ operation: fingerprint, unit: "usd", maximum: 60 }] };
+    return { jobId: id, plan, operations: [{ fingerprint, transport: "fal-queue" }], quote,
+      approval: { id: randomUUID(), mode: "simulation" as const, plan, quote: quoteHash(quote), caps, expiresAt: quote.expiresAt } };
+  };
+  const a = createBudget(postgresBudgetStore("simulation", budgetScope), caps), b = createBudget(postgresBudgetStore("simulation", budgetScope), caps);
+  const reservations = await Promise.allSettled([a.reserve(createReservation()), b.reserve(createReservation())]);
+  assert.equal(reservations.filter((r) => r.status === "fulfilled").length, 1);
+  assert.equal(reservations.filter((r) => r.status === "rejected").length, 1);
+  assert.equal(budgetUsage(await createBudget(postgresBudgetStore("simulation", budgetScope), caps).snapshot()).usd, 60);
   assert.equal(draft.preparation.generation.downloadUrl, `/api/jobs/${id}/generation-plan`);
   assert(draft.estimate.unpriced.includes("Bram voice · quote required"));
   const context = { params: Promise.resolve({ id }) };
@@ -60,6 +79,15 @@ async function main() {
   const clip = path.join(qa, "local-media-test-clip.mp4");
   // Deliberately recognizable calibration footage, with an unwanted tone to test audio removal.
   await exec("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100", "-t", "1.5", "-c:v", "libx264", "-c:a", "aac", clip]);
+  let clipDownloads = 0;
+  const transfers: AssetTransport = { mode: "simulation", upload: async () => { throw new Error("Unused"); }, download: async () => { clipDownloads++; return new Response(new Uint8Array(await readFile(clip))); } };
+  const transfer = { directory: path.join(qa, `transfers-${id}`), transport: transfers, jobId: id, fingerprint: sha256("fixture-clip"), kind: "video" as const, provider: "fal" as const, url: "https://simulation.invalid/clip.mp4", assertOwned: async () => {} };
+  const downloaded = await downloadResult(transfer);
+  assert(downloaded.media); assert.equal(downloaded.media.kind, "video");
+  assert.equal((await downloadResult(transfer)).reused, true); assert.equal(clipDownloads, 1);
+  const verified = await verifiedSceneMedia(id, downloaded.media);
+  const { stdout: clipProbe } = await exec("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type", "-of", "json", verified.file]);
+  assert(!JSON.parse(clipProbe).streams.some((s: { codec_type: string }) => s.codec_type === "audio"));
   assert.equal((await send(2, await readFile(clip), "clip.mp4")).status, 200);
   assert.equal((await settings({ removeScene: 1 })).status, 200);
   assert.equal((await send(1, image, "image.png")).status, 200);
@@ -91,10 +119,17 @@ async function main() {
   const qc = JSON.parse(await readFile(artifact("Quality checks"), "utf8"));
   const generation = JSON.parse(await readFile(artifact("Generation plan (not submitted)"), "utf8"));
   const rehearsal = JSON.parse(await readFile(artifact("Pipeline rehearsal (simulation)"), "utf8"));
+  const delivery = JSON.parse(await readFile(artifact("File transfer & voice sync checks (simulation)"), "utf8"));
+  const budgetReport = JSON.parse(await readFile(artifact("Budget checks (simulation)"), "utf8"));
+  assert.equal(delivery.mode, "simulation"); assert.equal(delivery.finalBramVoiceApproved, false);
+  assert.equal(delivery.paidRequests, 0); assert.equal(delivery.uploads, 3); assert.equal(delivery.downloads, 2);
+  assert(Math.abs(delivery.synchronizedDuration - params.preparation.durationSeconds) < .02);
+  const budgetEntries = Object.values(budgetReport.book.reservations).flatMap((r) => (r as { entries: { state: string }[] }).entries);
+  assert(budgetEntries.length > 0); assert(budgetEntries.every((entry) => entry.state === "settled"));
   assert.equal(params.preparation.generation.downloadUrl, params.artifacts.find((a) => a.label === "Generation plan (not submitted)")!.url);
   assert.equal(generation.canExecute, false); assert.equal(generation.reusedScenes.length, 2);
   assert.equal(rehearsal.mediaGenerated, false); assert.equal(rehearsal.paidRequests, 0);
-  assert.equal(rehearsal.operations.length, 4);
+  assert.equal(rehearsal.operations.length, 5);
   assert.equal(params.preparation.shots[2].scene, direction.scene);
   assert((await readFile(artifact("Subtitles (SRT)"), "utf8")).includes("Read the original passage"));
   assert.equal(provenance.voice.name, "Daniel");
@@ -110,11 +145,15 @@ async function main() {
   assert.equal(recovered.renderReused, true);
   const recoveredVoice = path.join(process.cwd(), "storage", recovered.artifacts.find((a) => a.label === "Listen to test voice")!.url.replace("/api/media/", ""));
   assert(firstVoice.equals(await readFile(recoveredVoice)));
+  const recoveredDeliveryPath = path.join(process.cwd(), "storage", recovered.artifacts.find((a) => a.label === "File transfer & voice sync checks (simulation)")!.url.replace("/api/media/", ""));
+  const recoveredDelivery = JSON.parse(await readFile(recoveredDeliveryPath, "utf8"));
+  assert.equal(recoveredDelivery.uploads, 0); assert.equal(recoveredDelivery.downloads, 0);
+  assert.equal(recoveredDelivery.audioSha256, delivery.audioSha256); assert.equal(recoveredDelivery.alignmentSha256, delivery.alignmentSha256);
   const ledger = await db.select().from(schema.creditLedger).where(eq(schema.creditLedger.jobId, id));
   const calls = await db.select().from(schema.apiCalls).where(eq(schema.apiCalls.jobId, id));
   assert.equal(Number(job.billedUsd), 0); assert.equal(ledger.length, 0);
   assert.equal(calls.length, 1); assert.equal(Number(calls[0].realCostUsd), 0); assert.equal(networkAttempts, 0);
-  const proof = { jobId: id, seconds: (Date.now() - started) / 1000, status: resumed.status, duration: params.preparation.durationSeconds, voice: provenance.voice, importedScenes: 2, placeholderScenes: 1, heldSeconds: provenance.scenes[1].media.heldSeconds, audio: qc.audio, recoveredIdenticalVoice: true, recoveredRender: recovered.renderReused, output: resumed.outputPath, ledgerEntries: ledger.length, networkAttempts, billedUsd: 0 };
+  const proof = { jobId: id, seconds: (Date.now() - started) / 1000, status: resumed.status, duration: params.preparation.durationSeconds, voice: provenance.voice, importedScenes: 2, placeholderScenes: 1, heldSeconds: provenance.scenes[1].media.heldSeconds, audio: qc.audio, recoveredIdenticalVoice: true, recoveredRender: recovered.renderReused, delivery: { verified: true, reusedWithoutTransfer: true, clipAudioRemoved: true, finalBramVoiceApproved: false }, budget: { concurrencyVerified: true, unknownCostsReserved: true, customerDebit: 0 }, output: resumed.outputPath, ledgerEntries: ledger.length, networkAttempts, billedUsd: 0 };
   await writeFile(path.join(qa, "cam-local-media-proof.json"), JSON.stringify(proof, null, 2));
   console.log(JSON.stringify(proof, null, 2));
 }

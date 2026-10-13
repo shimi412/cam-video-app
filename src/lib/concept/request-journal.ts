@@ -5,6 +5,7 @@ import { z } from "zod";
 import { assertTransportMode, type QueueRequest } from "./provider-transports";
 
 const Receipt = z.object({
+  mode: z.enum(["simulation", "live"]).default("simulation"),
   fingerprint: z.string(), state: z.enum(["submitting", "submitted", "complete", "failed"]),
   requestId: z.string().optional(), output: z.string().optional(),
 });
@@ -26,7 +27,7 @@ export async function advanceRequest(input: {
   let receipt: Receipt | undefined;
   try { receipt = Receipt.parse(JSON.parse(await readFile(file, "utf8"))); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  if (receipt && receipt.fingerprint !== input.fingerprint) throw new Error("Request journal mismatch.");
+  if (receipt && (receipt.fingerprint !== input.fingerprint || receipt.mode !== input.queue.mode)) throw new Error("Request journal mismatch.");
   const save = async (value: Receipt) => {
     await input.assertOwned();
     const temporary = `${file}.${randomUUID()}.tmp`;
@@ -41,11 +42,11 @@ export async function advanceRequest(input: {
     return { ...receipt, reused: true };
   }
   if (!receipt) {
-    await save({ fingerprint: input.fingerprint, state: "submitting" });
+    await save({ mode: input.queue.mode, fingerprint: input.fingerprint, state: "submitting" });
     await input.assertOwned();
     const submitted = await input.queue.submit();
     if (!submitted.requestId) throw new Error("Submission returned no request ID. Reconciliation required.");
-    await save({ fingerprint: input.fingerprint, state: "submitted", requestId: submitted.requestId });
+    await save({ mode: input.queue.mode, fingerprint: input.fingerprint, state: "submitted", requestId: submitted.requestId });
   }
   if (!receipt?.requestId) throw new Error("Submitted request has no ID. Reconciliation required.");
   await input.assertOwned();

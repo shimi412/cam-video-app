@@ -132,7 +132,7 @@ it("refreshes only unconfirmed planning drafts and keeps historical voice metada
   const old = { id: "31527145-d10e-4fc3-a989-8f2b30bf720d", status: "estimated", script, params: { ...params, preparation, draft: { estimate: { unpriced: ["Dylan voice · quote required"], totalBilledUsd: 10 } } } };
   const current = await currentDraft(old);
   expect(current.preparation).toMatchObject({ voice: { cam: { name: "Bram", referenceKind: "provider-sample", finalVoiceApproved: false } } });
-  expect(current.draft).toMatchObject({ estimate: { unpriced: ["Bram voice · quote required"], totalBilledUsd: 10 } });
+  expect(current.draft).toMatchObject({ estimate: { unpriced: ["Bram voice · quote required", "Voice synchronization · quote required"], totalBilledUsd: 10 } });
   expect(old.params.preparation.voice.cam.name).toBe("Dylan");
   for (const status of ["confirmed", "running", "succeeded", "failed"]) expect((await currentDraft({ ...old, status })).preparation).toBe(preparation);
   expect((await currentDraft({ ...old, params: { ...old.params, previewSource: "existing" } })).preparation).toBe(preparation);
