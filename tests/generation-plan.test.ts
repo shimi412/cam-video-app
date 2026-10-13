@@ -54,10 +54,10 @@ it("binds all locked references and the approved start to the end image, then bo
   const video = byId("scene-1-clip");
   expect(() => materializeRequest(video, {})).toThrow("Unresolved");
   expect(materializeRequest(video, { "output:scene-1-start": "https://example.invalid/start.png", "output:scene-1-end": "https://example.invalid/end.png" })).toMatchObject({ generate_audio: false, end_image_url: "https://example.invalid/end.png" });
-  expect(plan.operations[0].input).toMatchObject({ model: "seed_audio", voice_type: "preset", voice_id: "b847bc29-f184-583a-8ad9-d1f1e16d1a60", speech_rate: 22 });
+  expect(plan.operations[0].input).toMatchObject({ model: "text2speech_v2", variant: "elevenlabs", voice_type: "preset", voice_id: "549ff70a-3ee7-4f04-a4d9-89a24fab7709" });
   expect(plan.liveQuote).toBeNull(); expect(plan.canExecute).toBe(false);
   const estimate = estimateProduction(params, 2.5);
-  expect(estimate.unpriced).toEqual(["Dylan voice · quote required"]);
+  expect(estimate.unpriced).toEqual(["Bram voice · quote required"]);
   expect(estimate.lines.some((line) => line.label === "Voice-over")).toBe(false);
 });
 

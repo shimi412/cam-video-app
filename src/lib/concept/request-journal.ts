@@ -2,27 +2,23 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { isSimulation } from "../providers/mode";
+import { assertTransportMode, type QueueRequest } from "./provider-transports";
 
 const Receipt = z.object({
   fingerprint: z.string(), state: z.enum(["submitting", "submitted", "complete", "failed"]),
   requestId: z.string().optional(), output: z.string().optional(),
 });
 type Receipt = z.infer<typeof Receipt>;
-export type SimulatedQueue = {
-  mode: "simulation";
-  submit: () => Promise<{ requestId: string }>;
-  poll: (requestId: string) => Promise<{ state: "pending" | "complete" | "failed"; output?: string }>;
-};
+export type SimulatedQueue = QueueRequest & { mode: "simulation" };
 
 /** Rehearse queue recovery without a live provider. The caller owns the job lock.
  * A lost submit response is ambiguous: never resubmit it automatically.
  * Read/poll failures preserve the saved request ID so polling can resume safely.
  */
-export async function advanceSimulatedRequest(input: {
-  directory: string; fingerprint: string; queue: SimulatedQueue; assertOwned: () => Promise<void>;
+export async function advanceRequest(input: {
+  directory: string; fingerprint: string; queue: QueueRequest; assertOwned: () => Promise<void>;
 }) {
-  if (!isSimulation() || input.queue.mode !== "simulation") throw new Error("Queue rehearsal only runs offline.");
+  assertTransportMode(input.queue.mode);
   if (!/^[a-f0-9]{64}$/.test(input.fingerprint)) throw new Error("Invalid request fingerprint.");
   await input.assertOwned();
   await mkdir(input.directory, { recursive: true });
@@ -63,3 +59,5 @@ export async function advanceSimulatedRequest(input: {
   }
   return { ...receipt, reused: false };
 }
+
+export const advanceSimulatedRequest = advanceRequest;

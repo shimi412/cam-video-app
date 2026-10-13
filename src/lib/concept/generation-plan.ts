@@ -7,6 +7,11 @@ import { CAM_VOICE } from "./cam-voice";
 export const IMAGE_ENDPOINT = "fal-ai/nano-banana-pro/edit";
 export const VIDEO_ENDPOINT = "fal-ai/kling-video/v3/pro/image-to-video";
 const mediaUrl = z.url().refine((value) => new URL(value).protocol === "https:", "A hosted HTTPS media URL is required.");
+export const BramRequestSchema = z.object({
+  model: z.literal("text2speech_v2"), variant: z.literal("elevenlabs"),
+  voice_type: z.literal("preset"), voice_id: z.literal("549ff70a-3ee7-4f04-a4d9-89a24fab7709"),
+  prompt: z.string().min(1).max(6000), count: z.literal(1),
+}).strict();
 export const ImageRequestSchema = z.object({
   prompt: z.string().min(1), image_urls: z.array(mediaUrl).min(1),
   aspect_ratio: z.enum(["9:16", "16:9", "1:1"]), resolution: z.literal("2K"),
@@ -29,7 +34,7 @@ export type GenerationOperation = {
 /** No network or SDK imports. A plan is never a budget authorization. */
 export function generationPlan(script: string, params: ProductionParams, board: ConceptBoard, timing: ConceptTiming, references: Reference[]) {
   const operations: GenerationOperation[] = [];
-  const blockers = ["Paid execution disabled", "Review scene directions", "Review new Dylan reading and pacing", "Align the final voice before fixing clip durations", "Approve keyframes before animation", "Approve a complete provider quote and budget"];
+  const blockers = ["Paid execution disabled", "Review scene directions", "Review new Bram reading and pacing", "Align the final voice before fixing clip durations", "Approve keyframes before animation", "Approve a complete provider quote and budget"];
   const add = (op: Omit<GenerationOperation, "fingerprint">) => {
     const parents = op.dependsOn.map((id) => {
       const parent = operations.find((item) => item.id === id);
@@ -42,7 +47,7 @@ export function generationPlan(script: string, params: ProductionParams, board: 
   add({ id: "voice", kind: "voice", transport: "higgsfield-mcp", model: CAM_VOICE.model, scene: null, dependsOn: [],
     gates: ["script-review", "voice-settings-review", "paid-budget"], bindings: {},
     input: { model: CAM_VOICE.model, prompt: script, voice_type: CAM_VOICE.voiceType, voice_id: CAM_VOICE.voiceId,
-      format: "wav", sample_rate: 48000, speech_rate: CAM_VOICE.candidateSpeechRate, pitch_rate: 0, loudness_rate: 0, count: 1 },
+      variant: CAM_VOICE.variant, count: 1 },
   });
   const reusedScenes: number[] = [];
   for (const shot of board.shots) {
@@ -89,5 +94,5 @@ export function materializeRequest(operation: GenerationOperation, urls: Record<
   }
   if (operation.kind === "image") return ImageRequestSchema.parse(input);
   if (operation.kind === "video") return VideoRequestSchema.parse(input);
-  return input;
+  return BramRequestSchema.parse(input);
 }

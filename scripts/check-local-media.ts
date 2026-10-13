@@ -33,7 +33,7 @@ async function main() {
   assert.equal(framed.status, 200);
   const draft = await framed.json(), id = draft.jobId;
   assert.equal(draft.preparation.generation.downloadUrl, `/api/jobs/${id}/generation-plan`);
-  assert(draft.estimate.unpriced.includes("Dylan voice · quote required"));
+  assert(draft.estimate.unpriced.includes("Bram voice · quote required"));
   const context = { params: Promise.resolve({ id }) };
   const settings = (body: unknown) => PATCH(new Request("http://localhost/preparation", { method: "PATCH", body: JSON.stringify(body) }), context);
   assert.equal((await settings({ previewVoice: "local-en" })).status, 200);
@@ -45,7 +45,7 @@ async function main() {
   assert.equal((await settings({ scene: 3, direction })).status, 200);
   const afterPlan = await (await exportPlan(new Request("http://localhost/plan"), context)).json();
   assert.notEqual(afterPlan.fingerprint, beforePlan.fingerprint);
-  assert.equal(afterPlan.operations[0].input.voice_id, "b847bc29-f184-583a-8ad9-d1f1e16d1a60");
+  assert.equal(afterPlan.operations[0].input.voice_id, "549ff70a-3ee7-4f04-a4d9-89a24fab7709");
   assert(afterPlan.operations.some((op: { id: string }) => op.id === "scene-3-end"));
   const recording = await voiceReference(new Request("http://localhost/voice", { headers: { range: "bytes=0-43" } }));
   assert.equal(recording.status, 206); assert.equal((await recording.arrayBuffer()).byteLength, 44);

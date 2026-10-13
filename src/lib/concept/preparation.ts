@@ -23,10 +23,10 @@ export async function prepareConcept(script: string, params: ProductionParams, r
     durationSeconds: timing.duration,
     measuredScenes: Boolean(measuredTiming),
     canGenerate: false as const,
-    voice: { status: "identity-verified" as const, name: preview === "silent" ? "Dylan" : LOCAL_VOICES[preview].name, preview,
+    voice: { status: "identity-verified" as const, name: preview === "silent" ? "Bram" : LOCAL_VOICES[preview].name, preview,
       cam: await camVoiceReference(),
-      message: preview === "silent" ? "Dylan's exact preset has been identified. A new reading still needs a paid generation and review. This free preview will be silent."
-        : `${LOCAL_VOICES[preview].name} is a free Mac test voice. Dylan is the CAM reference voice; a new reading still needs generation and review. Scene lengths follow the test voice; subtitle word positions are approximate.` },
+      message: preview === "silent" ? "Bram's exact preset has been identified. A new reading still needs a paid generation and review. This free preview will be silent."
+        : `${LOCAL_VOICES[preview].name} is a free Mac test voice. Bram is the CAM reference voice; a new reading still needs generation and review. Scene lengths follow the test voice; subtitle word positions are approximate.` },
     generation: { fingerprint: plan.fingerprint, operations: plan.operations.length, images: plan.operations.filter((op) => op.kind === "image").length,
       clips: plan.operations.filter((op) => op.kind === "video").length, reusedScenes: plan.reusedScenes.length, blockers: plan.blockers,
       downloadUrl: jobId ? `/api/jobs/${jobId}/generation-plan` : null },

@@ -4,6 +4,7 @@ import { getBalanceUsd } from "@/lib/credits";
 import { z } from "zod";
 import { jobWorkerActive } from "@/lib/job-lock";
 import { recoveryAllowed, recentlyQueued } from "@/lib/job-recovery";
+import { currentDraft } from "@/lib/concept/current-draft";
 
 export async function GET(
   _request: Request,
@@ -15,14 +16,15 @@ export async function GET(
   if (!job) return Response.json({ error: "Job not found" }, { status: 404 });
 
   const jobParams = job.params as Record<string, unknown>;
+  const current = await currentDraft(job);
   const canResume = recoveryAllowed(job) && !recentlyQueued(job) && !(await jobWorkerActive(id));
   return Response.json({
     id: job.id,
-    draft: job.status === "estimated" && jobParams.draft ? { ...(jobParams.draft as Record<string, unknown>), jobId: job.id, preparation: jobParams.preparation } : null,
+    draft: job.status === "estimated" && current.draft ? { ...current.draft, jobId: job.id, preparation: current.preparation } : null,
     canResume,
     interrupted: canResume && job.status !== "failed",
     renderReused: jobParams.renderReused === true,
-    preparation: jobParams.preparation ?? null,
+    preparation: current.preparation,
     execution: jobParams.execution ?? null,
     script: job.script,
     aspectRatio: jobParams.aspectRatio,

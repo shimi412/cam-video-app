@@ -36,9 +36,9 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
       <p className="text-sm text-muted mt-1">{preparation.shots.length} scenes · {preparation.measuredScenes ? "" : "about "}{preparation.durationSeconds.toFixed(1)} seconds, including pauses. {preparation.measuredScenes ? "Scene lengths follow the recorded voice. Subtitle word positions are approximate." : "Timing will follow the narration."}</p>
     </div>
     {preparation.voice.cam && <div className="border border-line rounded-lg p-3 text-sm space-y-2">
-      <p className="font-medium">CAM voice · Dylan identified</p>
-      <p className="text-muted">Listen to the original CAM recording. New scripts still need a new Dylan reading and a pacing review.</p>
-      {preparation.voice.cam.referenceUrl ? <audio aria-label="Original CAM Dylan voice" controls preload="none" src={preparation.voice.cam.referenceUrl} className="w-full" /> : <p className="text-muted">Original recording unavailable on this computer.</p>}
+      <p className="font-medium">CAM voice · {preparation.voice.cam.name} identified</p>
+      <p className="text-muted">{preparation.voice.cam.referenceKind === "provider-sample" ? `${preparation.voice.cam.name} is the target voice for new CAM videos. Listen to the provider’s existing sample. No reading of your script has been generated.` : `This saved preparation used ${preparation.voice.cam.name}. Listen to its original CAM reference recording.`}</p>
+      {preparation.voice.cam.referenceUrl ? <audio aria-label={`${preparation.voice.cam.name} ${preparation.voice.cam.referenceKind === "provider-sample" ? "provider sample" : "CAM reference"}`} controls preload="none" src={preparation.voice.cam.referenceUrl} className="w-full" /> : <p className="text-muted">The voice sample is unavailable.</p>}
     </div>}
     <div className="border border-line rounded-lg p-3 text-sm space-y-2">
       <p className="font-medium">{preparation.voice.preview === "silent" ? "Preview voice" : `Test voice · ${preparation.voice.name}`}</p>
@@ -52,7 +52,7 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
     </div>
     {preparation.generation && <div className="border border-line rounded-lg p-3 text-sm space-y-2">
       <p className="font-medium">Automatic generation prepared</p>
-      <p className="text-muted">{preparation.generation.images} images · {preparation.generation.clips} clips · 1 Dylan reading{preparation.generation.reusedScenes > 0 ? ` · ${preparation.generation.reusedScenes} imported scenes kept` : ""}. Requests are prepared locally. Nothing has been sent or charged.</p>
+      <p className="text-muted">{preparation.generation.images} images · {preparation.generation.clips} clips · 1 {preparation.voice.cam?.name ?? "CAM"} reading{preparation.generation.reusedScenes > 0 ? ` · ${preparation.generation.reusedScenes} imported scenes kept` : ""}. Requests are prepared locally. Nothing has been sent or charged.</p>
       <p className="text-muted">Review the proposed scenes below. Paid generation remains disabled while the voice, images and budget need approval.</p>
       {preparation.generation.downloadUrl && <a href={preparation.generation.downloadUrl} download="cam-generation-plan.json" className="text-accent">Download generation plan</a>}
     </div>}

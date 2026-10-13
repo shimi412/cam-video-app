@@ -53,7 +53,7 @@ export async function produceConcept(input: {
   await writeFile(path.join(root, "generation-rehearsal.json"), JSON.stringify(rehearsal, null, 2));
   if (voice === "silent") await silentVoice(path.join(root, "assets/narration.wav"), timing.duration);
   await setStep("voice", "done");
-  const sheet: SheetEntry[] = [{ step: 1, kind: "tts", falModel: voice === "silent" ? "higgsfield/seed_audio (no fal equivalent verified)" : "local/macos-say", higgsfieldEquivalent: voice === "silent" ? "Dylan · Seed Audio · planned" : `${LOCAL_VOICES[voice].name} · local test voice`, prompt: script, durationSeconds: timing.duration, notes: voice === "silent" ? `Dylan preset ${CAM_VOICE.voiceId} verified. New reading and pacing require review. Preview silent; no request sent.` : "Offline Mac speech, zero cost. No Dylan identity or final voice approval. Phrase durations measured; word positions approximate." }];
+  const sheet: SheetEntry[] = [{ step: 1, kind: "tts", falModel: voice === "silent" ? "higgsfield/text2speech_v2 (Bram preset)" : "local/macos-say", higgsfieldEquivalent: voice === "silent" ? "Bram · Text to Speech V2 · planned" : `${LOCAL_VOICES[voice].name} · local test voice`, prompt: script, durationSeconds: timing.duration, notes: voice === "silent" ? `Bram preset ${CAM_VOICE.voiceId} verified. New reading and pacing require review. Preview silent; no request sent.` : "Offline Mac speech, zero cost. No Bram identity or final voice approval. Phrase durations measured; word positions approximate." }];
   await setStep("keyframes", "running");
   for (const shot of board.shots) {
     if (params.sceneMedia?.[shot.index]) {
