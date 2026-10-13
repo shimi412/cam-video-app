@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { db, schema } from "@/db";
@@ -29,7 +30,7 @@ const bodySchema = z.object({
     .optional(),
 });
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   if (activeRecipes().length === 0) {
     return Response.json({ error: new RecipeUnavailableError().message }, { status: 409 });
   }
@@ -127,3 +128,5 @@ export async function POST(request: Request) {
     canConfirm: isSimulation() || (!estimate.unpriced?.length && balance >= estimate.totalBilledUsd),
   });
 }
+
+export const POST = withAccess(handlePOST);

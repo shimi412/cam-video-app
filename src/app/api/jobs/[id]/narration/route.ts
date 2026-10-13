@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { rm } from "node:fs/promises";
@@ -72,5 +73,5 @@ async function handle(request: Request, context: { params: Promise<{ id: string 
     finally { await lock.release(); }
   }
 }
-export const POST = handle;
-export const PATCH = handle;
+export const POST = withAccess(handle);
+export const PATCH = withAccess(handle);

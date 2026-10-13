@@ -1,9 +1,10 @@
+import { withAccess } from "@/lib/access";
 import { z } from "zod";
 import { addLedgerEntry, getBalanceUsd } from "@/lib/credits";
 
 const bodySchema = z.object({ amountUsd: z.number().positive().max(10000) });
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const parsed = bodySchema.safeParse(await request.json());
   if (!parsed.success) {
     return Response.json({ error: "Invalid amount" }, { status: 400 });
@@ -16,3 +17,5 @@ export async function POST(request: Request) {
   });
   return Response.json({ balance: await getBalanceUsd() });
 }
+
+export const POST = withAccess(handlePOST, "admin");

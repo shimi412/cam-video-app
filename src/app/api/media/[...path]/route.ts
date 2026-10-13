@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { createReadStream } from "node:fs";
 import { stat, realpath } from "node:fs/promises";
 import path from "node:path";
@@ -17,7 +18,7 @@ const MIME: Record<string, string> = {
   ".vtt": "text/vtt; charset=utf-8",
 };
 
-export async function GET(
+async function handleGET(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
@@ -46,4 +47,7 @@ export async function GET(
   }
 }
 
+
+
+export const GET = withAccess(handleGET);
 export const HEAD = GET;

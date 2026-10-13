@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { schema } from "@/db";
@@ -56,5 +57,5 @@ async function handle(request: Request, { params }: { params: Promise<{ id: stri
     return Response.json({ error: "The saved evidence does not match this request. It stays blocked; nothing was resubmitted." }, { status: 409 });
   } finally { await lock.release(); }
 }
-export const GET = handle;
-export const POST = handle;
+export const GET = withAccess(handle);
+export const POST = withAccess(handle);

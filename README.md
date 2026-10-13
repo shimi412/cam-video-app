@@ -17,6 +17,12 @@ The old five styles are archived in the database and the source catalogue. They 
 
 The latest instruction is to finish the authorized local production work autonomously, without asking Shimi to approve each development step. Zero provider-credit spending and no paid trials remain binding. The in-app **Help** page explains the available workflow; it does not claim the complete contracted product is delivered.
 
+## Workspace accounts
+
+Run `pnpm db:migrate` after updating an existing database. Auth.js protects data routes and media, with invited client/admin accounts and a dedicated CAM workspace. The client has no access to internal administration. `dev:preview` keeps loopback development convenient; production always requires authentication. Configure `APP_URL`, `AUTH_URL`, a random `AUTH_SECRET` and the trusted proxy before any deployment. `pnpm admin:bootstrap <administrator-email>` prepares the first one-use invitation in a private, gitignored `.secrets` file; it sends no email. After first sign-in, manage invitations and disabled accounts in Admin → Manage workspace access. Password resets use fresh invitations and revoke old sessions. Detailed status and official implementation sources: `docs/client-readiness.md`.
+
+`pnpm test:access` exercises actual local HTTP authentication and permissions using temporary accounts and a separate build directory. It never opens a provider connection, sends email or activates payments. The current local access checks and 107 unit tests pass.
+
 ## Imported narration, production dossier and saved productions
 
 In **Your scenes and voice**, **Use an existing voice recording · $0** accepts audio already available locally. Choose its declared speaker and record its source. The server decodes the actual bytes, rejects audio playlists and normalizes to 48 kHz mono WAV without retiming or trimming the reading. Source and normalized hashes are retained. Files remain under the gitignored `storage/narration/<job>/<recording>/` tree.

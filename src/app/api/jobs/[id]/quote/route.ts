@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { schema } from "@/db";
@@ -48,5 +49,5 @@ async function handle(request: Request, context: { params: Promise<{ id: string 
     return Response.json({ error: "Could not prepare this worksheet. Check the files, use nonnegative amounts with at most six decimals, and add a source or assumption for entered prices." }, { status: 400 });
   } finally { await lock.release(); }
 }
-export const GET = handle;
-export const PATCH = handle;
+export const GET = withAccess(handle);
+export const PATCH = withAccess(handle);

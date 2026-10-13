@@ -7,6 +7,8 @@ import {
   numeric,
   pgEnum,
   index,
+  boolean,
+  integer,
 } from "drizzle-orm/pg-core";
 
 export const jobStatus = pgEnum("job_status", [
@@ -124,4 +126,20 @@ export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/** One dedicated CAM workspace, shared by invited clients and Bina admins. */
+export const users = pgTable("app_users", {
+  id: uuid("id").primaryKey().defaultRandom(), email: text("email").notNull().unique(), name: text("name").notNull(),
+  passwordHash: text("password_hash").notNull(), role: text("role").notNull().default("client"),
+  disabled: boolean("disabled").notNull().default(false), sessionVersion: integer("session_version").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export const invitations = pgTable("app_invitations", {
+  id: uuid("id").primaryKey().defaultRandom(), email: text("email").notNull(), role: text("role").notNull(),
+  tokenHash: text("token_hash").notNull().unique(), expiresAt: timestamp("expires_at").notNull(), consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(), createdBy: uuid("created_by").references(() => users.id),
+});
+export const authLimits = pgTable("auth_limits", {
+  key: text("key").primaryKey(), count: integer("count").notNull(), expiresAt: timestamp("expires_at").notNull(),
 });

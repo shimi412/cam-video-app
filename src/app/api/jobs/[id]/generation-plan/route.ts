@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -9,7 +10,7 @@ import { lockedAssets } from "@/lib/concept/assets";
 import { placeholderTiming } from "@/lib/concept/timing";
 import { selectedNarration } from "@/lib/concept/narration";
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+async function handleGET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   if (!z.uuid().safeParse(id).success) return Response.json({ error: "Invalid production ID." }, { status: 400 });
   const [job] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, id));
@@ -26,3 +27,5 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     return Response.json({ error: "Restore the locked CAM references before exporting." }, { status: 409 });
   }
 }
+
+export const GET = withAccess(handleGET);

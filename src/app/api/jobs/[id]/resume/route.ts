@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { after } from "next/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -7,7 +8,7 @@ import { acquireJobLock } from "@/lib/job-lock";
 import { recoveryAllowed, recentlyQueued } from "@/lib/job-recovery";
 import { assertRequestsResumable } from "@/lib/concept/request-recovery";
 
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePOST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!z.uuid().safeParse(id).success) return Response.json({ error: "Invalid production ID." }, { status: 400 });
   const lock = await acquireJobLock(id);
@@ -28,3 +29,5 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   after(() => runJob(id, { resume: true }));
   return Response.json({ ok: true }, { status: 202 });
 }
+
+export const POST = withAccess(handlePOST);

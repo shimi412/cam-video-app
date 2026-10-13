@@ -22,7 +22,7 @@ async function main() {
   const media = await getMedia(new Request(`http://localhost${completed.outputUrl}`, { headers: { Range: "bytes=0-43" } }), { params: Promise.resolve({ path: completed.outputUrl!.replace("/api/media/", "").split("/") }) });
   assert.equal(media.status, 206); assert.equal((await media.arrayBuffer()).byteLength, 44);
   assert.equal(await storedVideoUrl("/tmp/outside.mp4"), null); assert.equal(await storedVideoUrl(null), null);
-  process.env.PROVIDER_MODE = "fal"; assert.equal((await GET(new Request("http://localhost/api/jobs"))).status, 409);
+  process.env.PROVIDER_MODE = "fal"; assert.equal((await GET(new Request("http://localhost/api/jobs"))).status, 401); // local bypass cannot open a real-provider workspace
   console.log(JSON.stringify({ status: "passed", pagination: Boolean(first.nextCursor), filters: true, literalSearch: true, sameResultUrl: true, playableVideo: true, liveModeBlocked: true, paidRequests: 0 }));
 }
 main().then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });

@@ -1,7 +1,8 @@
+import { withAccess } from "@/lib/access";
 import { db, schema } from "@/db";
 import { getActiveRecipe } from "@/lib/recipes";
 
-export async function GET() {
+async function handleGET() {
   const templates = await db.select().from(schema.templates);
   return Response.json(
     templates.filter((t) => t.status === "active" && getActiveRecipe(t.slug)).map((t) => ({
@@ -13,3 +14,5 @@ export async function GET() {
     })),
   );
 }
+
+export const GET = withAccess(handleGET);

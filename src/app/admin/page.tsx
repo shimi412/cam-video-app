@@ -53,7 +53,7 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
+      <div className="flex justify-between"><h1 className="text-2xl font-semibold tracking-tight">Admin</h1><a href="/admin/users" className="text-accent">Manage workspace access</a></div>
 
       <div className="grid grid-cols-3 gap-4">
         <section className="bg-surface border border-line rounded-xl p-5">

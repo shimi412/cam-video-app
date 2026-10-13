@@ -12,6 +12,8 @@
     "db:status": "tsx scripts/db.ts status",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
+    "admin:bootstrap": "tsx --env-file-if-exists=.env scripts/bootstrap-admin.ts",
     "check:providers": "tsx --env-file-if-exists=.env scripts/check-providers.ts",
     "compare:video": "tsx --env-file-if-exists=.env scripts/compare-video-costs.ts",
     "test": "vitest run",
@@ -22,8 +24,9 @@
     "test:production-flow": "tsx --env-file-if-exists=.env scripts/check-production-flow.ts",
     "test:narration": "tsx --env-file-if-exists=.env scripts/check-narration.ts",
     "test:production-history": "tsx --env-file-if-exists=.env scripts/check-production-history.ts",
+    "test:access": "tsx --env-file-if-exists=.env scripts/check-access.ts",
     "dryrun": "tsx --env-file-if-exists=.env scripts/dryrun.ts",
-    "dev:preview": "PROVIDER_MODE=dryrun BRAIN_MODE=mock next dev --hostname 127.0.0.1"
+    "dev:preview": "CAM_AUTH_MODE=local PROVIDER_MODE=dryrun BRAIN_MODE=mock next dev --hostname 127.0.0.1"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.39",
@@ -35,6 +38,7 @@
     "gsap": "3.14.2",
     "hyperframes": "0.8.91",
     "next": "16.3.1",
+    "next-auth": "5.0.0-beta.32",
     "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",

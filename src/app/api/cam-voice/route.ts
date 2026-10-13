@@ -1,8 +1,9 @@
+import { withAccess } from "@/lib/access";
 import { camVoiceRecording } from "@/lib/concept/cam-voice";
 import { mediaRange } from "@/lib/media-range";
 
 // Fixed, hash-checked local recording. Listening never invokes a voice provider.
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   try {
     const data = await camVoiceRecording();
     const requested = request.headers.get("range");
@@ -16,4 +17,7 @@ export async function GET(request: Request) {
     return Response.json({ error: "Restore the original CAM voice recording to listen to it." }, { status: 404 });
   }
 }
+
+
+export const GET = withAccess(handleGET);
 export const HEAD = GET;

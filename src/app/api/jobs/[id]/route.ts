@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getBalanceUsd } from "@/lib/credits";
@@ -7,7 +8,7 @@ import { recoveryAllowed, recentlyQueued } from "@/lib/job-recovery";
 import { currentDraft } from "@/lib/concept/current-draft";
 import { storedVideoUrl } from "@/lib/stored-media";
 
-export async function GET(
+async function handleGET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -43,3 +44,5 @@ export async function GET(
     balance: await getBalanceUsd(),
   });
 }
+
+export const GET = withAccess(handleGET);

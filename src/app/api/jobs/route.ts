@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { z } from "zod";
 import { and, desc, eq, ilike, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -7,7 +8,7 @@ import { storedVideoUrl } from "@/lib/stored-media";
 const Query = z.object({ q: z.string().trim().max(120).default(""), status: z.enum(["all", "estimated", "confirmed", "running", "succeeded", "failed"]).default("all"), cursor: z.uuid().optional() }).strict();
 
 /** Local catalogue, deliberately closed in live mode until account scoping exists. */
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   if (!isSimulation()) return Response.json({ error: "Production history is available in local mode only." }, { status: 409 });
   const query = Query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!query.success) return Response.json({ error: "Invalid search or production filter." }, { status: 400 });
@@ -30,3 +31,5 @@ export async function GET(request: Request) {
       billedUsd: Number(row.billedUsd ?? 0), url: `/?job=${row.id}`, outputUrl: row.status === "succeeded" ? await storedVideoUrl(row.outputPath) : null };
   })), nextCursor: rows.length > 24 ? page.at(-1)!.id : null }, { headers: { "Cache-Control": "no-store" } });
 }
+
+export const GET = withAccess(handleGET);

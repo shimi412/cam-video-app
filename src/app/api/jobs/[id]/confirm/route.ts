@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { and, eq } from "drizzle-orm";
 import { after } from "next/server";
 import { z } from "zod";
@@ -13,7 +14,7 @@ import { verifiedSceneMedia } from "@/lib/concept/imported-media";
 import { verifyWorkflowFiles } from "@/lib/concept/workflow-files";
 import { selectedNarration } from "@/lib/concept/narration";
 
-export async function POST(
+async function handlePOST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -78,3 +79,5 @@ export async function POST(
     return Response.json({ ok: true });
   } finally { await lock.release(); }
 }
+
+export const POST = withAccess(handlePOST);

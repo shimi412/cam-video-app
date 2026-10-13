@@ -1,8 +1,9 @@
+import { withAccess } from "@/lib/access";
 import { desc } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getBalanceUsd } from "@/lib/credits";
 
-export async function GET() {
+async function handleGET() {
   const [balance, ledger, apiCalls, jobs, settings] = await Promise.all([
     getBalanceUsd(),
     db.select().from(schema.creditLedger).orderBy(desc(schema.creditLedger.createdAt)).limit(50),
@@ -40,3 +41,5 @@ export async function GET() {
     settings: Object.fromEntries(settings.map((s) => [s.key, s.value])),
   });
 }
+
+export const GET = withAccess(handleGET, "admin");

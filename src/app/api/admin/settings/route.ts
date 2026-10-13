@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { z } from "zod";
 import { setSetting } from "@/lib/settings";
 
@@ -6,7 +7,7 @@ const bodySchema = z.object({
   value: z.union([z.string(), z.number()]),
 });
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const parsed = bodySchema.safeParse(await request.json());
   if (!parsed.success) {
     return Response.json({ error: "Invalid setting" }, { status: 400 });
@@ -14,3 +15,5 @@ export async function POST(request: Request) {
   await setSetting(parsed.data.key, parsed.data.value);
   return Response.json({ ok: true });
 }
+
+export const POST = withAccess(handlePOST, "admin");

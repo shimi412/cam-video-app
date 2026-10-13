@@ -5,6 +5,9 @@ import { getRecipe } from "../src/lib/recipes";
 import { resolveParams } from "../src/lib/brain";
 import { DEMO_SCRIPT } from "../src/lib/concept/existing";
 
+// These tests isolate the paid-provider gate after successful authentication.
+vi.mock("../src/lib/access", () => ({ withAccess: <T,>(handler: T) => handler }));
+
 afterEach(() => vi.unstubAllEnvs());
 it("blocks a paid preview-only recipe before database writes or provider calls", async () => {
   vi.stubEnv("PROVIDER_MODE", "fal");

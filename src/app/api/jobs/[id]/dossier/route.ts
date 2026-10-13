@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { schema } from "@/db";
@@ -10,7 +11,7 @@ import { productionDossier } from "@/lib/concept/production-dossier";
 import { verifiedSceneMedia } from "@/lib/concept/imported-media";
 import { selectedNarration } from "@/lib/concept/narration";
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+async function handleGET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   if (!z.uuid().safeParse(id).success) return Response.json({ error: "Invalid production ID." }, { status: 400 });
   if (!isSimulation()) return Response.json({ error: "Local preparation only." }, { status: 409 });
@@ -31,3 +32,5 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   } catch { return Response.json({ error: "A selected or approved file changed. Restore or replace it before exporting." }, { status: 409 }); }
   finally { await lock.release(); }
 }
+
+export const GET = withAccess(handleGET);

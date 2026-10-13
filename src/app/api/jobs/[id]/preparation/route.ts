@@ -1,3 +1,4 @@
+import { withAccess } from "@/lib/access";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { rm } from "node:fs/promises";
@@ -177,5 +178,5 @@ async function update(request: Request, context: { params: Promise<{ id: string 
   }
 }
 
-export const POST = update;
-export const PATCH = update;
+export const POST = withAccess(update);
+export const PATCH = withAccess(update);
