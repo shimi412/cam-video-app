@@ -61,7 +61,7 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
 .book{width:${Math.min(270,w * .2)}px;height:${h * .12}px;border:8px solid #3B2416;border-radius:16px;background:#F2B632;box-shadow:14px 14px 0 #E2CBA8;position:relative}
 .book:after{content:"";position:absolute;top:0;bottom:0;left:50%;border-left:6px solid #3B2416}
 .shot-number{font-size:34px;font-weight:800;margin:0}.notice{font-size:24px;letter-spacing:3px;margin:0}
-.title{left:${left}px;top:${h * .15}px;width:${safeWidth}px;font-size:${Math.min(72,w * .061)}px;font-weight:900;line-height:1.12;text-align:center;text-wrap:balance}
+.title{left:${left}px;top:${h * .15}px;width:${safeWidth}px;padding:14px 24px;border-radius:18px;background:#FFF4DC;color:#3B2416;font-size:${Math.min(72,w * .061)}px;font-weight:900;line-height:1.12;text-align:center;text-wrap:balance;overflow-wrap:anywhere}
 .struck{text-decoration:line-through;text-decoration-color:#BC291F;text-decoration-thickness:9px}
 .caption{left:${left}px;top:${captionTop}px;width:${safeWidth}px;padding:14px 24px;background:#3B2416;color:#FFF4DC;border-radius:18px;font-size:${fontSize}px;font-weight:700;line-height:1.25;text-align:center;text-wrap:balance;overflow-wrap:anywhere}
 #progress{position:absolute;left:${left}px;top:${h * .8}px;width:${safeWidth}px;height:8px;background:#BC291F;transform-origin:left center}

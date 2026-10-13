@@ -16,6 +16,7 @@ import {
 import { conceptPhrases, estimatedSpeechSeconds } from "./concept/text";
 import type { PreviewVoice, SceneMedia } from "./concept/preview-inputs";
 import type { SceneDirection } from "./concept/types";
+import type { VisualDecision } from "./concept/visual-review";
 
 export type ProductionParams = {
   templateSlug: string;
@@ -38,6 +39,7 @@ export type ProductionParams = {
   previewVoice?: PreviewVoice;
   sceneMedia?: Record<string, SceneMedia>;
   sceneDirections?: Record<string, SceneDirection>;
+  sceneReviews?: Record<string, VisualDecision[]>;
 };
 
 export type Overrides = Partial<

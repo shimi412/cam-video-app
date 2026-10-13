@@ -18,7 +18,7 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
     if (jobId) fetch("/api/preview-options").then((r) => r.json()).then(setOptions).catch(() => setError("Preview options could not load. Reload to try again."));
   }, [jobId]);
   const editable = Boolean(jobId && options.imports && onChange);
-  async function save(body: FormData | { previewVoice: string } | { removeScene: number } | { scene: number; direction: SceneDirection } | { resetDirection: number }) {
+  async function save(body: FormData | { previewVoice: string } | { removeScene: number } | { scene: number; direction: SceneDirection } | { resetDirection: number } | { reviewScene: number; target: string; decision: "approved" | "rejected"; note: string }) {
     setBusy(true); setError(null);
     try {
       const isUpload = body instanceof FormData;
@@ -63,7 +63,7 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
         <span className="capitalize">{reference.id}</span>
       </div>)}
     </div>
-    <p className="text-sm text-muted">Add an image or clip to each scene. Empty scenes use a visible placeholder. Images keep their framing; short clips hold their final frame. Clip audio is removed so the narration stays clear.</p>
+    <p className="text-sm text-muted">Add and review your visuals before starting the preview. Check the characters, framing and scene. Replacing a visual or changing its scene requires another review. Empty scenes use a visible placeholder.</p>
     {busy && <p role="status" className="text-sm text-accent">Saving locally…</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     <details open={editable}>
@@ -110,6 +110,30 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
               // eslint-disable-next-line @next/next/no-img-element
               <img src={shot.media.url} alt={`Imported visual for scene ${shot.index}`} className="max-h-40 max-w-full rounded object-contain" />}
             <p className="text-xs text-muted">Imported {shot.media.kind}{shot.media.duration ? ` · ${shot.media.duration.toFixed(1)} s` : ""}</p>
+            {shot.review && <div className="border border-line rounded p-3 space-y-2" aria-label={`Visual review for scene ${shot.index}`}>
+              <p className={`text-sm font-medium ${shot.review.status === "approved" ? "text-accent" : "text-muted"}`}>
+                {({ pending: "Visual needs review", approved: "Visual approved", rejected: "Visual rejected", stale: "Scene or file changed · review again" })[shot.review.status]}
+              </p>
+              {shot.review.note && <p className="text-xs" dir="auto">{shot.review.note}</p>}
+              {editable && <form key={shot.review.target + shot.review.status} className="space-y-2" onSubmit={(event) => {
+                event.preventDefault();
+                const data = new FormData(event.currentTarget);
+                const decision = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value");
+                const note = String(data.get("note") ?? "").trim();
+                if (decision !== "approved" && decision !== "rejected") return;
+                if (decision === "rejected" && !note) { setError("Add a short reason for rejecting this visual."); return; }
+                void save({ reviewScene: shot.index, target: shot.review!.target, decision, note });
+              }}>
+                <fieldset disabled={busy || disabled || editing !== null} className="space-y-2">
+                  <label className="block text-xs">Review note (required for rejection)<input name="note" aria-label={`Review note for scene ${shot.index}`} maxLength={1000} className="block mt-1 w-full rounded bg-surface border border-line p-2" /></label>
+                  <div className="flex gap-4 text-xs">
+                    <button type="submit" value="approved" className="rounded bg-accent text-white px-3 py-2 disabled:opacity-40">Approve visual for scene {shot.index}</button>
+                    <button type="submit" value="rejected" className="text-danger">Reject visual for scene {shot.index}</button>
+                  </div>
+                </fieldset>
+              </form>}
+              <p className="text-xs text-muted">This review applies to this visual and scene only. It does not authorize paid generation.</p>
+            </div>}
             {editable && <button disabled={busy || disabled || editing !== null} onClick={() => void save({ removeScene: shot.index })} className="text-xs text-accent disabled:opacity-40">Remove visual from scene {shot.index}</button>}
           </div> : <p className="text-xs text-muted">Visual to prepare · {shot.references.join(", ")}</p>}
           {editable && <label className="block text-xs text-muted">{shot.media ? "Replace visual" : "Add visual"} · PNG, JPEG, WebP or MP4 · max. 32 MB

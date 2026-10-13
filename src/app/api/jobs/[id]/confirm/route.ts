@@ -7,6 +7,9 @@ import { getBalanceUsd } from "@/lib/credits";
 import { runJob } from "@/lib/runner";
 import { getActiveRecipe } from "@/lib/recipes";
 import { isSimulation, providerMode } from "@/lib/providers/mode";
+import type { ProductionParams } from "@/lib/brain";
+import { prepareConcept } from "@/lib/concept/preparation";
+import { verifiedSceneMedia } from "@/lib/concept/imported-media";
 
 export async function POST(
   _request: Request,
@@ -32,6 +35,15 @@ export async function POST(
     }
     if (!isSimulation() && getActiveRecipe(production.templateSlug)?.concept?.previewOnly) {
       return Response.json({ error: "This style is currently available for free previews only." }, { status: 409 });
+    }
+    const recipe = getActiveRecipe(production.templateSlug)!;
+    const input = job.params as ProductionParams;
+    if (recipe.concept && input.previewSource !== "existing") {
+      const prep = await prepareConcept(job.script, input, recipe, id);
+      const pending = prep.shots.filter((shot) => shot.media && shot.review?.status !== "approved");
+      if (pending.length) return Response.json({ error: `Review the visuals in scenes ${pending.map((s) => s.index).join(", ")} before starting the preview.` }, { status: 409 });
+      try { for (const media of Object.values(input.sceneMedia ?? {})) await verifiedSceneMedia(id, media); }
+      catch { return Response.json({ error: "An imported visual is missing or changed. Import and review it again." }, { status: 409 }); }
     }
 
     const balance = await getBalanceUsd();

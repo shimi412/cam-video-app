@@ -92,6 +92,10 @@ async function main() {
   assert.equal((await settings({ removeScene: 1 })).status, 200);
   assert.equal((await send(1, image, "image.png")).status, 200);
   const restored = await (await readJob(new Request("http://localhost/job"), context)).json();
+  assert.equal((await confirm(new Request("http://localhost/confirm", { method: "POST" }), context)).status, 409);
+  for (const shot of restored.draft.preparation.shots.filter((s: { media: unknown }) => s.media)) {
+    assert.equal((await settings({ reviewScene: shot.index, target: shot.review.target, decision: "approved", note: "Offline integration fixture, not final CAM artwork." })).status, 200);
+  }
   assert.equal(restored.draft.preparation.voice.preview, "local-en");
   assert.equal(restored.draft.preparation.shots[2].scene, direction.scene);
   assert.equal(restored.draft.preparation.shots[2].overlay, direction.overlay);

@@ -9,6 +9,7 @@ import { camVoiceReference } from "./cam-voice";
 import { generationPlan } from "./generation-plan";
 import { DEMO_SCRIPT } from "./existing";
 import { normalizedText } from "./text";
+import { importedVisualTarget, visualReview } from "./visual-review";
 
 /** A reviewable, free preparation, never an approval to generate media. */
 export async function prepareConcept(script: string, params: ProductionParams, recipe: Recipe, jobId?: string, measuredTiming?: ConceptTiming) {
@@ -37,6 +38,7 @@ export async function prepareConcept(script: string, params: ProductionParams, r
       references: shot.references, start: timing.phrases[i].start, end: timing.phrases[i].end,
       estimatedClipSeconds: shot.clipSeconds,
       media: jobId && params.sceneMedia?.[shot.index] ? { ...params.sceneMedia[shot.index], url: sceneMediaUrl(jobId, params.sceneMedia[shot.index]) } : null,
+      review: jobId && params.sceneMedia?.[shot.index] ? visualReview(importedVisualTarget(jobId, shot, params, references)!, params.sceneReviews?.[shot.index]) : null,
       editorialStatus: params.sceneDirections?.[shot.index] ? "edited-draft" as const : normalizedText(script) === normalizedText(DEMO_SCRIPT) ? "example-plan" as const : "suggested-draft" as const,
     })),
   };

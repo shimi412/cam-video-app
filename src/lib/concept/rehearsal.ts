@@ -1,6 +1,7 @@
 import type { generationPlan } from "./generation-plan";
 import { materializeRequest } from "./generation-plan";
-import { advanceSimulatedRequest } from "./request-journal";
+import { advanceSimulatedRequest, Receipt } from "./request-journal";
+import { readCheckpoint } from "./checkpoints";
 import { isSimulation } from "../providers/mode";
 import { bramQueue, falQueue, type JsonRequest, type McpCall } from "./provider-transports";
 import path from "node:path";
@@ -10,11 +11,13 @@ import type { rehearsalBudget } from "./rehearsal-budget";
 import type { ConceptTiming } from "./types";
 import { placeholderTiming } from "./timing";
 import { conceptPhrases } from "./text";
+import { simulatedProvider } from "./simulated-provider";
+import { REQUEST_DIRECTORY, ACCEPTANCE_DIRECTORY } from "./request-recovery";
 
 /** Exercise dependencies, payload contracts and durable receipts. Fake URLs are
  * never fetched or exposed as media. This is not a keyframe or voice approval.
  */
-export async function rehearseGeneration(plan: ReturnType<typeof generationPlan>, directory: string, assertOwned: () => Promise<void>, options?: { budget: Awaited<ReturnType<typeof rehearsalBudget>>; timing: ConceptTiming }) {
+export async function rehearseGeneration(plan: ReturnType<typeof generationPlan>, directory: string, assertOwned: () => Promise<void>, options?: { budget: Awaited<ReturnType<typeof rehearsalBudget>>; timing: ConceptTiming; jobId: string }) {
   if (!isSimulation()) throw new Error("Generation rehearsal only runs offline.");
   const urls = Object.fromEntries(plan.references.map((ref) => [`reference:${ref.id}`, `https://simulation.invalid/references/${ref.sha256}.png`]));
   const complete = new Set<string>();
@@ -40,9 +43,14 @@ export async function rehearseGeneration(plan: ReturnType<typeof generationPlan>
       ? { results: [{ id: requestId, type: "audio", model: "text2speech_v2" }] }
       : { jobs: [{ index: 0, job_id: requestId, status: "completed", type: "audio", model: "text2speech_v2", result_url: output }] } });
     const queue = operation.kind === "voice" ? bramQueue(payload, "simulation", higgsfield) : operation.kind === "alignment" ? transcriptionQueue(payload, "simulation", fal) : falQueue(operation, payload, "simulation", fal);
-    // Isolate receipts from the older direct fake-queue rehearsal.
-    const result = await advanceSimulatedRequest({ directory: path.join(directory, options ? "provider-contracts-budgeted-v2" : "provider-contracts-v2"), fingerprint: operation.fingerprint, assertOwned,
-      queue: options ? budgetedQueue(queue, options.budget.budget, options.budget.approval.id, operation.fingerprint) : queue });
+    const provider = options ? simulatedProvider({ directory: path.join(directory, ACCEPTANCE_DIRECTORY), jobId: options.jobId, operation, payload, transcript, assertOwned }) : null;
+    // Preserve existing complete v2 checkpoints when resuming an older preview.
+    const legacy = options ? await readCheckpoint(path.join(directory, "provider-contracts-budgeted-v2", `${operation.fingerprint}.json`), Receipt) : null;
+    const journal = options ? (legacy ? "provider-contracts-budgeted-v2" : REQUEST_DIRECTORY) : "provider-contracts-v2";
+    const transport = provider && !legacy ? provider.queue : queue;
+    const result = await advanceSimulatedRequest({ directory: path.join(directory, journal), fingerprint: operation.fingerprint, assertOwned,
+      binding: legacy ? undefined : provider?.binding,
+      queue: options ? budgetedQueue(transport, options.budget.budget, options.budget.approval.id, operation.fingerprint) : transport });
     if (options && result.state === "complete") {
       const line = options.budget.quote.lines.find((line) => line.operation === operation.fingerprint)!;
       await options.budget.budget.settle(options.budget.approval.id, operation.fingerprint, { unit: line.unit, actual: line.maximum, evidence: `simulation-only:${result.requestId}` });

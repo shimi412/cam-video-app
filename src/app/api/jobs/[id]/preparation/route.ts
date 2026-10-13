@@ -12,12 +12,18 @@ import { availableLocalVoices } from "@/lib/concept/local-voice";
 import { PreviewVoiceSchema, mediaFile, type SceneMedia } from "@/lib/concept/preview-inputs";
 import { importSceneMedia, MAX_MEDIA_BYTES } from "@/lib/concept/imported-media";
 import { DirectionSchema } from "@/lib/concept/types";
+import { randomUUID } from "node:crypto";
+import { verifiedSceneMedia } from "@/lib/concept/imported-media";
+import { Hash } from "@/lib/concept/checkpoints";
 
 const settingsSchema = z.union([
   z.object({ previewVoice: PreviewVoiceSchema }).strict(),
   z.object({ removeScene: z.number().int().min(1).max(36) }).strict(),
   z.object({ scene: z.number().int().min(1).max(36), direction: DirectionSchema }).strict(),
   z.object({ resetDirection: z.number().int().min(1).max(36) }).strict(),
+  z.object({ reviewScene: z.number().int().min(1).max(36), target: Hash,
+    decision: z.enum(["approved", "rejected"]), note: z.string().trim().max(1000),
+  }).strict().refine((v) => v.decision !== "rejected" || Boolean(v.note)),
 ]);
 
 async function boundedBody(request: Request, limit: number) {
@@ -55,7 +61,21 @@ async function update(request: Request, context: { params: Promise<{ id: string 
     if (request.method === "PATCH") {
       const parsed = settingsSchema.safeParse(JSON.parse((await boundedBody(request, 32768)).toString()));
       if (!parsed.success) throw new Error("Invalid preparation settings.");
-      if ("previewVoice" in parsed.data) {
+      if ("reviewScene" in parsed.data) {
+        const { reviewScene, target, decision, note } = parsed.data;
+        const shot = preparation.shots.find((s) => s.index === reviewScene);
+        if (!shot?.media || shot.review?.target !== target) return Response.json({ error: "This visual or scene changed. Reload it before reviewing." }, { status: 409 });
+        await verifiedSceneMedia(id, shot.media);
+        const history = params.sceneReviews?.[reviewScene] ?? [];
+        if (history.length >= 500) throw new Error("Visual review history is full.");
+        // The job lock serializes review, replacement and confirmation. Repeated
+        // browser delivery is idempotent; a new decision preserves the old one.
+        const last = history.at(-1);
+        if (last?.target !== target || last.decision !== decision || last.note !== note) {
+          params.sceneReviews = { ...params.sceneReviews, [reviewScene]: [...history,
+            { id: randomUUID(), target, decision, note, reviewedAt: new Date().toISOString() }] };
+        }
+      } else if ("previewVoice" in parsed.data) {
         const voice = parsed.data.previewVoice;
         if (voice !== "silent" && !(await availableLocalVoices()).includes(voice)) throw new Error("This Mac test voice is unavailable.");
         params.previewVoice = voice;

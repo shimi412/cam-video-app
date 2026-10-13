@@ -54,7 +54,7 @@ export async function produceConcept(input: {
   const assertOwned = input.assertOwned ?? (async () => {});
   const checkpoints = input.checkpointDir ?? path.join(root, "checkpoints");
   const reserved = await rehearsalBudget(plan, jobId, checkpoints, assertOwned);
-  const rehearsal = await rehearseGeneration(plan, path.join(checkpoints, "simulated-requests"), assertOwned, { budget: reserved, timing });
+  const rehearsal = await rehearseGeneration(plan, path.join(checkpoints, "simulated-requests"), assertOwned, { budget: reserved, timing, jobId });
   await writeFile(path.join(root, "generation-rehearsal.json"), JSON.stringify(rehearsal, null, 2));
   await writeFile(path.join(root, "budget-rehearsal.json"), JSON.stringify({ note: "SIMULATION ONLY. Artificial amounts, no provider quote or customer debit.", book: await reserved.budget.snapshot() }, null, 2));
   if (voice !== "silent") {
@@ -98,11 +98,15 @@ export async function produceConcept(input: {
   await setStep("montage", "done");
   const url = (file: string) => `/api/media/${path.relative(path.join(process.cwd(), "storage"), root).split(path.sep).join("/")}/${file}`;
   const preparation = await prepareConcept(script, params, recipe, jobId, voice === "silent" ? undefined : timing);
+  await writeFile(path.join(root, "visual-review.json"), JSON.stringify({ paidGenerationAuthorized: false,
+    scenes: preparation.shots.filter((shot) => shot.media).map((shot) => ({ scene: shot.index, media: shot.media, review: shot.review, history: params.sceneReviews?.[shot.index] ?? [] })),
+  }, null, 2));
   // Results link to the exact measured snapshot used by this attempt.
   preparation.generation.downloadUrl = url("generation-plan.json");
   return { outputPath, renderReused: rendering.reused, durationSeconds: timing.duration, board, sheet, sheetUrl, media: null,
     preparation, artifacts: [
     { label: "Storyboard", url: url("storyboard.json") },
+    { label: "Visual review record", url: url("visual-review.json") },
     { label: "Generation plan (not submitted)", url: url("generation-plan.json") },
     { label: "Pipeline rehearsal (simulation)", url: url("generation-rehearsal.json") },
     { label: "Budget checks (simulation)", url: url("budget-rehearsal.json") },

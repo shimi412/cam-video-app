@@ -49,7 +49,7 @@ Still required before live production: editorial approval of new scene drafts, g
 
 ## New scripts with local scenes and a test voice
 
-After **Frame my request**, the **Your scenes and voice** card lets you choose an installed Mac test voice and import a still image or MP4 for each scene. Inputs save immediately; reloading restores the unconfirmed draft and its media. Confirm with **Run free preview**. The existing-film path keeps its recorded Dylan voice and fixed media.
+After **Frame my request**, the **Your scenes and voice** card lets you choose an installed Mac test voice and import a still image or MP4 for each scene. Inputs save immediately; reloading restores the unconfirmed draft and its media. Review every imported visual, then confirm with **Run free preview**. The existing-film path keeps its recorded Dylan voice and fixed media.
 
 - Daniel (English), Thomas (French) and Carmit (Hebrew) are offered only when listed by the local macOS `say` command. No model download or remote fallback occurs. They are explicitly test voices, not Bram or a final CAM voice. On other operating systems the silent option remains available. English and French have been rendered end to end; Hebrew availability is detected but its pronunciation and visual layout have not been reviewed.
 - Each spoken phrase is synthesized separately at 150 words/minute. Only leading/trailing silence is trimmed; its measured duration sets the scene boundaries. The joined WAV contains 0.4 seconds before speech, 0.35 seconds after every phrase, then a 0.65-second tail. Word positions and subtitles remain approximate, not forced alignment. macOS speech-command delimiters are rejected. The output must contain an audible voice. The complete WAV and its timing are checkpointed with hashes: retries reuse the same recording, since repeated OS synthesis can differ slightly and would otherwise invalidate a completed render.
@@ -111,6 +111,20 @@ With local PostgreSQL running, this creates a test preview, kills its worker aft
 This is explicit local recovery, not an unattended production queue. Durable provider IDs, cross-job budget reservations and spending caps are exercised in simulation. Live reconciliation and automatic background recovery remain unavailable.
 
 ## Verification
+
+### Visual reviews and interrupted requests
+
+- Imported images and clips have explicit approve/reject controls, with a required rejection note. Decisions bind the job, normalized file ID/hash, scene direction, narration, format and locked references. Changed inputs require review again; a stale browser cannot approve a replacement. The server rechecks bytes and approval before confirmation, under the same job lock as imports. Empty scenes may still use explicit placeholders. Completed historical previews retain their original snapshot.
+- Decisions are retained in job parameters and exported as `visual-review.json`. They never approve paid generation or the final Bram reading. The future keyframe resolver also checks actual local bytes, the upload hash, the generating operation and the approved start image associated with an end image. This resolver is tested with fixtures; there is no live keyframe review pipeline yet.
+- New simulation submissions have a durable acceptance record separate from the application journal. The journal binds job, operation, model, transport and materialized payload hash. After a lost submit response, **Check saved receipt** verifies this evidence and restores only the original ID. **Resume free preview** then polls it, without submitting or reserving again. Missing, conflicting or failed requests remain blocked, with attempted budget held. Resume is blocked both in the UI and API until ambiguity is resolved. Earlier unbound ambiguous receipts require manual investigation; they are never upgraded by guessing.
+- The recovery API accepts a fingerprint only, never a user-provided result, URL, credential or replacement ID. It is simulation-only. Real provider reconciliation still needs a trusted lookup proving the original input and cost, and explicit paid authorization. No retry/reset button can create a fresh paid attempt.
+- Titles now have an opaque background so imported dark images cannot make them unreadable.
+
+```bash
+pnpm test:review-recovery
+```
+
+This tests the real preparation/confirmation/recovery routes, PostgreSQL locks and budget, a lost acknowledgement and recovery through the final local MP4. It forbids application fetch, checks one submission, unchanged reserved budget, unchanged request ID, no customer ledger entry and zero billed cost. Proof: `storage/qa/cam-review-recovery-proof.json`. For UI testing only, `--prepare-only --interrupt-job <id>` can interrupt an approved draft whose script exactly matches the hardcoded offline QA text. It cannot operate on ordinary user productions.
 
 ```bash
 pnpm test

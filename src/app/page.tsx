@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PreparationReview } from "./preparation-review";
+import { RequestRecovery } from "./request-recovery";
 import type { ConceptPreparation } from "@/lib/concept/preparation";
 import type { Estimate } from "@/lib/pricing";
 
@@ -90,6 +91,7 @@ export default function StudioPage() {
   const [job, setJob] = useState<JobState | null>(null);
   const [loading, setLoading] = useState(false);
   const [preparationBusy, setPreparationBusy] = useState(false);
+  const [requestsReady, setRequestsReady] = useState(false);
   const [restoring, setRestoring] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -453,10 +455,11 @@ export default function StudioPage() {
             </p>
           )}
           {framing.preparation && <PreparationReview preparation={framing.preparation} jobId={framing.jobId} disabled={loading} onBusy={setPreparationBusy} onChange={(preparation) => setFraming((current) => current ? { ...current, preparation } : current)} />}
+          {framing.preparation?.shots.some((shot) => shot.media && shot.review?.status !== "approved") && <p className="text-sm text-muted">Approve each imported visual, or remove it, before starting the preview.</p>}
           <div className="flex gap-3">
             <button
               onClick={confirm}
-              disabled={loading || preparationBusy || !framing.canConfirm}
+              disabled={loading || preparationBusy || !framing.canConfirm || framing.preparation?.shots.some((shot) => shot.media && shot.review?.status !== "approved")}
               className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
             >
               {framing.media ? "Rebuild existing film · $0" : framing.simulation ? "Run free preview" : `Confirm & produce · $${framing.estimate.totalBilledUsd.toFixed(2)}`}
@@ -474,8 +477,9 @@ export default function StudioPage() {
           <h2 className="font-medium">3. Production</h2>
           {job.canResume && <div role="status" className="bg-surface-2 border border-accent/40 rounded-lg p-4 space-y-3">
             <p className="text-sm">{job.interrupted ? "This preview was interrupted. Resume it using the saved script and media." : "You can retry this local preview after fixing the issue below."} A completed render will be reused if its files are unchanged. No credits will be charged.</p>
-            <button onClick={resume} disabled={loading} className="bg-accent text-white rounded-lg px-4 py-2 text-sm disabled:opacity-40">{loading ? "Resuming…" : "Resume free preview"}</button>
+            <button onClick={resume} disabled={loading || !requestsReady} className="bg-accent text-white rounded-lg px-4 py-2 text-sm disabled:opacity-40">{loading ? "Resuming…" : "Resume free preview"}</button>
           </div>}
+          {job.canResume && job.id && <RequestRecovery key={job.id} jobId={job.id} onReady={setRequestsReady} />}
           <ul className="space-y-2 text-sm">
             {(job.progress ?? []).map((s) => (
               <li key={s.key} className="flex items-center gap-3">
