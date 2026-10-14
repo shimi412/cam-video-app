@@ -28,7 +28,7 @@ export async function writeWave(file: string, pcm: Float32Array) {
   await writeFile(file, b);
 }
 
-export type AudioOptions = { breaths?: Record<number, number>; attack?: number };
+export type AudioOptions = { breaths?: Record<number, number>; attack?: number; minimumSceneSeconds?: Record<number, number> };
 /** Preserve existing word alignment, shifting it only by measured insertions.
  * Never redistribute words by letter count: that was specific to the old script. */
 export function paceRecording(pcm: Float32Array, timing: ConceptTiming, board: ConceptBoard, options: AudioOptions = {}) {
@@ -39,7 +39,12 @@ export function paceRecording(pcm: Float32Array, timing: ConceptTiming, board: C
     const previous = timing.phrases[i - 1], next = timing.phrases[i];
     const desired = options.breaths?.[i + 1] ?? board.shots[i].breathBefore ?? .4;
     if (!Number.isFinite(desired) || desired < .25 || desired > .8) throw new Error("A breath must be between 0.25 and 0.8 seconds.");
-    const extra = Math.max(0, desired - (next.start - previous.end));
+    const minimumScene = options.minimumSceneSeconds?.[i] ?? 0;
+    if (!Number.isFinite(minimumScene) || minimumScene < 0 || minimumScene > 15) throw new Error("Invalid minimum action duration.");
+    // An editorial action hold is separate from a breath: extend only the
+    // measured inter-phrase gap, never speed up words to fit a transformation.
+    const interval = next.start - (i === 1 ? 0 : previous.start) + (i === 1 ? lead : 0);
+    const extra = Math.max(0, desired - (next.start - previous.end), minimumScene - interval);
     if (extra < .005) continue;
     const lo = Math.ceil((previous.end + fadeJoin) * sr), hi = Math.floor((next.start - fadeJoin) * sr);
     let best = -1, level = Infinity;
@@ -114,7 +119,9 @@ export type EditorialAudio = { timing: ConceptTiming; voiceEnd: number; logoStar
 export async function prepareEditorialAudio(root: string, board: ConceptBoard, timing: ConceptTiming, options: AudioOptions = {}): Promise<EditorialAudio> {
   const pcm = await decodeAudio(path.join(root, "assets/narration.wav"));
   const paced = paceRecording(pcm, timing, board, options);
-  const logoStart = paced.voiceEnd + .8, duration = Math.ceil((logoStart + 2.6) * 30) / 30;
+  const finalHold = options.minimumSceneSeconds?.[board.shots.length] ?? 0;
+  if (!Number.isFinite(finalHold) || finalHold < 0 || finalHold > 15) throw new Error("Invalid final action duration.");
+  const logoStart = Math.max(paced.voiceEnd + .8, paced.timing.phrases.at(-1)!.start + finalHold), duration = Math.ceil((logoStart + 2.6) * 30) / 30;
   const rawVoice = path.join(root, "assets/narration-paced.wav"), rawBed = path.join(root, "assets/score-raw.wav"), carvedBed = path.join(root, "assets/score.wav");
   await writeWave(rawVoice, paced.pcm); await writeWave(rawBed, score(duration, logoStart));
   const mixedVoice = path.join(root, "assets/narration-mix.wav");

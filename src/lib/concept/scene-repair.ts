@@ -6,6 +6,7 @@ import { generationPlan } from "./generation-plan";
 import { planConcept } from "./storyboard";
 import { sha256 } from "./checkpoints";
 import { physicalDirectionIssues } from "./physical-direction";
+import type { SceneMedia } from "./preview-inputs";
 
 /** A separate, quoteable repair proposal. It cannot reuse an old budget approval
  * or mutate the original production's provider journal. No provider calls. */
@@ -33,4 +34,34 @@ export function sceneRepairPlan(packet: RenderPacket, scene: number, direction: 
     reusedRecording: { audioSha256: packet.audioSha256, alignmentSha256: packet.alignmentSha256 },
     blockers: ["Approve this separate repair quote", "Review the new start and end images before animation", "Review the complete motion before selecting the montage excerpt"],
     repair: { scene, direction }, paidGenerationAuthorized: false as const };
+}
+
+export type ReviewedSceneRepair = { plan: ReturnType<typeof sceneRepairPlan>; media: Record<string, SceneMedia>;
+  reviews: Record<string, { decision: "approved" | "rejected"; sha256: string; note: string; at: string; reviewer: string }> };
+
+/** Build a new render packet from inspected replacements, preserving the
+ * original production, recording, alignment and unchanged shots byte-for-byte. */
+export function applyReviewedSceneRepairs(source: RenderPacket, repairs: ReviewedSceneRepair[], recipe: Recipe): RenderPacket {
+  const { fingerprint, ...content } = source;
+  if (sha256(JSON.stringify(content)) !== fingerprint) throw new Error("Source packet changed.");
+  if (!repairs.length || new Set(repairs.map(r=>r.plan.repair.scene)).size !== repairs.length) throw new Error("Choose one reviewed replacement per scene.");
+  const board = { ...source.board, shots: [...source.board.shots] };
+  const media = { ...source.media }, reviews = [...source.reviews];
+  for (const repair of repairs) {
+    if (repair.plan.sourceFingerprint !== fingerprint || repair.plan.sourceProduction !== source.jobId || repair.plan.reusedRecording.audioSha256 !== source.audioSha256 || repair.plan.reusedRecording.alignmentSha256 !== source.alignmentSha256) throw new Error("Repair belongs to another production or recording.");
+    const scene = repair.plan.repair.scene;
+    for (const stage of ["start", "end", "clip"]) {
+      const id = `scene-${scene}-${stage}`, asset = repair.media[id], decision = repair.reviews[id];
+      if (!asset || !decision || decision.decision !== "approved" || decision.sha256 !== asset.sha256 || asset.kind !== (stage === "clip" ? "video" : "image")) throw new Error("Every endpoint and the complete motion need a matching visual review.");
+      const target = sha256(JSON.stringify({source:fingerprint,plan:repair.plan.fingerprint,id,asset,decision}));
+      const decisionId = `${target.slice(0,8)}-${target.slice(8,12)}-4${target.slice(13,16)}-8${target.slice(17,20)}-${target.slice(20,32)}`;
+      reviews.push({id:decisionId,mode:source.mode,decision:"approved",target});
+    }
+    const replacement = planConcept(source.board.shots.map(s=>s.narration).join(" "), recipe, source.aspectRatio, { [scene]:repair.plan.repair.direction }).shots.find(s=>s.index===scene);
+    if (!replacement || replacement.narration !== source.board.shots.find(s=>s.index===scene)?.narration) throw new Error("Repair changed narration.");
+    board.shots = board.shots.map(s=>s.index===scene?replacement:s);
+    media[scene] = repair.media[`scene-${scene}-clip`];
+  }
+  const packet = { ...content, board, media, reviews };
+  return { ...packet, fingerprint:sha256(JSON.stringify(packet)) };
 }

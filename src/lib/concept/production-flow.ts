@@ -216,10 +216,11 @@ export async function renderProductionFlow(packet: RenderPacket, workspace: stri
   for (const decision of packet.reviews) if (Decision.parse(decision).mode !== packet.mode || decision.decision !== "approved") throw new Error("Invalid production review.");
   await mkdir(path.join(workspace, "assets"), { recursive: true });
   await writeFile(path.join(workspace, "assets/narration.wav"), voiceBytes);
-  const audio = await prepareEditorialAudio(workspace, board, packet.timing, { breaths: finishing?.breaths });
+  const audio = await prepareEditorialAudio(workspace, board, packet.timing, { breaths: finishing?.breaths, minimumSceneSeconds: finishing?.minimumSceneSeconds });
   const timing = audio.timing;
   const durations = timing.phrases.map((p, i) => (timing.phrases[i + 1]?.start ?? audio.duration) - (i === 0 ? 0 : p.start));
-  const staged = await stageSceneMedia(packet.jobId, packet.media, workspace, durations, finishing?.clips, board.shots.filter(s => s.endScene).map(s => s.index));
+  const visibleDurations = timing.phrases.map((p, i) => (timing.phrases[i + 1]?.start ?? audio.logoStart) - (i === 0 ? 0 : p.start));
+  const staged = await stageSceneMedia(packet.jobId, packet.media, workspace, durations, finishing?.clips, board.shots.filter(s => s.endScene).map(s => s.index), visibleDurations);
   const composition = await writeMontage(workspace, board, timing, packet.aspectRatio, staged, { audio, endingVariant: finishing?.ending });
   await writeFile(path.join(workspace,"storyboard.json"),JSON.stringify(board));
   await writeFile(path.join(workspace,"timing.json"),JSON.stringify(timing));

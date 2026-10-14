@@ -42,14 +42,15 @@ export const LiveAction=z.discriminatedUnion("action",[
 async function readState(id:string){return readCheckpoint(path.join(directory(id),"production.json"),stateSchema);}
 export async function liveView(id:string){
  const state=await readState(id),outcome=await readCheckpoint(path.join(directory(id),"state.json"),z.custom<FlowOutcome>());
- const finishingReview=await readCheckpoint(path.join(directory(id),"finishing-review.json"),z.object({status:z.string(),message:z.string(),variants:z.array(z.object({name:z.string(),url:z.string().startsWith("/api/media/")})),listeningUrl:z.string().startsWith("/api/media/"),waveformUrl:z.string().startsWith("/api/media/"),reportUrl:z.string().startsWith("/api/media/"),newPaidRequests:z.number(),sourceTailNeedsListening:z.boolean()}));
+ const repairProgress=await readCheckpoint(path.join(directory(id),"repair-progress.json"),z.object({capUsdMicros:z.number(),reservedUsdMicros:z.number(),costsSettled:z.literal(false),trials:z.array(z.object({name:z.string(),scene:z.number(),quoteUsdMicros:z.number(),requests:z.number(),completed:z.number(),reviews:z.array(z.enum(["approved","rejected"]))}))}));
+ const finishingReview=await readCheckpoint(path.join(directory(id),"finishing-review.json"),z.object({status:z.string(),message:z.string(),scenes:z.array(DirectionSchema.extend({index:z.number(),narration:z.string()})).optional(),variants:z.array(z.object({name:z.string(),url:z.string().startsWith("/api/media/")})),listeningUrl:z.string().startsWith("/api/media/"),waveformUrl:z.string().startsWith("/api/media/"),reportUrl:z.string().startsWith("/api/media/"),newPaidRequests:z.number(),sourceTailNeedsListening:z.boolean()}));
  const repairQuote=await readCheckpoint(path.join(directory(id),"repair-quote.json"),z.object({approved:z.literal(false),expiresAt:z.number(),caps:z.object({usd:z.number()}),lines:z.array(z.object({id:z.string(),description:z.string(),maximum:z.number()}))}));
  const review=outcome?.review;
  const media=review?.media?`/api/media/imports/${id}/${mediaFile(review.media)}`:null;
  let audio:string|null=null;
  if(review?.audio){const relative=path.relative(path.join(process.cwd(),"storage"),review.audio.file);if(relative.startsWith("..")||path.isAbsolute(relative))throw new Error("Invalid review audio.");audio=`/api/media/${relative.split(path.sep).join("/")}`;}
  const receipts=await requestReceipts(path.join(directory(id),"requests"));
- return {finishingReview,repairQuote:repairQuote?{...repairQuote,expired:repairQuote.expiresAt<=Date.now()}:null,quote:state?.pendingQuote??state?.quote??null,approved:Boolean(state?.approval),renewing:Boolean(state?.pendingQuote),finished:state?.finished??false,error:state?.error??null,
+ return {repairProgress,finishingReview,repairQuote:repairQuote?{...repairQuote,expired:repairQuote.expiresAt<=Date.now()}:null,quote:state?.pendingQuote??state?.quote??null,approved:Boolean(state?.approval),renewing:Boolean(state?.pendingQuote),finished:state?.finished??false,error:state?.error??null,
   phase:outcome?.phase??"quote",status:outcome?.status??"awaiting-budget",review:review?{stage:review.stage,scene:review.scene,target:review.target,media,audio,duration:review.audio?.duration,width:review.media?.width,height:review.media?.height}:null,
   requests:receipts.map(r=>({operation:r.binding?.operation,state:r.state,requestId:r.requestId??null})),
   costsPending:outcome?.events.filter(e=>e.stage.startsWith("cost-receipt-pending-")).length??0};

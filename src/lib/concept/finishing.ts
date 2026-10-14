@@ -14,6 +14,7 @@ export const FinishingSchema = z.object({
   reason: z.string().trim().min(1).max(1000),
   reviewedBy: z.string().trim().min(1).max(200),
   breaths: z.record(z.string(), z.number().min(.25).max(.8)).optional(),
+  minimumSceneSeconds: z.record(z.string(), z.number().min(.25).max(15)).optional(),
   clips: z.record(z.string(), ClipEditSchema).optional(),
   ending: z.enum(["cream", "last-frame"]).optional(),
 }).strict();

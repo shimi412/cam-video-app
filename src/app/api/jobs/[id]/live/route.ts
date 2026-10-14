@@ -19,7 +19,8 @@ export const GET=withAccess(async(_request,context:Context)=>{
  const board=planConcept(job.script,recipe,params.aspectRatio,params.sceneDirections);
  const output=await storedVideoUrl(job.outputPath);
  const outputUrl=output&&params.finishingRevision?`${output}?v=${encodeURIComponent(params.finishingRevision)}`:output;
- return Response.json({id,script:job.script,conversationId:job.conversationId,format:params.aspectRatio,scenes:board.shots,jobStatus:job.status,outputUrl,busy:await jobWorkerActive(id),...await liveView(id)});
+ const view=await liveView(id);
+ return Response.json({id,script:job.script,conversationId:job.conversationId,format:params.aspectRatio,scenes:view.finishingReview?.scenes??board.shots,jobStatus:job.status,outputUrl,busy:await jobWorkerActive(id),...view});
 });
 export const POST=withAccess(async(request,context:Context)=>{
  const {id}=await context.params;if(!z.uuid().safeParse(id).success)return Response.json({error:"Invalid production ID."},{status:400});

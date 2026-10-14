@@ -6,11 +6,19 @@ import { physicalDirectionIssues } from "../src/lib/concept/physical-direction";
 import { generationPlan, materializeRequest } from "../src/lib/concept/generation-plan";
 import { placeholderTiming } from "../src/lib/concept/timing";
 import type { ProductionParams } from "../src/lib/brain";
-import { sceneRepairPlan } from "../src/lib/concept/scene-repair";
+import { sceneRepairPlan, applyReviewedSceneRepairs } from "../src/lib/concept/scene-repair";
 import { sha256 } from "../src/lib/concept/checkpoints";
 import type { RenderPacket } from "../src/lib/concept/production-flow";
+import { fitSceneEdit } from "../src/lib/concept/imported-media";
 
 const recipe = getRecipe("cam-clay")!;
+it("rejects a transformation hidden by the logo even if it fits the complete video duration", () => {
+  const excerpt = { mediaStart: 0, mediaEnd: 5, playbackRate: 1, crop: 1 };
+  expect(fitSceneEdit(5, 6, true, excerpt).end).toBe(5);
+  expect(() => fitSceneEdit(5, 3.4, true, excerpt)).toThrow(/before the next scene or logo/);
+  expect(fitSceneEdit(5, 3.4, true).edit.playbackRate).toBeCloseTo(5 / 3.4);
+  expect(() => fitSceneEdit(5, 2, true)).toThrow(/full transformation/);
+});
 it("blocks backwards/underspecified state changes before a request is materialized", () => {
   const board = planConcept("Read the full passage.", recipe, "9:16", { 1: {
     scene: "A fully unrolled scroll extends to the floor.", motion: "The narrator unrolls the scroll.", references: ["narrator"],
@@ -61,6 +69,16 @@ it("refuses to cut through speech or fade across the last aligned word", () => {
   expect(() => paceRecording(recording(), noTail, board)).toThrow(/no tail/);
 });
 
+it("makes room for a complete physical action by extending a safe gap, preserving spoken samples", () => {
+  const source = recording();
+  const result = paceRecording(source, timing, board, { minimumSceneSeconds: { 1: 4 } });
+  expect(result.timing.phrases[1].start).toBeCloseTo(4);
+  expect(result.timing.words[2].start).toBeCloseTo(4);
+  expect(result.timing.words[2].end - result.timing.words[2].start).toBeCloseTo(.5);
+  expect(result.pcm[Math.round(4.2 * AUDIO_RATE)]).toBe(source[Math.round(1.7 * AUDIO_RATE)]);
+  expect(result.cuts[1].levelDb).toBeLessThan(-42);
+});
+
 it("quotes only the replaced scene and cannot reuse the original approval fingerprint", () => {
   const content = { mode: "live" as const, jobId: "2b0df353-688e-4d7c-b5aa-6a31cd4b2f21", board, timing, aspectRatio: "9:16" as const,
     voiceFile: "/unused.wav", audioSha256: "a".repeat(64), alignmentSha256: "b".repeat(64), reviews: [],
@@ -75,4 +93,21 @@ it("quotes only the replaced scene and cannot reuse the original approval finger
   expect(plan.paidGenerationAuthorized).toBe(false);
   expect(plan.fingerprint).not.toBe(packet.fingerprint);
   expect(JSON.stringify(packet)).toBe(before);
+});
+
+it("only assembles hash-reviewed replacements and preserves the original packet and narration", () => {
+ const content = { mode: "live" as const, jobId: "2b0df353-688e-4d7c-b5aa-6a31cd4b2f21", board, timing, aspectRatio: "9:16" as const,
+  voiceFile: "/unused.wav", audioSha256: "a".repeat(64), alignmentSha256: "b".repeat(64), reviews: [], media: {} };
+ const packet: RenderPacket = { ...content, fingerprint: sha256(JSON.stringify(content)) }, before = JSON.stringify(packet);
+ const plan = sceneRepairPlan(packet, 2, { scene:"Closed scroll.", endScene:"Open strip on the tabletop.", motion:"Right hand unrolls it away.", references:["narrator"], overlay:null, strike:false, actionSeconds:5 }, recipe, [{id:"narrator",url:"https://example.com/ref.png",sha256:"c".repeat(64)}]);
+ const image = {id:"5462d54d-39a2-48a5-84c5-052c718f6ca5",kind:"image" as const,sha256:"d".repeat(64),width:1080,height:1920};
+ const media = {"scene-2-start":image,"scene-2-end":{...image,sha256:"e".repeat(64)},"scene-2-clip":{...image,kind:"video" as const,duration:5,sha256:"f".repeat(64)}};
+ const reviews = Object.fromEntries(Object.entries(media).map(([id,m])=>[id,{decision:"approved" as const,sha256:m.sha256,note:"Inspected complete visual",at:"2026-10-14T12:00:00Z",reviewer:"Codex"}]));
+ const repaired = applyReviewedSceneRepairs(packet,[{plan,media,reviews}],recipe);
+ expect(repaired.voiceFile).toBe(packet.voiceFile); expect(repaired.audioSha256).toBe(packet.audioSha256);
+ expect(repaired.timing).toBe(packet.timing);expect(repaired.board.shots[0]).toBe(packet.board.shots[0]);
+ expect(repaired.fingerprint).toBe(applyReviewedSceneRepairs(packet,[{plan,media,reviews}],recipe).fingerprint);
+ expect(JSON.stringify(packet)).toBe(before);
+ expect(()=>applyReviewedSceneRepairs(packet,[{plan,media,reviews:{...reviews,"scene-2-clip":{...reviews["scene-2-clip"],sha256:"0".repeat(64)}}}],recipe)).toThrow(/matching visual review/);
+ expect(()=>applyReviewedSceneRepairs(packet,[{plan,media,reviews:{...reviews,"scene-2-end":{...reviews["scene-2-end"],decision:"rejected"}}}],recipe)).toThrow(/matching visual review/);
 });
