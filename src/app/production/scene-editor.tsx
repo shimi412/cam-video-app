@@ -1,9 +1,9 @@
 "use client";
 import type { SceneDirection } from "@/lib/concept/types";
 
-export function SceneEditor({scene,disabled,onSave}:{scene:SceneDirection&{index:number;narration:string};disabled:boolean;onSave:(direction:SceneDirection)=>Promise<void>}){
+export function SceneEditor({scene,disabled,onSave,onDirty}:{scene:SceneDirection&{index:number;narration:string};disabled:boolean;onSave:(direction:SceneDirection)=>Promise<void>;onDirty:()=>void}){
  return <details className="border border-line rounded-lg p-4"><summary className="cursor-pointer text-sm font-medium">Scene {scene.index} · {scene.narration}</summary>
-  <form className="space-y-3 mt-4" onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);void onSave({scene:String(form.get("scene")),motion:String(form.get("motion")),endScene:String(form.get("endScene")??"").trim()||null,overlay:String(form.get("overlay")??"").trim()||null,strike:form.get("strike")==="on",references:form.getAll("references") as SceneDirection["references"]});}}>
+  <form className="space-y-3 mt-4" onChange={onDirty} onSubmit={event=>{event.preventDefault();const form=new FormData(event.currentTarget);void onSave({scene:String(form.get("scene")),motion:String(form.get("motion")),endScene:String(form.get("endScene")??"").trim()||null,overlay:String(form.get("overlay")??"").trim()||null,strike:form.get("strike")==="on",references:form.getAll("references") as SceneDirection["references"]});}}>
    <fieldset disabled={disabled} className="space-y-3">
     <label className="block text-sm">Starting image<textarea name="scene" required maxLength={3000} defaultValue={scene.scene} rows={3} className="block mt-2 w-full bg-surface-2 border border-line rounded p-3"/></label>
     <label className="block text-sm">Movement<textarea name="motion" required maxLength={2000} defaultValue={scene.motion} rows={2} className="block mt-2 w-full bg-surface-2 border border-line rounded p-3"/></label>
