@@ -16,7 +16,13 @@ Verified with 160 unit tests, TypeScript/lint/build, the offline production/reco
 
 ## Before paid generation
 
-Claude supplies a physical metaphor, initial scene, physical gestures, selected characters, action duration, inter-phrase breath, and a distinct final scene for every state change. The scene editor exposes those choices. Image prompts contain only the selected characters, preserve the locked clothing, prohibit generated lettering/logos and specify a full-frame miniature set. All typography and CAM branding are composited locally.
+### Optional metaphors and presenter typography
+
+User correction, 2026-10-14: not every sentence benefits from a metaphor. A distant analogy should give way to the recurring presenter with animated text above. The cupboard/dove, slogan swap and knife/cake directions are discarded for the Bram context sentence.
+
+Each new AI direction selects `visualMode: metaphor | presenter-text`; historical packets remain compatible. The editor exposes the same choice. Presenter images reserve the upper 38% for locally composed exact narration excerpts; models never draw the lettering. The whole headline enters early, then its words gain emphasis at their supplied voice timestamps. Complete-sentence typography replaces duplicate captions. Finishing preserves these intentional text layers, and each export reflows them for its canvas. The storyboard shows the treatment and words; changing either invalidates approval. Human storyboard approval is still required before animation. No current film or raw voice is rewritten by selecting this option.
+
+Claude chooses a clear visual action or the presenter with animated text, then supplies the initial scene, physical gestures, selected characters, action duration, inter-phrase breath, and a distinct final scene for every state change. The scene editor exposes those choices. Image prompts contain only the selected characters, preserve the locked clothing, prohibit generated lettering/logos and specify a full-frame miniature set. All typography and CAM branding are composited locally.
 
 `physical-direction.ts` detects common changes of state, missing/identical endpoints and an already-open scroll. This is conservative text validation, not visual understanding. Actual endpoint images still require review. Materialization refuses a state-changing video without its end image. The live chain rejects invalid directions before submitting a voice or image request. Explicit action durations govern animation requests, with a four-second minimum for state changes. Old plans without action durations keep their measured interval fallback.
 

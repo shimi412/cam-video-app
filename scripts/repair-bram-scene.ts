@@ -122,7 +122,7 @@ async function main() {
     if(op.kind==='video'){
       const sheet=StoryboardSheetSchema.parse(JSON.parse(await readFile(path.join(root,'../../storyboard-review.json'),'utf8')));
       const human=StoryboardDecisionSchema.parse(JSON.parse(await readFile(path.join(root,'../../storyboard-reviews',`${sheet.target}.json`),'utf8')));
-      requireApprovedStoryboardPanel(sheet,human,{scene:op.scene!,startSha256:trial.media[`scene-${op.scene}-start`].sha256,endSha256:trial.media[`scene-${op.scene}-end`]?.sha256,motion:trial.plan.repair.direction.motion});
+      requireApprovedStoryboardPanel(sheet,human,{scene:op.scene!,startSha256:trial.media[`scene-${op.scene}-start`].sha256,endSha256:trial.media[`scene-${op.scene}-end`]?.sha256,motion:trial.plan.repair.direction.motion,visualMode:trial.plan.repair.direction.visualMode,overlay:trial.plan.repair.direction.overlay});
     }
     const assets = connectCamAssets(); const transfer = { directory: path.join(dir, 'transfers'), transport: assets, assertOwned: lock.assertOwned };
     let phase = trial.phases[op.id];

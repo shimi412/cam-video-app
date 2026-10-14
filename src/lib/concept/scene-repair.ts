@@ -16,6 +16,7 @@ export function sceneRepairPlan(packet: RenderPacket, scene: number, direction: 
   const issues = physicalDirectionIssues(direction); if (issues.length) throw new Error(issues.join(" "));
   const directions = Object.fromEntries(packet.board.shots.map(shot => [shot.index, shot.index === scene ? direction : {
     scene: shot.scene, motion: shot.motion, references: shot.references, endScene: shot.endScene, overlay: shot.overlay, strike: shot.strike,
+    visualMode: shot.visualMode, metaphor: shot.metaphor, stateChange: shot.stateChange, actionSeconds: shot.actionSeconds, breathBefore: shot.breathBefore,
   }]));
   const script = packet.board.shots.map(s => s.narration).join(" ");
   const board = planConcept(script, recipe, packet.aspectRatio, directions);

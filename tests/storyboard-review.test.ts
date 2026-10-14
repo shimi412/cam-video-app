@@ -26,6 +26,7 @@ it("blocks repair scripts from borrowing an approval for different images or ret
  expect(()=>requireApprovedStoryboardPanel(sheet,decision,expected)).not.toThrow();
  expect(()=>requireApprovedStoryboardPanel(sheet,decision,{...expected,startSha256:"c".repeat(64)})).toThrow(/exact scene images/);
  expect(()=>requireApprovedStoryboardPanel(sheet,decision,{...expected,motion:"Another action"})).toThrow();
+ expect(()=>requireApprovedStoryboardPanel(sheet,decision,{...expected,visualMode:"presenter-text",overlay:"Context changes meaning"})).toThrow();
  expect(()=>requireApprovedStoryboardPanel({...sheet,retrospective:true},decision,expected)).toThrow();
  expect(()=>requireApprovedStoryboardPanel(sheet,{...decision,decision:"rejected"},expected)).toThrow();
 });

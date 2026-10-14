@@ -6,6 +6,7 @@ import { conceptPhrases, estimatedSpeechSeconds, normalizedText } from "./text";
 import eyal from "./eyal-phrases.json";
 import { changesState } from "./physical-direction";
 import { aspectComposition } from "../recipes";
+import { validatePresenterText } from "./presenter-text";
 
 function clayImage(scene: string, refs: SceneDirection["references"], aspect: AspectRatio) {
   const characters = refs.map((ref) => ref === "narrator" ? "The exact locked adult narrator: cap, striped shirt, suspenders and brown trousers, never overalls."
@@ -55,12 +56,13 @@ export function planConcept(script: string, recipe: Recipe, aspect: AspectRatio,
     narration,
   })) });
   assertNarrationPreserved(script, board.shots.map((s) => s.narration));
+  board.shots.forEach(shot => validatePresenterText(shot, shot.narration));
   return {
     source: Object.keys(directions).length ? "edited-draft" : isExample ? "validated-example" : "offline-draft",
     requiresReview: true,
     shots: board.shots.map((shot, index) => ({
       ...shot, index: index + 1,
-      imagePrompt: recipe.slug === "cam-clay" ? clayImage(shot.scene, shot.references, aspect) : buildImagePrompt(recipe, shot.scene, aspect),
+      imagePrompt: recipe.slug === "cam-clay" ? clayImage(`${shot.scene}${shot.visualMode === "presenter-text" ? " Keep the presenter and all gestures below the upper 38 percent of the frame. The upper area is a quiet, uncluttered warm background reserved for typography added later; do not draw lettering or a text panel." : ""}`, shot.references, aspect) : buildImagePrompt(recipe, shot.scene, aspect),
       endImagePrompt: shot.endScene ? (recipe.slug === "cam-clay" ? clayImage(`Preserve the start camera and lighting. Final state: ${shot.endScene}`, shot.references, aspect) : buildImagePrompt(recipe, shot.endScene, aspect)) : null,
       motionPrompt: recipe.slug === "cam-clay" ? `Handcrafted plasticine stop-motion animation, animated on twos with subtle clay boil. ${shot.motion} Keep the exact locked design${shot.references.includes("narrator") ? ", cap always on, striped shirt, suspenders and brown trousers" : ""}. No new objects, text, logos, cuts, dialogue or music. Continuous single take. Complete the action with a readable final hold.` : buildMotionPrompt(recipe, shot.motion),
       clipSeconds: Math.max(changesState(shot) ? 4 : 3, Math.ceil(shot.actionSeconds ?? Math.max(5, estimatedSpeechSeconds(shot.narration) + .35))),

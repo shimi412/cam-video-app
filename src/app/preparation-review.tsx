@@ -99,6 +99,7 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
             event.preventDefault();
             const data = new FormData(event.currentTarget);
             const ok = await save({ scene: shot.index, direction: {
+              visualMode: data.get("visualMode") as SceneDirection["visualMode"], metaphor: shot.metaphor, stateChange: shot.stateChange, actionSeconds: shot.actionSeconds, breathBefore: shot.breathBefore,
               scene: String(data.get("scene")), motion: String(data.get("motion")),
               references: data.getAll("references") as SceneDirection["references"],
               endScene: String(data.get("endScene")).trim() || null,
@@ -107,6 +108,8 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
             if (ok) setEditing(null);
           }}>
             <fieldset disabled={busy} className="space-y-3">
+              <label className="block text-xs">Visual treatment<select name="visualMode" defaultValue={shot.visualMode??"metaphor"} className="block mt-1 w-full rounded bg-surface border border-line p-2"><option value="metaphor">Visual action / metaphor</option><option value="presenter-text">Presenter + animated text above</option></select></label>
+              <p className="text-xs text-muted">Metaphors are optional. For presenter text, keep the upper image clear and use exact words from the narration as the title.</p>
               <label className="block text-xs">Scene description<textarea name="scene" aria-label={`Scene ${shot.index} description`} required maxLength={3000} defaultValue={shot.scene} className="block mt-1 w-full rounded bg-surface border border-line p-2 min-h-24" /></label>
               <label className="block text-xs">Movement<textarea name="motion" aria-label={`Scene ${shot.index} movement`} required maxLength={2000} defaultValue={shot.motion} className="block mt-1 w-full rounded bg-surface border border-line p-2 min-h-20" /></label>
               <fieldset className="text-xs flex flex-wrap gap-3"><legend className="mb-1">Characters and objects to keep</legend>{(["narrator", "monster", "effigy"] as const).map((ref) => <label key={ref}><input type="checkbox" name="references" value={ref} defaultChecked={shot.references.includes(ref)} className="mr-1" />{ref}</label>)}</fieldset>

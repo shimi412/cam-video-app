@@ -29,6 +29,12 @@ const ACTIONS = [
 ] as const;
 
 export function suggestDirection(narration: string): Direction {
+  if (/^context can change everything[.!?]?$/i.test(narration.trim())) return {
+    visualMode: "presenter-text", metaphor: "The presenter delivers the statement directly; animated words above him carry the idea without a forced analogy.",
+    scene: "The locked clay narrator faces the viewer, waist-up in the lower half of a warm cream miniature studio. Keep the upper 38 percent quiet and empty for typography added locally. Calm, attentive expression, cap, striped shirt, suspenders and brown trousers. No props or lettering.",
+    motion: "Continuous single take. Natural breathing and a restrained open-palm gesture near the torso. Keep both hands and gaze in frame. Static camera, no zoom, no cuts. Hold the calm final pose.",
+    references: ["narrator"], endScene: null, overlay: narration, strike: false, stateChange: false, actionSeconds: 5, breathBefore: .4,
+  };
   const action = ACTIONS.find((item) => item.cue.test(narration));
   return {
     scene: action?.scene ?? "The locked clay narrator faces the viewer on a warm clay stage, beside a blank presentation board. Calm medium shot with clear space above for an editorial title. Neutral staging; adapt it to the meaning of this sentence.",

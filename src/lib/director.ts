@@ -64,7 +64,7 @@ ${b.motion ? `- Motion: ${b.motion}` : "- Motion: elements are revealed by the m
 ${b.handwrittenKeywords ? "- Handwritten keywords: allowed, 1-2 single words per shot, only when they carry the idea." : "- No handwritten words: never suggest writing in the image."}
 
 DIRECTING RULES:
-- One idea per shot. Each shot's scene must illustrate its narration segment with a concrete visual metaphor, never a literal depiction of the accusation, never a stereotyped depiction of any group.
+- One idea per shot. Use a concrete visual metaphor only if it makes the narration immediately clearer. When the connection is forced or abstract, stage the recurring presenter with space above for locally composed keywords. Never depict an accusation as true or stereotype a group. Never force an analogy for every sentence.
 - Target ${params.shotCount} shots (between ${Math.max(2, params.shotCount - 2)} and ${params.shotCount + 2}). Each narration segment is 5 to 12 words (hard maximum 13) so that it lasts 2 to 4.5 seconds when spoken; split long sentences at natural breaths. Short segments are better than long ones.
 - The first shot is the hook: the strongest, most intriguing image.
 - Keep visual continuity: same character design, same recurring props, the stain/lie motif evolves shot after shot instead of being reinvented.

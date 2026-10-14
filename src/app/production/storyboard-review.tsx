@@ -5,7 +5,7 @@ import { useState } from "react";
 
 type Picture={url:string;kind:"image"|"video";width:number;height:number};
 export type StoryboardView={target:string;retrospective:boolean;status:"pending"|"approved"|"rejected";note:string|null;rejectedScene:number|null;
- panels:{scene:number;narration:string;meaning:string;startScene:string;endScene:string|null;motion:string;actionSeconds:number;start:Picture|null;end:Picture|null;existing:Picture|null}[]};
+ panels:{scene:number;narration:string;meaning:string;startScene:string;endScene:string|null;motion:string;actionSeconds:number;visualMode?:"metaphor"|"presenter-text";overlay?:string|null;start:Picture|null;end:Picture|null;existing:Picture|null}[]};
 function Frame({picture,label}:{picture:Picture;label:string}){
  return <figure className="min-w-0"><figcaption className="text-xs text-muted mb-2">{label}</figcaption>{picture.kind==="video"
   ?<video controls preload="metadata" src={picture.url} className="w-full max-h-72 object-contain rounded-lg"/>
@@ -20,6 +20,7 @@ export function StoryboardReview({sheet,active,disabled,conversationId,onReview}
   <p className="text-xs text-muted">Select an image to inspect it at full size.</p>
   <ol className="grid sm:grid-cols-3 gap-4">{sheet.panels.map(p=><li key={p.scene} className={`rounded-lg border p-4 space-y-3 ${sheet.rejectedScene===p.scene?"border-danger/60":"border-line"}`}>
    <h3 className="font-medium">Scene {p.scene}</h3><p className="text-sm font-medium" dir="auto">“{p.narration}”</p>
+   {p.visualMode==="presenter-text"&&<div className="rounded-lg bg-surface-2 p-3"><p className="text-xs text-muted">Presenter + animated text above</p><p className="mt-2 text-lg font-bold text-accent" dir="auto">{p.overlay}</p><p className="mt-2 text-xs text-muted">Headline enters together; each word gains emphasis with the voice. Check that the upper area stays clear.</p></div>}
    <div className="grid grid-cols-2 gap-3">{p.start&&<Frame picture={p.start} label={`Scene ${p.scene} · start`}/>} {p.end&&<Frame picture={p.end} label={`Scene ${p.scene} · end`}/>} {p.existing&&<Frame picture={p.existing} label={`Scene ${p.scene} · existing media`}/>}</div>
    <div><p className="text-xs font-semibold text-accent uppercase tracking-wide">What the viewer should understand</p><p className="text-sm mt-1">{p.meaning}</p></div>
    <details><summary className="cursor-pointer text-sm">Action and framing · {p.actionSeconds} s</summary><p className="text-sm text-muted mt-2">Start: {p.startScene}</p><p className="text-sm text-muted mt-2">Movement: {p.motion}</p>{p.endScene&&<p className="text-sm text-muted mt-2">End: {p.endScene}</p>}</details>

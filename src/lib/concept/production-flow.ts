@@ -168,7 +168,7 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
         if (binding && (clip.status !== "approved" || clip.target !== binding)) throw new Error("Imported animation workflow changed.");
         await verifiedSceneMedia(jobId, imported);
         prepared.push({shot,parent:direction,urls:{},imported});
-        panels.push({scene:shot.index,narration:shot.narration,meaning:shot.metaphor??"Explain how this image supports the narration before approving.",startScene:shot.scene,endScene:shot.endScene,motion:shot.motion,actionSeconds:shot.actionSeconds??shot.clipSeconds,existing:imported});
+        panels.push({scene:shot.index,narration:shot.narration,meaning:shot.metaphor??"Explain how this image supports the narration before approving.",startScene:shot.scene,endScene:shot.endScene,motion:shot.motion,actionSeconds:shot.actionSeconds??shot.clipSeconds,visualMode:shot.visualMode,overlay:shot.overlay,existing:imported});
         continue;
       }
       let parent = direction;
@@ -195,7 +195,7 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
         urls[`output:${op.id}`] = await upload(path.join(process.cwd(), "storage/imports", jobId, mediaFile(asset)), asset.sha256, "image/png");
       }
       prepared.push({shot,parent,urls});
-      panels.push({scene:shot.index,narration:shot.narration,meaning:shot.metaphor??"Explain how this image supports the narration before approving.",startScene:shot.scene,endScene:shot.endScene,motion:shot.motion,actionSeconds:shot.actionSeconds??shot.clipSeconds,...frames});
+      panels.push({scene:shot.index,narration:shot.narration,meaning:shot.metaphor??"Explain how this image supports the narration before approving.",startScene:shot.scene,endScene:shot.endScene,motion:shot.motion,actionSeconds:shot.actionSeconds??shot.clipSeconds,visualMode:shot.visualMode,overlay:shot.overlay,...frames});
     }
     const storyboardDecision = await review("storyboard", null, { board, panels, voice: voiceDecision, timing: alignmentHash(alignment), parents: prepared.map(p=>p.parent), format: input.params.aspectRatio }, {storyboard:panels});
     for (const {shot,parent,urls,imported} of prepared) {

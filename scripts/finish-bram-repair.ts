@@ -27,7 +27,7 @@ async function main(){
   const original=JSON.parse(await readFile(path.join(base,'state.json'),'utf8')).render as RenderPacket;
   const originalReceipts=JSON.stringify(await requestReceipts(path.join(base,'requests')));
   const selected=selection.trials.map(n=>{if(!session.trials[n])throw new Error('Unknown reviewed trial.');return session.trials[n];});
-  for(const trial of selected){const scene=trial.plan.repair.scene;requireApprovedStoryboardPanel(sheet,human,{scene,startSha256:trial.media[`scene-${scene}-start`].sha256,endSha256:trial.media[`scene-${scene}-end`]?.sha256,motion:trial.plan.repair.direction.motion});}
+  for(const trial of selected){const scene=trial.plan.repair.scene;requireApprovedStoryboardPanel(sheet,human,{scene,startSha256:trial.media[`scene-${scene}-start`].sha256,endSha256:trial.media[`scene-${scene}-end`]?.sha256,motion:trial.plan.repair.direction.motion,visualMode:trial.plan.repair.direction.visualMode,overlay:trial.plan.repair.direction.overlay});}
   const packet=applyReviewedSceneRepairs(original,selected,getRecipe('cam-clay')!);
   const revision=path.join(base,'finishing/claude-method-v4');await mkdir(revision,{recursive:true});
   await writeFile(path.join(revision,'render-packet.json'),JSON.stringify(packet,null,2));
@@ -54,7 +54,7 @@ async function main(){
   await copyFile(output,path.join(process.cwd(),'storage/outputs/cam-bram-corrige-v4.mp4'));
   const [job]=await lock.db.select().from(schema.jobs).where(eq(schema.jobs.id,id));
   await lock.db.update(schema.jobs).set({outputPath:output,params:{...job.params as object,finalDurationSeconds:mainResult.duration,formatExports:undefined,finishingRevision:sha256(await readFile(output)),editorialReview:'pending-final-listening',repairedScenes:selection.trials}}).where(eq(schema.jobs.id,id));
-  await writeFile(path.join(base,'finishing-review.json'),JSON.stringify({status:'pending-final-listening',variants,scenes:packet.board.shots.map(({index,narration,scene,motion,references,endScene,overlay,strike,metaphor,stateChange,actionSeconds,breathBefore})=>({index,narration,scene,motion,references,endScene,overlay,strike,metaphor,stateChange,actionSeconds,breathBefore})),
+  await writeFile(path.join(base,'finishing-review.json'),JSON.stringify({status:'pending-final-listening',variants,scenes:packet.board.shots.map(({index,narration,scene,motion,references,endScene,overlay,strike,metaphor,stateChange,actionSeconds,breathBefore,visualMode})=>({index,narration,scene,motion,references,endScene,overlay,strike,metaphor,stateChange,actionSeconds,breathBefore,visualMode})),
    listeningUrl:`/api/media/concepts/${id}/live/finishing/claude-method-v4/cream/controls/transition-listening.wav`,
    waveformUrl:`/api/media/concepts/${id}/live/finishing/claude-method-v4/cream/controls/waveform-ending.png`,
    reportUrl:`/api/media/concepts/${id}/live/finishing/claude-method-v4/cream/controls/audio-report.json`,

@@ -24,5 +24,5 @@ export type Finishing = z.infer<typeof FinishingSchema>;
 export function finishingBoard(board: ConceptBoard, options?: Finishing): ConceptBoard {
   if (!options) return board;
   FinishingSchema.parse(options);
-  return { ...board, shots: board.shots.map((shot) => ({ ...shot, overlay: null, strike: false })) };
+  return { ...board, shots: board.shots.map((shot) => shot.visualMode === "presenter-text" ? shot : ({ ...shot, overlay: null, strike: false })) };
 }

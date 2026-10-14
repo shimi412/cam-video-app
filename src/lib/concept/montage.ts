@@ -4,6 +4,8 @@ import type { ConceptBoard, ConceptTiming } from "./types";
 import type { AspectRatio } from "../recipes";
 import { brandEnding } from "./brand-ending";
 import type { EditorialAudio } from "./editorial-audio";
+import { presenterFontSize, presenterWordCues, validatePresenterText } from "./presenter-text";
+import { normalizedText } from "./text";
 export type MontageMedia = { kind: "image" | "video"; file: string; heldSeconds: number; mediaStart?: number; playbackRate?: number; sourceAspect?: number };
 export type MontageOptions = { brandEnding?: boolean; endingVariant?: "cream" | "last-frame"; endingTiming?: { start: number; end: number; voiceEnd: number }; audio?: EditorialAudio };
 
@@ -55,6 +57,7 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
   const fontSize = Math.min(48, Math.round(w * 0.045));
   const captionTop = Math.round(Math.min(h * 0.67, h * .78 - fontSize * 2.5 - 28));
   const nodes: string[] = [];
+  const textMotion: string[] = [];
   const ending = options.brandEnding === false ? null : await brandEnding(root, options.audio?.voiceEnd ?? options.endingTiming?.voiceEnd ?? timing.duration, w, h,
     { start: options.audio?.logoStart ?? options.endingTiming?.start, end: options.audio?.duration ?? options.endingTiming?.end, variant: options.endingVariant });
   const duration = ending?.cue.end ?? timing.duration;
@@ -65,11 +68,26 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
     if (asset?.kind === "video") nodes.push(`<video id="scene-${i}" class="clip scene imported" src="${asset.file}" muted playsinline data-start="${start}" data-duration="${end - start}" data-media-start="${asset.mediaStart ?? 0}" data-playback-rate="${asset.playbackRate ?? 1}" data-track-index="1" style="object-fit:${Math.abs((asset.sourceAspect ?? 0) - w / h) < .015 ? "cover" : "contain"}"></video>`);
     else if (asset) nodes.push(`<div id="scene-${i}" class="clip scene" data-start="${start}" data-duration="${end - start}" data-track-index="1"><img class="imported" src="${asset.file}" alt=""></div>`);
     else nodes.push(`<div id="scene-${i}" class="clip scene" data-start="${start}" data-duration="${end - start}" data-track-index="1"><div class="placeholder"><div class="book"></div><p class="shot-number">SHOT ${shot.index}</p><p class="notice">PLACEHOLDER VISUAL</p></div></div>`);
-    if (shot.overlay) nodes.push(`<div id="title-${i}" class="clip title ${shot.strike ? "struck" : ""}" data-start="${start}" data-duration="${end - start}" data-track-index="10">${escapeHtml(shot.overlay)}</div>`);
+    if (shot.overlay && shot.visualMode === "presenter-text") {
+      validatePresenterText(shot, shot.narration);
+      const words = presenterWordCues(shot.overlay, shot.index, timing);
+      const titleEnd = Math.min(end, ending?.cue.start ?? end);
+      const enterAt = timing.phrases[i].start;
+      nodes.push(`<div id="presenter-title-${i}" class="clip presenter-title" data-start="${start}" data-duration="${titleEnd - start}" data-track-index="10" style="font-size:${presenterFontSize(shot.overlay,w,h)}px">${words.map((word,j)=>`<span id="presenter-word-${i}-${j}">${escapeHtml(word.text)}</span>`).join(" ")}</div>`);
+      // Reveal the complete headline near the beginning, never new words at the cut.
+      words.forEach((word,j)=>{
+        textMotion.push(`tl.fromTo("#presenter-word-${i}-${j}",{opacity:0,y:18},{opacity:1,y:0,duration:.28,ease:"power2.out"},${enterAt+Math.min(j*.06,.24)});`);
+        textMotion.push(`tl.to("#presenter-word-${i}-${j}",{color:"#1766A6",duration:.16},${word.start});`);
+      });
+      textMotion.push(`tl.to("#presenter-title-${i}",{opacity:0,duration:.25,ease:"power1.inOut"},${Math.max(enterAt+.55,titleEnd-.25)});`);
+    } else if (shot.overlay) nodes.push(`<div id="title-${i}" class="clip title ${shot.strike ? "struck" : ""}" data-start="${start}" data-duration="${end - start}" data-track-index="10">${escapeHtml(shot.overlay)}</div>`);
     // A static preview intentionally uses no invented image motion.
     return { shot: shot.index, start, end, hasEndFrame: Boolean(shot.endScene), media: asset ?? null };
   });
-  const captions = captionGroups(timing);
+  const captions = captionGroups(timing).filter(cap => {
+    const shot = board.shots.find(s => s.index === cap.phrase);
+    return shot?.visualMode !== "presenter-text" || normalizedText(shot.overlay ?? "") !== normalizedText(shot.narration);
+  });
   for (const [i, cap] of captions.entries()) {
     nodes.push(`<div id="caption-${i}" class="clip caption" data-start="${cap.start}" data-duration="${cap.end - cap.start}" data-track-index="20">${escapeHtml(cap.text)}</div>`);
   }
@@ -86,9 +104,11 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
 .shot-number{font-size:34px;font-weight:800;margin:0}.notice{font-size:24px;letter-spacing:3px;margin:0}
 .title{left:${left}px;top:${h * .15}px;width:${safeWidth}px;padding:14px 24px;border-radius:18px;background:#FFF4DC;color:#3B2416;font-size:${Math.min(72,w * .061)}px;font-weight:900;line-height:1.12;text-align:center;text-wrap:balance;overflow-wrap:anywhere}
 .struck{text-decoration:line-through;text-decoration-color:#BC291F;text-decoration-thickness:9px}
+.presenter-title{z-index:10;left:${left}px;top:${h*.12}px;width:${safeWidth}px;padding:18px 22px;color:#3B2416;background:rgba(255,244,220,.96);border-radius:20px;font-size:${Math.min(78,w*.067)}px;font-weight:900;line-height:1.16;text-align:center;text-wrap:balance;overflow-wrap:anywhere;text-transform:uppercase}
+.presenter-title span{display:inline-block;max-width:100%}
 .caption{left:${left}px;top:${captionTop}px;width:${safeWidth}px;padding:14px 24px;background:#3B2416;color:#FFF4DC;border-radius:18px;font-size:${fontSize}px;font-weight:700;line-height:1.25;text-align:center;text-wrap:balance;overflow-wrap:anywhere}
 </style></head><body><div id="root" data-composition-id="main" data-width="${w}" data-height="${h}" data-start="0" data-duration="${duration}">${nodes.join("\n")}</div>
-<script>const tl=gsap.timeline({paused:true});${ending?.motion ?? ""}tl.to({}, {duration:${duration}},0);window.__timelines["main"]=tl;</script></body></html>`;
+<script>const tl=gsap.timeline({paused:true});${textMotion.join("")}${ending?.motion ?? ""}tl.to({}, {duration:${duration}},0);window.__timelines["main"]=tl;</script></body></html>`;
   await writeFile(path.join(root, "index.html"), html);
   await writeFile(path.join(root, "cues.json"), JSON.stringify({ duration, narrationDuration: timing.duration, brandEnding: ending?.cue ?? null, montageOptions: options, shots: cues, captions, safeArea: { x: left, y: Math.round(h * .12), width: safeWidth, bottom: Math.floor(h * .78) } }, null, 2));
   return { cues, captions, duration, brandEnding: ending?.cue ?? null, width: w, height: h };

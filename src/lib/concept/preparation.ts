@@ -45,6 +45,7 @@ export async function prepareConcept(script: string, params: ProductionParams, r
     shots: board.shots.map((shot, i) => ({
       index: shot.index, narration: shot.narration, scene: shot.scene, motion: shot.motion,
       endScene: shot.endScene, overlay: shot.overlay, strike: shot.strike,
+      visualMode: shot.visualMode, metaphor: shot.metaphor, stateChange: shot.stateChange, actionSeconds: shot.actionSeconds, breathBefore: shot.breathBefore,
       references: shot.references, start: timing.phrases[i].start, end: timing.phrases[i].end,
       estimatedClipSeconds: shot.clipSeconds,
       workflow: workflows.find((w) => w.scene === shot.index) ?? null,

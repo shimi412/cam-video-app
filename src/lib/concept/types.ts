@@ -7,6 +7,7 @@ export const DirectionSchema = z.object({
   endScene: z.string().trim().min(1).max(3000).nullable(),
   overlay: z.string().max(100).nullable(),
   strike: z.boolean(),
+  visualMode: z.enum(["metaphor", "presenter-text"]).optional(),
   // Optional on historical packets; required in newly requested AI directions.
   metaphor: z.string().trim().min(1).max(500).optional(),
   stateChange: z.boolean().optional(),
