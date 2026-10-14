@@ -79,6 +79,23 @@ it("rejects another job's result, moderation failures and malformed MCP replies"
   await expect(queue.submit()).rejects.toThrow();
 });
 
+it("recovers Bram from the verified audio CDN without submitting another generation", async () => {
+  const output = "https://d8j0ntlcm91z4.cloudfront.net/test/voice.mp3";
+  const result = (url: string) => wrapped({ jobs: [{ index: 0, job_id: "bram-job-1", status: "completed", model: "text2speech_v2", type: "audio", result_url: url }] });
+  const call = vi.fn().mockResolvedValueOnce(wrapped({ results: [{ id: "bram-job-1" }] }))
+    .mockResolvedValueOnce(result("https://untrusted.cloudfront.net/voice.mp3")).mockResolvedValueOnce(result(output));
+  const input = { directory, fingerprint: voice.fingerprint, queue: bramQueue(voice.input, "simulation", call), assertOwned: async () => {} };
+  await expect(advanceRequest(input)).rejects.toThrow("Unexpected provider media host");
+  expect(await advanceRequest(input)).toMatchObject({ state: "complete", output, requestId: "bram-job-1" });
+  expect((await advanceRequest(input)).reused).toBe(true);
+  expect(call.mock.calls.filter(([name]) => name === "generate_audio")).toHaveLength(1);
+  expect(providerOutputUrl(output, "higgsfield", "live")).toBe(output);
+  for (const url of ["https://untrusted.cloudfront.net/voice.mp3", "https://x.d8j0ntlcm91z4.cloudfront.net/voice.mp3", "https://d8j0ntlcm91z4.cloudfront.net.evil.invalid/voice.mp3", "http://d8j0ntlcm91z4.cloudfront.net/voice.mp3", "https://key@d8j0ntlcm91z4.cloudfront.net/voice.mp3"]) {
+    expect(() => providerOutputUrl(url, "higgsfield", "live")).toThrow();
+  }
+  expect(() => providerOutputUrl(output, "fal", "live")).toThrow();
+});
+
 it.each([image, video])("submits $kind once and retrieves its output by ID through the correct base endpoint", async (op) => {
   const output = op.kind === "image" ? { images: [{ url: "https://v3b.fal.media/output.png" }] } : { video: { url: "https://v3b.fal.media/output.mp4" } };
   const request = vi.fn().mockResolvedValueOnce({ request_id: "fal-job-1", response_url: "https://untrusted.invalid/do-not-follow" })

@@ -149,6 +149,30 @@ it("uses initiate/PUT without leaking the fal key to object storage or output ho
   expect(request.mock.calls.every(([, init]) => init.redirect === "error")).toBe(true);
 });
 
+it("explains an empty fal balance and resumes an explicitly rejected upload without ambiguity", async () => {
+  const file = path.join(directory, "voice.wav"); await writeFile(file, "voice bytes");
+  const request = vi.fn().mockResolvedValueOnce(Response.json({ detail: "User is locked. Reason: Exhausted balance." }, { status: 403 }))
+    .mockResolvedValueOnce(Response.json({ upload_url: "https://simulation.invalid/upload", file_url: "https://simulation.invalid/voice.wav" }))
+    .mockResolvedValueOnce(new Response(null, { status: 200 }));
+  const input = { file, sha256: sha256("voice bytes"), contentType: "audio/wav" as const, directory, transport: assetTransport("simulation", request, "fake-test-key"), assertOwned: async () => {} };
+  await expect(uploadReference(input)).rejects.toThrow("Your fal.ai balance is empty");
+  expect(request).toHaveBeenCalledTimes(1); // No bytes sent after the rejected initiation.
+  expect((await uploadReference(input)).reused).toBe(false);
+  expect((await uploadReference(input)).reused).toBe(true);
+  expect(request.mock.calls.map(([, init]) => init.method)).toEqual(["POST", "POST", "PUT"]);
+});
+
+it("keeps a lost initiation response blocked and never exposes provider error bodies", async () => {
+  const file = path.join(directory, "voice.wav"); await writeFile(file, "voice bytes");
+  const request = vi.fn().mockRejectedValueOnce(new Error("Connection lost"));
+  const input = { file, sha256: sha256("voice bytes"), contentType: "audio/wav" as const, directory, transport: assetTransport("simulation", request, "fake-test-key"), assertOwned: async () => {} };
+  await expect(uploadReference(input)).rejects.toThrow("Connection lost");
+  await expect(uploadReference(input)).rejects.toThrow("outcome unknown");
+  expect(request).toHaveBeenCalledTimes(1);
+  request.mockResolvedValueOnce(Response.json({ detail: "private provider diagnostic" }, { status: 401 }));
+  await expect(input.transport.upload(Buffer.from("abc"), `${usd}.wav`, "audio/wav")).rejects.toThrow("File transfer was not started (fal HTTP 401)");
+});
+
 const phrases = ["Check the source.", "Read the context."];
 const audio: AudioAsset = { kind: "audio", file: "narration.wav", sha256: usd, sourceSha256: credit, duration: 8 };
 function alignment(): VoiceAlignment {

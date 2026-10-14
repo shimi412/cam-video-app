@@ -15,7 +15,10 @@ export type AssetTransport = {
   download: (url: string, provider: "fal" | "higgsfield") => Promise<Response>;
 };
 const Context = z.object({ mode: z.enum(["simulation", "live"]), fingerprint: Hash });
-const Upload = Context.extend({ sha256: Hash, state: z.enum(["uploading", "complete"]), url: z.string().optional(), expiresAt: z.number().optional() });
+const Upload = Context.extend({ sha256: Hash, state: z.enum(["uploading", "not-started", "complete"]), url: z.string().optional(), expiresAt: z.number().optional() });
+/** An explicit initiation rejection proves no file bytes were sent. Only this
+ * failure can be resumed; lost responses and interrupted PUTs remain ambiguous. */
+export class UploadNotStartedError extends Error {}
 const Audio = z.object({ kind: z.literal("audio"), file: z.literal("narration.wav"), sha256: Hash, sourceSha256: Hash, duration: z.number().positive() });
 const Download = Context.extend({ jobId: z.uuid(), kind: z.enum(["image", "video", "audio"]), provider: z.enum(["fal", "higgsfield"]), sourceSha256: Hash, media: SceneMediaSchema.optional(), audio: Audio.optional() });
 export type AudioAsset = z.infer<typeof Audio>;
@@ -33,13 +36,20 @@ export async function uploadReference(input: TransferContext & { file: string; s
   const previous = await readCheckpoint(file, Upload);
   if (previous) {
     if (previous.mode !== input.transport.mode || previous.fingerprint !== key || previous.sha256 !== hash) throw new Error("Upload receipt mismatch.");
-    if (previous.state !== "complete") throw new Error("Upload outcome unknown. Reconcile the original upload.");
-    if (!previous.expiresAt || previous.expiresAt <= now + 60_000) throw new Error("Uploaded reference expired. A reviewed refresh is required.");
-    return { url: providerOutputUrl(previous.url, "fal", input.transport.mode), sha256: hash, reused: true };
+    if (previous.state === "uploading") throw new Error("Upload outcome unknown. Reconcile the original upload.");
+    if (previous.state === "complete") {
+      if (!previous.expiresAt || previous.expiresAt <= now + 60_000) throw new Error("Uploaded reference expired. A reviewed refresh is required.");
+      return { url: providerOutputUrl(previous.url, "fal", input.transport.mode), sha256: hash, reused: true };
+    }
   }
   await saveCheckpoint(file, { mode: input.transport.mode, fingerprint: key, sha256: hash, state: "uploading" }, input.assertOwned);
   await input.assertOwned();
-  const result = await input.transport.upload(bytes, `${hash}.${input.contentType === "image/png" ? "png" : "wav"}`, input.contentType);
+  let result: Awaited<ReturnType<AssetTransport["upload"]>>;
+  try { result = await input.transport.upload(bytes, `${hash}.${input.contentType === "image/png" ? "png" : "wav"}`, input.contentType); }
+  catch (error) {
+    if (error instanceof UploadNotStartedError) await saveCheckpoint(file, { mode: input.transport.mode, fingerprint: key, sha256: hash, state: "not-started" }, input.assertOwned);
+    throw error;
+  }
   const url = providerOutputUrl(result.url, "fal", input.transport.mode);
   if (!Number.isFinite(result.expiresAt) || result.expiresAt <= now + 60_000) throw new Error("Upload returned an expired URL.");
   await saveCheckpoint(file, { mode: input.transport.mode, fingerprint: key, sha256: hash, state: "complete", url, expiresAt: result.expiresAt }, input.assertOwned);

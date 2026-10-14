@@ -32,8 +32,11 @@ export function providerOutputUrl(value: unknown, provider: "fal" | "higgsfield"
   const url = httpsUrl.parse(value);
   const host = new URL(url).hostname;
   const domains = provider === "fal" ? ["fal.media"] : ["higgsfield.ai"];
+  // Higgsfield's completed audio jobs also use this CloudFront distribution
+  // (verified through jobs_wait). Never trust arbitrary CloudFront tenants.
+  const audioCdn = provider === "higgsfield" && host === "d8j0ntlcm91z4.cloudfront.net";
   if (mode === "simulation" && host === "simulation.invalid") return url;
-  if (!domains.some((domain) => host === domain || host.endsWith(`.${domain}`))) throw new Error("Unexpected provider media host.");
+  if (!audioCdn && !domains.some((domain) => host === domain || host.endsWith(`.${domain}`))) throw new Error("Unexpected provider media host.");
   return url;
 }
 
