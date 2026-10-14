@@ -37,6 +37,9 @@ async function main() {
     let ready = false;
     for (let tries=0;tries<90;tries++) { if (server.exitCode !== null) throw new Error("Access-test server stopped"); try { const response = await fetch(origin + "/api/auth/csrf", { signal: AbortSignal.timeout(3000) }); if (response.ok) { ready=true;break; } } catch {} await new Promise(r => setTimeout(r,500)); }
     assert(ready, "Access-test server ready"); const anonymous = await client(), admin = await client(), user = await client();
+    const publicLogo=await anonymous.request("/recipes/cam-clay/logo.png");
+    assert.equal(publicLogo.status,200,"Login logo must load before authentication");
+    assert(publicLogo.headers.get("content-type")?.includes("image/png"));
     assert.equal((await anonymous.request("/api/jobs")).status,401);
     for(const route of ["/api/help","/api/credits",`/api/jobs/${marker}/thumbnail`,`/api/credits/receipts/${marker}`])assert.equal((await anonymous.request(route)).status,401);
     assert.equal((await anonymous.request("/api/media/outputs/missing.mp4")).status,401);
