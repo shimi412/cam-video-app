@@ -3,6 +3,9 @@ export type ProviderMode = "mock" | "dryrun" | "fal";
 
 export function providerMode(): ProviderMode {
   const mode = process.env.PROVIDER_MODE;
+  if (process.env.CAM_RELEASE === "preview" && mode !== "mock" && mode !== "dryrun") {
+    throw new Error("This CAM preview release requires an offline provider mode.");
+  }
   if (mode === "mock" || mode === "dryrun" || mode === "fal") return mode;
   if (mode) throw new Error(`Unknown PROVIDER_MODE "${mode}".`);
   return process.env.MOCK_MODE === "false" ? "fal" : "mock";

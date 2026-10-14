@@ -7,8 +7,8 @@ Local development of CAM's video production tool. Read `BLUEPRINT.md` before cha
 ```bash
 pnpm install --frozen-lockfile
 pnpm db:start
-pnpm db:seed
 pnpm db:migrate
+pnpm db:seed
 pnpm dev:preview
 ```
 
@@ -16,7 +16,9 @@ pnpm dev:preview
 
 The old five styles are archived in the database and the source catalogue. They remain available to the explicit offline CLI below for regression checks. The client library and new-production endpoints do not offer them. CAM Clay offers free local previews; its live production gate remains closed.
 
-The latest instruction is to finish the authorized local production work autonomously, without asking Shimi to approve each development step. Zero provider-credit spending and no paid trials remain binding. The in-app **Help** page explains the available workflow; it does not claim the complete contracted product is delivered.
+The latest instruction is to prepare the first client version for October 15, 2026, autonomously. Zero provider-credit spending and no paid trials remain binding. The in-app **Help** page explains the available workflow; it does not claim the complete contracted product is delivered. Installation, the dedicated-host package and recovery instructions are in [docs/deployment.md](docs/deployment.md). Docker/HTTPS/restore still require a server rehearsal. No remote environment has been provisioned.
+
+New installations start with a zero credit balance. `db:seed --demo-credits` is an explicit offline-development option and is rejected in production. `CAM_RELEASE=preview` prevents an accidental switch to live media. The header clearly identifies the free preview workspace.
 
 ## Workspace accounts
 
@@ -73,7 +75,7 @@ Reference run: `884013f5-853e-4952-b9d4-36fe31c741c7`, 207 seconds end to end on
 
 ## CAM Clay planning preview
 
-The Studio can frame a script, show a provisional estimate and render an offline preview after confirmation. Outputs include a 1080p MP4, storyboard, exact draft prompts, locked-reference hashes, estimated word timings and contact sheets. Choose 9:16, 16:9 or 1:1 before framing. Each canvas is laid out independently; a single job currently exports only the selected format.
+The Studio can frame a script, show a provisional estimate and render an offline preview after confirmation. Outputs include a 1080p MP4, storyboard, exact draft prompts, locked-reference hashes, estimated word timings and contact sheets. Choose 9:16, 16:9 or 1:1 before framing. After completion, **Prepare three downloads** reuses the finished attempt's pictures, recording and timing. New previews re-layout titles and captions for each canvas; historical films are fitted with a background without cropping. The original MP4 is preserved. Interrupted exports reuse verified completed files. Changing source media, storyboard, timing, layout or a download invalidates its saved result. `pnpm test:exports` exercises actual renders, duplicate clicks, recovery and corrupt-file repair without a provider call or ledger movement.
 
 ```bash
 pnpm dryrun cam-clay 9:16 < tests/fixtures/eyal.txt
@@ -85,7 +87,7 @@ The October narrator, monster, effigy and CAM logo are pinned in `public/recipes
 
 Framing a new script now shows a persistent preparation card before confirmation: unchanged narration split into scenes, estimated timings, pinned character references, and the selected Bram voice with its existing provider sample. Unconfirmed drafts follow the current voice choice on reload; completed results retain their original preparation. The displayed duration uses the same timing calculation as the preview. The preparation remains visible with the result after reload and does not authorize generation.
 
-Still required before live production: editorial approval of new scene drafts, generated and approved keyframes and new Bram readings, validation of the protected provider transports with real outputs and cost receipts, a reviewed Bram reading with measured word timestamps, subtitle-face checks, full flash detection, automatic multi-format exports and a final price cap. Bram is the target selected on October 13; the historical Dylan recording is not renamed. Production account provisioning, payments, hosting and the other two styles remain separate work.
+Still required before live production: editorial approval of new scene drafts, generated and approved keyframes and new Bram readings, validation of the protected provider transports with real outputs and cost receipts, a reviewed Bram reading with measured word timestamps, subtitle-face checks, full flash detection, editorial review of the exported formats and a final price cap. Bram is the target selected on October 13; the historical Dylan recording is not renamed. Production account provisioning, payments, hosting and the other two styles remain separate work.
 
 ## New scripts with local scenes and a test voice
 

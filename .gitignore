@@ -51,3 +51,5 @@ storage/
 !.env.example
 
 /tsconfig.access-test.json
+/.backups/
+/release/

@@ -1,0 +1,11 @@
+{$CAM_DOMAIN} {
+    request_body {
+        max_size 70MB
+    }
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy no-referrer
+    }
+    reverse_proxy app:3000
+}

@@ -1,0 +1,18 @@
+# Build inputs only: no credentials, private media, database, caches or Git history.
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!next.config.ts
+!tsconfig.json
+!postcss.config.mjs
+!src/
+!src/**
+!public/
+!public/**
+!scripts/
+!scripts/**
+!migrations/
+!migrations/**
+!deploy/
+!deploy/start.sh

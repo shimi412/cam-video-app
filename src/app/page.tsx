@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PreparationReview } from "./preparation-review";
 import { RequestRecovery } from "./request-recovery";
+import { FormatDownloads } from "./format-downloads";
 import type { ConceptPreparation } from "@/lib/concept/preparation";
 import type { Estimate } from "@/lib/pricing";
 
@@ -258,8 +259,8 @@ export default function StudioPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Studio</h1>
         <p className="text-muted mt-1">
-          Paste a script from your monitoring app. The studio frames it, shows the price, and
-          produces the video after your confirmation.
+          Prepare your script, review the recording and scenes, then assemble a free preview.
+          Paid generation is disabled in this version.
         </p>
       </div>
 
@@ -545,7 +546,8 @@ export default function StudioPage() {
                 <video aria-label="Complete offline production test" controls preload="metadata" src={job.artifacts.find((a) => a.label === "Offline sequence test video (test voice)")!.url} className="rounded-lg max-h-80 max-w-full mx-auto bg-black" />
                 <p className="text-muted">This test uses marked calibration images and simulated approvals. Word timing is approximate. A new Bram recording, creative review and real provider quotes are still required. No paid request or trial was started.</p>
               </details>}
-              {job.artifacts && <div className="flex flex-wrap gap-3 text-sm">{job.artifacts.map((artifact) => <a key={artifact.url} href={artifact.url} target="_blank" className="text-accent hover:underline">{artifact.label} ↗</a>)}</div>}
+              {job.id && <FormatDownloads jobId={job.id} />}
+              {job.artifacts && <details className="border border-line rounded-lg p-4"><summary className="cursor-pointer text-sm font-medium">Audio, subtitles and production documents</summary><div className="flex flex-wrap gap-3 text-sm mt-3">{job.artifacts.map((artifact) => <a key={artifact.url} href={artifact.url} target="_blank" className="text-accent hover:underline">{artifact.label} ↗</a>)}</div></details>}
             </div>
           )}
 
@@ -559,11 +561,12 @@ export default function StudioPage() {
           )}
         </section>
       )}
-      {job?.preparation && <PreparationReview preparation={job.preparation} />}
+      {job?.preparation && (job.status === "succeeded" ? <details className="border border-line rounded-xl p-5 space-y-4"><summary className="cursor-pointer font-medium">Review the scenes and recording used</summary><PreparationReview preparation={job.preparation} /></details> : <PreparationReview preparation={job.preparation} />)}
 
       {/* Dry-run: production sheet (debug view of the exact fal.ai requests) */}
       {job?.status === "succeeded" && job.sheet && job.sheet.length > 0 && (
-        <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
+        <details className="bg-surface border border-line rounded-xl p-5 space-y-4">
+          <summary className="cursor-pointer font-medium">Production notes and media sources</summary>
           <div className="flex items-center justify-between">
             <div>
               <h2 className="font-medium">{job.media ? "Reused media" : "Production sheet (dry-run)"}</h2>
@@ -619,7 +622,7 @@ export default function StudioPage() {
               </details>
             ))}
           </div>
-        </section>
+        </details>
       )}
     </div>
   );

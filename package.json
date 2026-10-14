@@ -27,7 +27,13 @@
     "test:access": "tsx --env-file-if-exists=.env scripts/check-access.ts",
     "dryrun": "tsx --env-file-if-exists=.env scripts/dryrun.ts",
     "dev:preview": "CAM_AUTH_MODE=local PROVIDER_MODE=dryrun BRAIN_MODE=mock next dev --hostname 127.0.0.1",
-    "test:workspace": "tsx --env-file-if-exists=.env scripts/check-workspace.ts"
+    "test:workspace": "tsx --env-file-if-exists=.env scripts/check-workspace.ts",
+    "release:configure": "tsx scripts/configure-release.ts",
+    "release:check": "tsx --env-file-if-exists=.env scripts/check-installation.ts",
+    "test:installation": "tsx --env-file-if-exists=.env scripts/check-fresh-installation.ts",
+    "test:exports": "tsx --env-file-if-exists=.env scripts/check-format-exports.ts",
+    "test:access:production": "tsx --env-file-if-exists=.env scripts/check-access.ts --production",
+    "release:package": "tsx scripts/package-release.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.39",

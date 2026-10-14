@@ -1,0 +1,68 @@
+name: cam-preview
+services:
+  db:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_USER: cam
+      POSTGRES_DB: cam
+      POSTGRES_PASSWORD: ${CAM_DB_PASSWORD:?Run release:configure first}
+    volumes:
+      - database:/var/lib/postgresql
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U cam -d cam']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # No published database port.
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: cam-video-preview:${CAM_IMAGE_TAG:-local}
+    init: true
+    shm_size: 1gb
+    environment:
+      DATABASE_URL: postgres://cam:${CAM_DB_PASSWORD:?Run release:configure first}@db:5432/cam
+      AUTH_SECRET: ${CAM_AUTH_SECRET:?Run release:configure first}
+      APP_URL: https://${CAM_DOMAIN:?Set the dedicated CAM domain}
+      AUTH_URL: https://${CAM_DOMAIN:?Set the dedicated CAM domain}
+      AUTH_TRUST_HOST: 'true'
+      CAM_AUTH_MODE: required
+      CAM_RELEASE: preview
+      PROVIDER_MODE: dryrun
+      BRAIN_MODE: mock
+    volumes:
+      - media:/app/storage
+      - private:/app/.secrets
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 35m
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3000/login").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+    # The app is reachable only through Caddy. Do not scale: rendering uses local storage.
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      CAM_DOMAIN: ${CAM_DOMAIN:?Set the dedicated CAM domain}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - tls:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  database:
+  media:
+  private:
+  tls:
+  caddy_config:
