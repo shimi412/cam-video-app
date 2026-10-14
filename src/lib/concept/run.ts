@@ -115,7 +115,7 @@ export async function produceConcept(input: {
     assertOwned: input.assertOwned ?? (async () => {}),
     render: (output) => renderConcept(root, output),
   });
-  await controls(outputPath, root, composition.cues.map((s)=>s.start), composition.width, composition.height, timing.duration, { requireAudibleVoice: audible, captions: audible ? composition.captions : undefined });
+  await controls(outputPath, root, [...composition.cues.map((s)=>s.start), timing.duration], composition.width, composition.height, composition.duration, { requireAudibleVoice: audible, estimatedTiming: timing.estimated, captions: audible ? composition.captions : undefined });
   const sequence = !imported && voice !== "silent" ? await rehearseProduction({ jobId, directory: path.join(checkpoints, "production-sequence"), workspace: root,
     script, params, recipe, voiceFile: path.join(root, "assets/narration.wav"), timing, assertOwned }) : null;
   await writeFile(path.join(root, "provenance.json"), JSON.stringify({ voice: imported ? { source: "local-import", declaredSpeaker: imported.narration.speaker, sourceNote: imported.narration.sourceNote, sha256: imported.audio.sha256, reviewTarget: imported.target, reviewed: true, speakerIdentityVerified: false, costUsd: 0, finalVoiceApproved: false } : { source: voice === "silent" ? "silent" : "local-macos", name: voice === "silent" ? null : LOCAL_VOICES[voice].name, rate: 150, costUsd: 0, finalVoiceApproved: false }, scenes: composition.cues, importedMedia: params.sceneMedia ?? {}, phraseTiming: !audible ? "estimated" : imported ? "operator-supplied" : "measured", wordTiming: imported ? "operator-supplied" : "estimated", costUsd: 0 }, null, 2));
@@ -142,7 +142,7 @@ export async function produceConcept(input: {
   }, null, 2));
   preparation.readiness.dossierUrl = url("production-dossier.json");
   await writeFile(path.join(root, "production-dossier.json"), JSON.stringify(productionDossier(jobId, script, params, preparation), null, 2));
-  return { outputPath, renderReused: rendering.reused, durationSeconds: timing.duration, board, sheet, sheetUrl, media: null,
+  return { outputPath, renderReused: rendering.reused, durationSeconds: composition.duration, board, sheet, sheetUrl, media: null,
     preparation, artifacts: [
     { label: "Production dossier", url: url("production-dossier.json") },
     { label: "Storyboard", url: url("storyboard.json") },

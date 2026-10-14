@@ -30,9 +30,10 @@ async function main() {
     await exec("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-ar", "48000", "-ac", "1", path.join(root, "assets/narration.wav")]);
     await writeFile(path.join(root, "storyboard.json"), JSON.stringify(board));
     await writeFile(path.join(root, "timing.json"), JSON.stringify(timing));
-    await writeMontage(root, board, timing, "16:9", { 1: { kind: "image", file: "assets/scene-1.png", heldSeconds: 0 } });
+    const composition = await writeMontage(root, board, timing, "16:9", { 1: { kind: "image", file: "assets/scene-1.png", heldSeconds: 0 } });
     await renderConcept(root, output);
-    const params = { templateSlug: "cam-clay", aspectRatio: "16:9", executionMode: "dryrun", execution: { attemptId: attempt }, finalDurationSeconds: 3 };
+    assert.equal(composition.duration, timing.duration + 3);
+    const params = { templateSlug: "cam-clay", aspectRatio: "16:9", executionMode: "dryrun", execution: { attemptId: attempt }, finalDurationSeconds: composition.duration };
     await db.insert(schema.jobs).values({ id, status: "succeeded", script: "Offline export check.", params, outputPath: output, billedUsd: "0.00" });
     assert.deepEqual((await Promise.all([queueExports(id), queueExports(id)])).sort(), [false, true], "Duplicate clicks queue once");
     await runExports(id);
@@ -44,10 +45,11 @@ async function main() {
       timestamps[file.aspect] = (await stat(target)).mtimeMs;
       const { stdout } = await exec("ffprobe", ["-v", "error", "-show_entries", "stream=width,height:format=duration", "-of", "json", target]);
       const probe = JSON.parse(stdout), size = file.aspect === "9:16" ? [1080, 1920] : file.aspect === "1:1" ? [1080, 1080] : [1920, 1080];
-      assert.deepEqual([probe.streams[0].width, probe.streams[0].height], size); assert(Math.abs(Number(probe.format.duration) - 3) < .1);
+      assert.deepEqual([probe.streams[0].width, probe.streams[0].height], size); assert(Math.abs(Number(probe.format.duration) - composition.duration) < .1);
       if (file.layout === "original") assert.equal(await digest(target), await digest(output));
       else {
         assert.equal(await digest(path.join(path.dirname(target), "assets/narration.wav")), await digest(path.join(root, "assets/narration.wav")));
+        assert.equal(await digest(path.join(path.dirname(target), "assets/cam-logo.png")), await digest("public/recipes/cam-clay/logo.png"));
         assert.equal(JSON.parse(await readFile(path.join(path.dirname(target), "cues.json"), "utf8")).captions.map((c: { text: string }) => c.text).join(" "), "Offline export check.");
       }
     }

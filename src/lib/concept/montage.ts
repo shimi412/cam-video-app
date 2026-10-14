@@ -2,6 +2,7 @@ import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ConceptBoard, ConceptTiming } from "./types";
 import type { AspectRatio } from "../recipes";
+import { brandEnding } from "./brand-ending";
 
 export const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 export function conceptCanvas(aspect: AspectRatio) {
@@ -42,7 +43,8 @@ export function captionGroups(timing: ConceptTiming): Caption[] {
 
 /** Re-layout each canvas; no automatic crop that could remove captions or faces. */
 export async function writeMontage(root: string, board: ConceptBoard, timing: ConceptTiming, aspect: AspectRatio,
-  media: Record<number, { kind: "image" | "video"; file: string; heldSeconds: number }> = {}) {
+  media: Record<number, { kind: "image" | "video"; file: string; heldSeconds: number }> = {},
+  options: { brandEnding?: boolean } = {}) {
   const { width: w, height: h } = conceptCanvas(aspect);
   await mkdir(path.join(root, "assets"), { recursive: true });
   await copyFile(path.join(process.cwd(), "node_modules/gsap/dist/gsap.min.js"), path.join(root, "assets/gsap.min.js"));
@@ -66,10 +68,13 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
     nodes.push(`<div id="caption-${i}" class="clip caption" data-start="${cap.start}" data-duration="${cap.end - cap.start}" data-track-index="20">${escapeHtml(cap.text)}</div>`);
   }
   nodes.push(`<audio id="voice" src="assets/narration.wav" data-start="0" data-duration="${timing.duration}" data-track-index="30"></audio>`);
+  const ending = options.brandEnding === false ? null : await brandEnding(root, timing.duration, w, h);
+  if (ending) nodes.push(ending.html);
+  const duration = ending?.cue.end ?? timing.duration;
   const html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><title>CAM clay preview</title><script src="assets/gsap.min.js"></script><style>
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#FFF4DC;color:#3B2416;font-family:sans-serif}
 #root{position:relative;width:100%;height:100%;overflow:hidden;background:#FFF4DC}
-.clip{position:absolute}.scene{inset:0}.placeholder{position:absolute;left:${left}px;top:${h * 0.34}px;width:${safeWidth}px;height:${h * 0.26}px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px}
+.clip{position:absolute}.scene{inset:0;z-index:1}.title{z-index:10}.caption{z-index:20}.placeholder{position:absolute;left:${left}px;top:${h * 0.34}px;width:${safeWidth}px;height:${h * 0.26}px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px}
 .imported{width:100%;height:100%;object-fit:contain}
 .book{width:${Math.min(270,w * .2)}px;height:${h * .12}px;border:8px solid #3B2416;border-radius:16px;background:#F2B632;box-shadow:14px 14px 0 #E2CBA8;position:relative}
 .book:after{content:"";position:absolute;top:0;bottom:0;left:50%;border-left:6px solid #3B2416}
@@ -77,9 +82,9 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
 .title{left:${left}px;top:${h * .15}px;width:${safeWidth}px;padding:14px 24px;border-radius:18px;background:#FFF4DC;color:#3B2416;font-size:${Math.min(72,w * .061)}px;font-weight:900;line-height:1.12;text-align:center;text-wrap:balance;overflow-wrap:anywhere}
 .struck{text-decoration:line-through;text-decoration-color:#BC291F;text-decoration-thickness:9px}
 .caption{left:${left}px;top:${captionTop}px;width:${safeWidth}px;padding:14px 24px;background:#3B2416;color:#FFF4DC;border-radius:18px;font-size:${fontSize}px;font-weight:700;line-height:1.25;text-align:center;text-wrap:balance;overflow-wrap:anywhere}
-</style></head><body><div id="root" data-composition-id="main" data-width="${w}" data-height="${h}" data-start="0" data-duration="${timing.duration}">${nodes.join("\n")}</div>
-<script>const tl=gsap.timeline({paused:true});tl.to({}, {duration:${timing.duration}},0);window.__timelines["main"]=tl;</script></body></html>`;
+</style></head><body><div id="root" data-composition-id="main" data-width="${w}" data-height="${h}" data-start="0" data-duration="${duration}">${nodes.join("\n")}</div>
+<script>const tl=gsap.timeline({paused:true});${ending?.motion ?? ""}tl.to({}, {duration:${duration}},0);window.__timelines["main"]=tl;</script></body></html>`;
   await writeFile(path.join(root, "index.html"), html);
-  await writeFile(path.join(root, "cues.json"), JSON.stringify({ duration: timing.duration, shots: cues, captions, safeArea: { x: left, y: Math.round(h * .12), width: safeWidth, bottom: Math.floor(h * .78) } }, null, 2));
-  return { cues, captions, width: w, height: h };
+  await writeFile(path.join(root, "cues.json"), JSON.stringify({ duration, narrationDuration: timing.duration, brandEnding: ending?.cue ?? null, shots: cues, captions, safeArea: { x: left, y: Math.round(h * .12), width: safeWidth, bottom: Math.floor(h * .78) } }, null, 2));
+  return { cues, captions, duration, brandEnding: ending?.cue ?? null, width: w, height: h };
 }

@@ -107,7 +107,7 @@ export async function runExports(id: string) {
       const timing = JSON.parse(await readFile(path.join(source.root, "timing.json"), "utf8")) as ConceptTiming;
       const historical = params.previewSource === "existing";
       const board = JSON.parse(await readFile(path.join(source.root, "storyboard.json"), "utf8")) as ConceptBoard;
-      const cues = JSON.parse(await readFile(path.join(source.root, "cues.json"), "utf8")) as { shots: { shot: number; media?: { kind: "image" | "video"; file: string; heldSeconds: number } }[] };
+      const cues = JSON.parse(await readFile(path.join(source.root, "cues.json"), "utf8")) as { brandEnding?: { version: number }; shots: { shot: number; media?: { kind: "image" | "video"; file: string; heldSeconds: number } }[] };
       for (const aspect of FORMATS) {
         const directory = path.join(base, aspect.replace(":", "x"));
         await mkdir(directory, { recursive: true });
@@ -129,7 +129,8 @@ export async function runExports(id: string) {
           } else {
             await cp(path.join(source.root, "assets"), path.join(directory, "assets"), { recursive: true });
             const media = Object.fromEntries(cues.shots.filter((s) => s.media).map((s) => [s.shot, s.media!]));
-            const composition = await writeMontage(directory, board, timing, aspect, media);
+            // Follow the saved film; exporting an older film must not append a new ending.
+            const composition = await writeMontage(directory, board, timing, aspect, media, { brandEnding: Boolean(cues.brandEnding) });
             validateTiming(timing, composition.captions);
             for (const kind of ["srt", "vtt"] as const) await writeFile(path.join(directory, `captions.${kind}`), subtitleFile(composition.captions, kind));
             await checkpointedRender({ project: directory, output: temporary, checkpointDir: path.join(directory, "checkpoints"), assertOwned: lock.assertOwned, render: (target) => renderConcept(directory, target) });

@@ -221,10 +221,10 @@ export async function renderProductionFlow(packet: RenderPacket, workspace: stri
   const output = path.join(workspace, "preview.mp4");
   const rendering = await checkpointedRender({ project: workspace, output, checkpointDir: path.join(checkpoints, "render"), assertOwned,
     render: (file) => renderConcept(workspace, file) });
-  await controls(output, workspace, composition.cues.map((s) => s.start), composition.width, composition.height, packet.timing.duration, { requireAudibleVoice: true, estimatedTiming: packet.timing.estimated, captions: composition.captions });
+  await controls(output, workspace, [...composition.cues.map((s) => s.start), packet.timing.duration], composition.width, composition.height, composition.duration, { requireAudibleVoice: true, estimatedTiming: packet.timing.estimated, captions: composition.captions });
   await assertOwned();
   const proof = { mode: packet.mode, fingerprint, voiceSha256: packet.audioSha256, alignmentSha256: packet.alignmentSha256,
-    duration: packet.timing.duration, timingEstimated: packet.timing.estimated, finalBramVoiceApproved: packet.mode === "live" && packet.voiceOrigin === "generated-bram", paidGenerationAuthorized: packet.mode === "live", media: packet.media, renderReused: rendering.reused,
+    duration: composition.duration, narrationDuration: packet.timing.duration, brandEnding: composition.brandEnding, timingEstimated: packet.timing.estimated, finalBramVoiceApproved: packet.mode === "live" && packet.voiceOrigin === "generated-bram", paidGenerationAuthorized: packet.mode === "live", media: packet.media, renderReused: rendering.reused,
     ...(finishing ? { finishing: { ...finishing, sourceFingerprint: fingerprint, boardSha256: sha256(JSON.stringify(board)), completedAt: new Date().toISOString(), newPaidRequests: 0 } } : {}) };
   await writeFile(path.join(workspace, "production-flow.json"), JSON.stringify(proof, null, 2));
   return { output, ...proof };
