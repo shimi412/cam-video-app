@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "demo": "tsx scripts/local-demo.ts",
+    "demo:prepare": "tsx scripts/local-demo.ts --prepare-only",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

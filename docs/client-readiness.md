@@ -2,6 +2,10 @@
 
 Updated 2026-10-14 for the first version due October 15. Development proceeds autonomously. No provider credits, paid trials, external messages or deployment are part of the current checks. The packaged deliverable is explicitly a preview workspace; the full contracted live-production system remains incomplete.
 
+**Presentation decision, October 14:** show the version locally on Shimi's Mac. Wait for CAM's monthly payment before incurring hosting charges. No server was bought; the empty Hetzner CAM project can remain for later. `pnpm demo` opens a separate persistent local database containing only the finished historical example, with client permissions and no paid provider access. See `docs/local-demo.md` for the five-minute walkthrough and the Desktop `cam-demo` fallback videos. This is not an online client delivery.
+
+Local demonstration verification: startup, duplicate-launch reuse, stop/restart, saved-note persistence, development database preservation, client access/admin rejection, three exact video downloads and HTTP byte ranges passed. Browser playback shows the 52.267-second historical Dylan film without media errors. A canceled-download stream race was fixed and checked with 30 unit cancellations plus 20 interrupted HTTP downloads. 122 unit tests, TypeScript, lint and the production build pass. Proof: `storage/qa/cam-local-demo-proof.json`. No accounts, test credits or development conversations are copied into the demonstration.
+
 | Area | Verified locally | Still required for client delivery |
 | --- | --- | --- |
 | CAM Clay production | Imported scenes/audio, review, exact audio reuse, captions, rendering and recovery; simulated generation chain | New Bram reading and approved final visuals; actual provider outputs, quotes, cost evidence and reconciliation |

@@ -19,13 +19,14 @@ export function Header() {
   const pathname = usePathname();
   const [balance, setBalance] = useState<number | null>(null);
   const [preview, setPreview] = useState(false);
+  const [localDemo, setLocalDemo] = useState(false);
   const [account, setAccount] = useState<{ name: string; role: string; local: boolean } | null>(null);
 
   useEffect(() => {
     const load = () =>
       fetch("/api/account")
         .then((r) => r.json())
-        .then((d) => { setBalance(typeof d.balance === "number" ? d.balance : null); setAccount(d.user ?? null); setPreview(d.preview === true); })
+        .then((d) => { setBalance(typeof d.balance === "number" ? d.balance : null); setAccount(d.user ?? null); setPreview(d.preview === true); setLocalDemo(d.localDemo === true); })
         .catch(() => {});
     load();
     const id = setInterval(load, 5000);
@@ -57,7 +58,7 @@ export function Header() {
           </nav>
         </div>
         {account && <div className="flex items-center gap-3 text-sm">
-          {preview ? <span className="text-xs bg-accent-soft border border-line rounded-md px-3 py-1.5">Preview workspace · No charges</span> : <><span className="text-muted">Credits</span><span className="font-mono font-medium bg-surface-2 border border-line rounded-md px-2.5 py-1">
+          {preview ? <span className="text-xs bg-accent-soft border border-line rounded-md px-3 py-1.5">{localDemo ? "Local demo · No charges" : "Preview workspace · No charges"}</span> : <><span className="text-muted">Credits</span><span className="font-mono font-medium bg-surface-2 border border-line rounded-md px-2.5 py-1">
             {balance === null ? "…" : `$${balance.toFixed(2)}`}
           </span></>}
           {!account.local && <button className="text-xs text-muted" onClick={() => void signOut({ callbackUrl: "/login" })}>Sign out</button>}

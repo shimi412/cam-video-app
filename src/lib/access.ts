@@ -1,7 +1,7 @@
 import { allowedOrigin, localRequestOrigin, localActor, type Actor } from "./auth-policy";
 
 export async function actorFor(request: Request): Promise<Actor | null> {
-  if (localRequestOrigin(request)) return localActor;
+  if (localRequestOrigin(request)) return process.env.CAM_LOCAL_DEMO === "1" ? { ...localActor, role: "client" } : localActor;
   if (!process.env.AUTH_SECRET && !process.env.NEXTAUTH_SECRET) return null;
   const { auth } = await import("@/auth"); const session = await auth();
   return session?.user?.id ? { id: session.user.id, role: session.user.role, name: session.user.name ?? "", email: session.user.email ?? "", local: false } : null;

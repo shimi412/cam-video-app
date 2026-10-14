@@ -1,8 +1,7 @@
 import { withAccess } from "@/lib/access";
-import { createReadStream } from "node:fs";
 import { stat, realpath } from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { fileStream } from "@/lib/file-stream";
 import { mediaRange } from "@/lib/media-range";
 
 const STORAGE = path.join(process.cwd(), "storage");
@@ -40,7 +39,7 @@ async function handleGET(
     if (requested && !range) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${info.size}` } });
     headers.set("Content-Length", String(range ? range.end - range.start + 1 : info.size));
     if (range) headers.set("Content-Range", `bytes ${range.start}-${range.end}/${info.size}`);
-    const stream = request.method === "HEAD" ? null : Readable.toWeb(createReadStream(resolved, range ?? undefined)) as ReadableStream;
+    const stream = request.method === "HEAD" ? null : await fileStream(resolved, range?.start ?? 0, range?.end ?? info.size - 1);
     return new Response(stream, { status: range ? 206 : 200, headers });
   } catch {
     return new Response("Not found", { status: 404 });

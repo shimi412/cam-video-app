@@ -16,7 +16,7 @@ pnpm dev:preview
 
 The old five styles are archived in the database and the source catalogue. They remain available to the explicit offline CLI below for regression checks. The client library and new-production endpoints do not offer them. CAM Clay offers free local previews; its live production gate remains closed.
 
-The latest instruction is to prepare the first client version for October 15, 2026, autonomously. Zero provider-credit spending and no paid trials remain binding. The in-app **Help** page explains the available workflow; it does not claim the complete contracted product is delivered. Installation, the dedicated-host package and recovery instructions are in [docs/deployment.md](docs/deployment.md). Docker/HTTPS/restore still require a server rehearsal. No remote environment has been provisioned.
+The first presentation on October 15, 2026 will run on Shimi's Mac. His October 14 decision is to wait until CAM's monthly payment is in place before paying for hosting. Use `pnpm demo` and [docs/local-demo.md](docs/local-demo.md). Zero provider-credit spending and no paid trials remain binding. The in-app **Help** page explains the available workflow; it does not claim the complete contracted product is delivered. The future dedicated-host package is documented in [docs/deployment.md](docs/deployment.md); Docker/HTTPS/restore still require a server rehearsal. Only an empty Hetzner project was created, with no server purchased.
 
 New installations start with a zero credit balance. `db:seed --demo-credits` is an explicit offline-development option and is rejected in production. `CAM_RELEASE=preview` prevents an accidental switch to live media. The header clearly identifies the free preview workspace.
 
@@ -230,3 +230,8 @@ This blocks Node fetch, submits the same job twice concurrently, renders a place
 A paid test still requires Shimon's approval of its script, style, voice and estimated budget. No paid generation is part of the development checks above.
 
 A production snapshots its execution mode. Confirmation and execution refuse a mode change, archived styles cannot be confirmed, and duplicate confirmations/executions are claimed atomically. The successful job update and the credit debit share one transaction. Local concept previews can now be recovered explicitly. The concept engine now journals provider requests, reserves separate provider budgets and accepts cost receipts. Connecting real quotes/cost evidence and validating an explicitly authorized live run remain outstanding; simulation never debits customer credits.
+## Présentation locale du 15 octobre
+
+L'hébergement attend la mise en place du paiement mensuel CAM. La démonstration se lance sur le Mac avec `pnpm demo` ou `demarrer-cam.command`, à `http://127.0.0.1:3107/productions`. Elle utilise une base séparée, reprend seulement le film historique et ses trois exports, présente les fonctions côté client et verrouille les appels payants. Les dossiers de développement restent conservés.
+
+Parcours et limites : [guide de démonstration](docs/local-demo.md). Contrôle préalable sans lancement : `pnpm demo:prepare`.
