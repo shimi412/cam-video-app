@@ -20,9 +20,9 @@ export function NarrationReview({ preparation, jobId, editable, disabled, onChan
   }
   return <details className="border border-line rounded-lg p-3 text-sm space-y-3" open={Boolean(voice)}>
     <summary className="cursor-pointer font-medium text-accent">Use an existing voice recording · $0</summary>
-    <p>Import a recording you already have, including Bram. Listen, check the words and timing, then choose it for this preview. No voice will be generated or purchased.</p>
+    <p>Import a recording you already have, for your film. Listen, check the words and timing, then choose it for this preview. No voice will be generated or purchased.</p>
     {voice && <div className="space-y-3">
-      <p className="font-medium">{voice.speaker === "bram" ? "Bram (declared by uploader)" : voice.speaker === "test" ? "Test recording" : "Other recording"} · {voice.duration.toFixed(2)} s · {voice.selected ? "Selected for this preview" : "Not selected"}</p>
+      <p className="font-medium">{voice.speaker === "bram" ? "Production recording" : voice.speaker === "test" ? "Test recording" : "Other recording"} · {voice.duration.toFixed(2)} s · {voice.selected ? "Selected for this preview" : "Not selected"}</p>
       <p className="text-muted" dir="auto">Source: {voice.sourceNote}</p>
       <audio key={voice.id} aria-label="Imported voice recording" controls preload="metadata" src={voice.url} className="w-full" />
       {voice.issue && <p role="alert" className="text-danger">{voice.issue}</p>}
@@ -77,7 +77,7 @@ export function NarrationReview({ preparation, jobId, editable, disabled, onChan
     {editable && <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); form.set("currentId", voice?.id ?? ""); void save(form); }}>
       <fieldset disabled={disabled || dirty} className="space-y-3">
         <label className="block text-xs">{voice ? "Replace recording" : "Audio file"} · mono/stereo · max. 64 MB, 10 min<input name="file" type="file" aria-label="Voice recording file" accept="audio/*" required className="block mt-2" /></label>
-        <label className="block">Declared speaker<select name="speaker" aria-label="Declared speaker" defaultValue="test" className="block mt-1 p-2 bg-surface border border-line rounded"><option value="bram">Bram</option><option value="test">Test voice</option><option value="other">Other voice</option></select></label>
+        <label className="block">Declared speaker<select name="speaker" aria-label="Declared speaker" defaultValue="test" className="block mt-1 p-2 bg-surface border border-line rounded"><option value="bram">Production recording</option><option value="test">Test voice</option><option value="other">Other voice</option></select></label>
         <label className="block text-xs">Where this recording came from<input name="sourceNote" aria-label="Recording source" maxLength={500} required className="block mt-1 p-2 w-full bg-surface border border-line rounded" /></label>
         <button className="text-accent">Import recording</button>
       </fieldset>

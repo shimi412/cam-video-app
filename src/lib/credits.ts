@@ -1,7 +1,8 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 
 /**
+ * Legacy preview wallet only. Customer funds use customer-wallet.ts.
  * Credits are denominated in USD. The client always sees dollars, never tokens.
  * Balance = sum of ledger deltas. Failed technical runs are refunded
  * (adjustment), creative iterations are billed at the displayed price.
@@ -10,7 +11,7 @@ import { db, schema } from "@/db";
 export async function getBalanceUsd(): Promise<number> {
   const rows = await db
     .select({ balance: sql<string>`coalesce(sum(${schema.creditLedger.deltaUsd}), 0)` })
-    .from(schema.creditLedger);
+    .from(schema.creditLedger).where(eq(schema.creditLedger.wallet,"preview"));
   return Number(rows[0].balance);
 }
 

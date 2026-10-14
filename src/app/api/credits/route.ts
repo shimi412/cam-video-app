@@ -1,0 +1,5 @@
+import { withAccess } from "@/lib/access";
+import { pool } from "@/db";
+import { walletTotals } from "@/lib/customer-wallet";
+import { paymentsConfigured } from "@/lib/stripe-billing";
+export const GET=withAccess(async()=>{const entries=(await pool.query("SELECT l.id,l.delta_usd,l.kind,l.created_at,l.job_id,j.title,left(j.script,60) AS script FROM credit_ledger l LEFT JOIN jobs j ON j.id=l.job_id WHERE l.wallet='customer' ORDER BY l.created_at DESC LIMIT 100")).rows;const orders=(await pool.query("SELECT id,amount_cents,status,live,created_at FROM credit_orders ORDER BY created_at DESC LIMIT 50")).rows;const reservations=(await pool.query("SELECT h.job_id,h.amount_cents,h.state,j.title,left(j.script,60) AS script FROM credit_holds h JOIN jobs j ON j.id=h.job_id WHERE h.state='reserved' ORDER BY h.updated_at DESC")).rows;return Response.json({reservations,...await walletTotals(),paymentsAvailable:paymentsConfigured(),testMode:!process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_"),entries,orders},{headers:{"Cache-Control":"no-store"}});});

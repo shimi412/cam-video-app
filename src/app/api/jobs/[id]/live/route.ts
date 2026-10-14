@@ -1,3 +1,4 @@
+import { customerQuote } from "@/lib/customer-wallet";
 import { after } from "next/server";
 import { access } from "node:fs/promises";
 import path from "node:path";
@@ -23,12 +24,15 @@ export const GET=withAccess(async(_request,context:Context)=>{
  const outputUrl=output&&params.finishingRevision?`${output}?v=${encodeURIComponent(params.finishingRevision)}`:output;
  const view=await liveView(id);
  const storyboardProposalUrl=await access(path.join(process.cwd(),"storage/concepts",id,"live/storyboard-proposal.json")).then(()=>`/production/${id}/storyboard`).catch(()=>null);
- return Response.json({id,script:job.script,conversationId:job.conversationId,format:params.aspectRatio,scenes:view.finishingReview?.scenes??board.shots,jobStatus:job.status,outputUrl,storyboardProposalUrl,busy:await jobWorkerActive(id),...view});
+ const isAdmin=(await actorFor(_request))?.role==="admin";
+ const customer= view.quote ? await customerQuote(id,view.quote) : null;
+ return Response.json({customerQuote:customer,isAdmin,id,title:job.title,script:job.script,conversationId:job.conversationId,format:params.aspectRatio,scenes:view.finishingReview?.scenes??board.shots,jobStatus:job.status,outputUrl,storyboardProposalUrl,busy:await jobWorkerActive(id),...view,...(!isAdmin?{quote:view.quote?{id:view.quote.id,expiresAt:view.quote.expiresAt}:null,repairQuote:null,repairProgress:null,requests:[],costsPending:0}:{})});
 });
 export const POST=withAccess(async(request,context:Context)=>{
  const {id}=await context.params;if(!z.uuid().safeParse(id).success)return Response.json({error:"Invalid production ID."},{status:400});
  const input=LiveAction.safeParse(await smallJson(request).catch(()=>null));if(!input.success)return Response.json({error:"Invalid production action."},{status:400});
  const actor=await actorFor(request);if(!actor||actor.local)return Response.json({error:"Sign in to the connected workspace before producing."},{status:401});
+ if(input.data.action==="approve"&&actor.role!=="admin"&&!input.data.customerQuote)return Response.json({error:"Customer pricing is awaiting activation by Bina."},{status:409});
  try{const result=await updateLiveProduction(id,input.data,actor.id);if(result.advance)after(()=>runLiveProduction(id));return Response.json({ok:true},{status:result.advance?202:200});}
  catch(error){return Response.json({error:error instanceof Error?error.message:"This production could not be updated."},{status:409});}
 });

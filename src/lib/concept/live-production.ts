@@ -1,3 +1,4 @@
+import { reserveCredits, settleCredits } from "../customer-wallet";
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, rename } from "node:fs/promises";
 import path from "node:path";
@@ -35,7 +36,7 @@ const directory=(id:string)=>path.join(process.cwd(),"storage/concepts",z.uuid()
 const hashInput=(script:string,params:ProductionParams,references:unknown)=>sha256(JSON.stringify({script,format:params.aspectRatio,directions:params.sceneDirections??{},references}));
 export const LiveAction=z.discriminatedUnion("action",[
  z.object({action:z.literal("quote")}).strict(),
- z.object({action:z.literal("approve"),quote:Hash}).strict(),
+ z.object({action:z.literal("approve"),quote:Hash,customerQuote:Hash.optional()}).strict(),
  z.object({action:z.literal("review"),target:Hash,decision:z.enum(["approved","rejected"]),storyboardConfirmed:z.boolean().optional(),note:z.string().trim().max(2000).optional()}).strict(),
  z.object({action:z.literal("resume")}).strict(),
  z.object({action:z.literal("edit"),scene:z.number().int().positive().max(36),direction:DirectionSchema}).strict(),
@@ -100,6 +101,7 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
   if(action.action==="approve"){
    const offered=state.pendingQuote??state.quote;
    if(!offered||offered.id!==action.quote)throw new Error("This quote changed. Review the current quote.");
+   if(action.customerQuote)await reserveCredits(id,action.customerQuote,offered.id);
    if(state.pendingQuote){
     if(offered.expiresAt<=Date.now())throw new Error("This quote expired. Refresh it before approval.");
     state.history.push({quote:state.quote!,approval:state.approval!});
@@ -126,6 +128,7 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
    }
    if(!old)state.decisions.push({id:randomUUID(),mode:"live",target:action.target,decision:action.decision});
    state.error=null;await save();
+   if(action.decision==="rejected")await settleCredits(id,false);
   }else if(!state.approval)throw new Error("Approve the production quote first.");
   if(state.finished||state.pendingQuote||state.decisions.some(d=>d.decision==="rejected")&&action.action!=="review")return {advance:false};
   return {advance:true};
@@ -186,12 +189,14 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
      cost:async(op,requestId)=>{if(!state.quote!.falBillingAvailable||op.kind==="voice")return null;return falCostReceipt(op,requestId,providers.fal);},
     }});
    state.error=outcome.status==="blocked-duration"?"One scene is longer than the supported 15-second animation. Create a version with shorter narration segments before generating its images.":null;await save();
+   if(outcome.status==="rejected"||outcome.status==="blocked-duration")await settleCredits(id,false);
    if(outcome.status==="rejected"||outcome.status==="blocked-duration")await lock.db.update(schema.jobs).set({status:"failed",error:state.error??"Stopped following the scene review."}).where(eq(schema.jobs.id,id));
    if(outcome.status==="ready-to-render"&&outcome.render){
     const rendered=await renderProductionFlow(outcome.render,path.join(directory(id),"montage"),path.join(directory(id),"checkpoints"),lock.assertOwned);
     const output=path.join(process.cwd(),"storage/outputs",`${id}.mp4`),temporary=`${output}.${randomUUID()}.tmp`;
     await mkdir(path.dirname(output),{recursive:true});await copyFile(rendered.output,temporary);await lock.assertOwned();await rename(temporary,output);
     const book=await budget.snapshot(),usage=budgetUsage({...book,reservations:Object.fromEntries(Object.entries(book.reservations).filter(([,r])=>r.jobId===id))});
+    await settleCredits(id,true);
     await lock.db.update(schema.jobs).set({status:"succeeded",finishedAt:new Date(),outputPath:output,error:null,params:{...params,finalDurationSeconds:rendered.duration,live:true,voice:"Bram",costReceiptsPending:true,providerBudgetUsage:usage,artifacts:[{label:"Production and voice verification",url:`/api/media/concepts/${id}/live/montage/production-flow.json`}]}}).where(eq(schema.jobs.id,id));
     state.finished=true;await save();
    }

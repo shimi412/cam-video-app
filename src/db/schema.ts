@@ -81,6 +81,7 @@ export const jobs = pgTable(
     templateId: uuid("template_id").references(() => templates.id),
     status: jobStatus("status").notNull().default("draft"),
     script: text("script").notNull(),
+    title: text("title"),
     // Resolved production parameters: tone, duration, voice, tier, subtitles...
     params: jsonb("params").notNull().default({}),
     estimateUsd: numeric("estimate_usd", { precision: 10, scale: 2 }),
@@ -116,6 +117,7 @@ export const apiCalls = pgTable(
 export const creditLedger = pgTable("credit_ledger", {
   id: uuid("id").primaryKey().defaultRandom(),
   deltaUsd: numeric("delta_usd", { precision: 10, scale: 2 }).notNull(),
+  wallet: text("wallet").notNull().default("preview"),
   kind: ledgerKind("kind").notNull(),
   jobId: uuid("job_id").references(() => jobs.id),
   note: text("note"),

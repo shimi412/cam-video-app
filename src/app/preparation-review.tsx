@@ -40,26 +40,26 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
       <p className="text-sm text-muted mt-1">{preparation.shots.length} scenes · {preparation.measuredScenes ? "" : "about "}{preparation.durationSeconds.toFixed(1)} seconds, including pauses. {preparation.wordTiming === "operator-supplied" ? "Scenes and captions follow the reviewed imported recording and supplied word timings." : preparation.measuredScenes ? "Scene lengths follow the recorded voice. Subtitle word positions are approximate." : "Timing will follow the narration."}</p>
     </div>
     {preparation.voice.cam && <div className="border border-line rounded-lg p-3 text-sm space-y-2">
-      <p className="font-medium">CAM voice · {preparation.voice.cam.name} identified</p>
-      <p className="text-muted">{preparation.voice.cam.referenceKind === "provider-sample" ? `${preparation.voice.cam.name} is the target voice for new CAM videos. Listen to the provider’s existing sample. No reading of your script has been generated.` : `This saved preparation used ${preparation.voice.cam.name}. Listen to its original CAM reference recording.`}</p>
-      {preparation.voice.cam.referenceUrl ? <audio aria-label={`${preparation.voice.cam.name} ${preparation.voice.cam.referenceKind === "provider-sample" ? "provider sample" : "CAM reference"}`} controls preload="none" src={preparation.voice.cam.referenceUrl} className="w-full" /> : <p className="text-muted">The voice sample is unavailable.</p>}
+      <p className="font-medium">Narration reference</p>
+      <p className="text-muted">{preparation.voice.cam.referenceKind === "provider-sample" ? "Listen to the narration sample. No reading of your script has been generated." : "Listen to the original reference recording for this preparation."}</p>
+      {preparation.voice.cam.referenceUrl ? <audio aria-label="Narration sample" controls preload="none" src={preparation.voice.cam.referenceUrl} className="w-full" /> : <p className="text-muted">The voice sample is unavailable.</p>}
     </div>}
     <div className="border border-line rounded-lg p-3 text-sm space-y-2">
-      <p className="font-medium">{preparation.narration?.selected ? preparation.narration.canUse ? "Reviewed imported recording selected" : "Selected recording needs review" : preparation.voice.preview === "silent" ? "Preview voice" : `Test voice · ${preparation.voice.name}`}</p>
+      <p className="font-medium">{preparation.narration?.selected ? preparation.narration.canUse ? "Reviewed imported recording selected" : "Selected recording needs review" : preparation.voice.preview === "silent" ? "Preview voice" : "Test recording"}</p>
       {editable && <label className="block">Choose preview audio
         <select aria-label="Preview audio" value={preparation.narration?.selected ? "imported" : preparation.voice.preview} disabled={busy || disabled || editing !== null || narrationEditing} onChange={(e) => void save({ previewVoice: e.target.value })} className="block w-full mt-1 rounded-lg bg-surface border border-line px-3 py-2">
           {preparation.narration?.selected && <option value="imported" disabled>Reviewed imported recording</option>}
           <option value="silent">Silent · no voice</option>
-          {options.voices.map((voice) => <option key={voice.id} value={voice.id}>{voice.label} · $0</option>)}
+          {options.voices.map((voice,index) => <option key={voice.id} value={voice.id}>Test recording {index+1} · $0</option>)}
         </select>
       </label>}
-      <p className="text-muted">{preparation.voice.message}</p>
+      <p className="text-muted">{preparation.voice.message.replace(/\b(Bram|Dylan)\b/gi,"the narrator")}</p>
       {editable && !preparation.narration?.selected && <p className="text-xs text-muted">{preparation.voice.preview === "silent" ? "Choose a local test voice to also check the complete production sequence for free." : "A separate test video will check the full sequence with this voice and clearly marked test images. Its automatic test approvals do not approve a CAM film."}</p>}
     </div>
     <NarrationReview preparation={preparation} jobId={jobId} editable={editable} disabled={busy || Boolean(disabled) || editing !== null} onChange={onChange} onBusy={setBusy} onEditing={setNarrationEditing} />
     {preparation.generation && <div className="border border-line rounded-lg p-3 text-sm space-y-2">
       <p className="font-medium">Automatic generation prepared</p>
-      <p className="text-muted">{preparation.generation.images} images · {preparation.generation.clips} clips · {preparation.generation.reusedVoice ? "reviewed recording reused" : `1 ${preparation.voice.cam?.name ?? "CAM"} reading`}{preparation.generation.reusedScenes > 0 ? ` · ${preparation.generation.reusedScenes} imported scenes kept` : ""}. Requests are prepared locally. Nothing has been sent or charged.</p>
+      <p className="text-muted">{preparation.generation.images} images · {preparation.generation.clips} clips · {preparation.generation.reusedVoice ? "reviewed recording reused" : "1 narration recording"}{preparation.generation.reusedScenes > 0 ? ` · ${preparation.generation.reusedScenes} imported scenes kept` : ""}. Requests are prepared locally. Nothing has been sent or charged.</p>
       <p className="text-muted">Review the proposed scenes below. Paid generation remains disabled while the voice, images and budget need approval.</p>
       {preparation.generation.downloadUrl && <a href={preparation.generation.downloadUrl} download="cam-generation-plan.json" className="text-accent">Download generation plan</a>}
     </div>}

@@ -1,3 +1,4 @@
+import { CharacterLibrary } from "@/components/character-library";
 import { db, schema } from "@/db";
 import { getActiveRecipe } from "@/lib/recipes";
 import { isSimulation } from "@/lib/providers/mode";
@@ -23,12 +24,13 @@ export default async function LibraryPage() {
           Choose a consistent visual style for your video, with its own characters, colours and pacing.
         </p>
       </div>
+      <CharacterLibrary />
       {templates.length === 0 && (
         <div className="bg-surface border border-line rounded-xl p-5 text-sm text-muted">
           New CAM video styles are being prepared. They will appear here when ready for production.
         </div>
       )}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         {templates.map((t) => {
           const recipe = t.recipe as RecipeJson;
           return (
@@ -44,8 +46,8 @@ export default async function LibraryPage() {
                     {recipe.family}
                   </span>
                 </div>
-                <p className="text-sm text-muted">{t.description}</p>
-                {recipe.concept?.previewOnly && <p className="text-xs text-accent">{isSimulation()?"Free local previews · existing film available":"Bram narration · scenes reviewed before animation"}</p>}
+                <p className="text-sm text-muted">{getActiveRecipe(t.slug)!.description}</p>
+                {recipe.concept?.previewOnly && <p className="text-xs text-accent">{isSimulation()?"Free local previews · existing film available":"Narration · scenes reviewed before animation"}</p>}
                 <div className="text-xs text-muted bg-surface-2 border border-line rounded-lg p-3 space-y-1">
                   <p><span className="text-foreground">Look:</span> {recipe.bible?.artDirection}</p>
                   <p><span className="text-foreground">Palette:</span> {recipe.bible?.palette}</p>

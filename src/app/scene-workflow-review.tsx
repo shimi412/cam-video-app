@@ -42,6 +42,6 @@ export function SceneWorkflowReview({ workflow, editable, disabled, save, onErro
       </label>}
       {editable && step.stage === "clip" && step.status === "approved" && <button disabled={disabled} onClick={() => void save({ useAnimation: workflow.scene, target: step.target })} className="rounded bg-accent text-white px-3 py-2 text-xs disabled:opacity-40">Use approved animation in preview · scene {workflow.scene}</button>}
     </li>)}</ol>
-    <p className="text-xs text-muted mt-3">Changing an earlier approval invalidates later steps and removes a selected animation from the preview. Animation review checks the visuals; synchronization still needs the final Bram recording.</p>
+    <p className="text-xs text-muted mt-3">Changing an earlier approval invalidates later steps and removes a selected animation from the preview. Animation review checks the visuals; synchronization still needs the final narration recording.</p>
   </details>;
 }

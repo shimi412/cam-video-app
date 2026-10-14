@@ -38,6 +38,7 @@ async function main() {
     for (let tries=0;tries<90;tries++) { if (server.exitCode !== null) throw new Error("Access-test server stopped"); try { const response = await fetch(origin + "/api/auth/csrf", { signal: AbortSignal.timeout(3000) }); if (response.ok) { ready=true;break; } } catch {} await new Promise(r => setTimeout(r,500)); }
     assert(ready, "Access-test server ready"); const anonymous = await client(), admin = await client(), user = await client();
     assert.equal((await anonymous.request("/api/jobs")).status,401);
+    for(const route of ["/api/help","/api/credits",`/api/jobs/${marker}/thumbnail`,`/api/credits/receipts/${marker}`])assert.equal((await anonymous.request(route)).status,401);
     assert.equal((await anonymous.request("/api/media/outputs/missing.mp4")).status,401);
     assert.equal((await anonymous.request(`/api/jobs/${marker}/exports`)).status,401);
     assert.equal((await anonymous.request(`/api/jobs/${marker}/live`)).status,401);
@@ -47,12 +48,14 @@ async function main() {
     assert.equal((await admin.request("/api/admin/users")).status,200);
     assert.equal((await user.request("/api/account")).status,200);
     assert.equal((await user.request("/api/jobs")).status,200);
+    for(const route of ["/api/help","/api/credits"])assert.equal((await user.request(route)).status,200);
     const account = await (await user.request("/api/account")).json(); assert.equal(account.preview, !connected);assert.equal(account.connected,connected);
     assert.equal((await user.request("/api/admin/connections")).status,403);
     const connections=await (await admin.request("/api/admin/connections")).json();assert.equal(connections.openrouter.configured,false);assert.equal(connections.media.falConfigured,false);
     assert.equal((await user.request(`/api/jobs/${marker}/live`,{method:"POST",headers:{origin:"https://untrusted.invalid","Content-Type":"application/json"},body:JSON.stringify({action:"approve",quote:"a".repeat(64)})})).status,403);
     assert.equal((await user.request("/help")).status,200);
     assert.equal((await user.request("/api/admin/overview")).status,403);
+    assert.equal((await user.request("/api/admin/billing")).status,403);
     assert.equal((await user.request("/admin")).status,307);
     assert.equal((await admin.request("/api/admin/users", { method:"POST", headers:{ origin:"https://untrusted.invalid", "Content-Type":"application/json" }, body:JSON.stringify({email:emails[2],role:"client"}) })).status,403);
     const prepared = await admin.request("/api/admin/users", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({email:emails[2],role:"client"}) }); assert.equal(prepared.status,200);

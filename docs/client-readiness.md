@@ -1,3 +1,5 @@
+> Mise à jour du 2026-10-14 : audit interface, assistance plafonnée et infrastructure de crédits implémentés. État et tests détaillés dans `docs/client-audit.md`. Activation Stripe et validation du tarif client encore en attente du point économique.
+
 # Client delivery checklist
 
 **Latest editorial direction, 2026-10-14:** metaphors are optional. Shimi prefers the presenter with animated typography above when an analogy feels forced. The knife/cake sketch is discarded along with the earlier cupboard/dove and slogan ideas. New directions and both scene editors support `presenter-text`; local composition preserves exact narration text, emphasizes words at their voice timings, avoids duplicate full-sentence captions, and keeps the typography through finishing and exports. The whole storyboard still needs human approval before animation. The existing Bram film has not been replaced, and no provider credit was used for this integration.

@@ -1,3 +1,5 @@
+import { supportStatus } from "@/lib/help-support";
+import { paymentsConfigured } from "@/lib/stripe-billing";
 import { withAccess } from "@/lib/access";
 import { desc,sql } from "drizzle-orm";
 import { db, pool, schema } from "@/db";
@@ -20,6 +22,8 @@ async function handleGET() {
   const ai=(await pool.query("SELECT coalesce(sum(actual_usd) FILTER (WHERE state='complete'),0) AS settled, coalesce(sum(maximum_usd) FILTER (WHERE state<>'complete'),0) AS reserved FROM assistant_requests WHERE created_at >= date_trunc('month',now() AT TIME ZONE 'UTC')")).rows[0];
   return Response.json({
     connected,
+    support:await supportStatus(),
+    payments:{configured:paymentsConfigured(),testMode:!process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_")},
     aiUsage:{settled:Number(ai.settled),reserved:Number(ai.reserved),cap:Number(settings.find(s=>s.key==="assistant_monthly_usd")?.value??25)},
     mediaBudget:{caps:book?.caps??{usd:100e6,"higgsfield-credit":100e6},usage:book?budgetUsage(book):{usd:0,"higgsfield-credit":0}},
     balance,

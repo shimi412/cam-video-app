@@ -48,3 +48,11 @@ async function handleGET(
 }
 
 export const GET = withAccess(handleGET);
+
+export const PATCH = withAccess(async (request, {params}: {params: Promise<{id:string}>}) => {
+ const {id}=await params;
+ const body=z.object({title:z.string().trim().min(1).max(80)}).strict().safeParse(await request.json().catch(()=>null));
+ if(!z.uuid().safeParse(id).success || !body.success) return Response.json({error:"Use a title of 1 to 80 characters."},{status:400});
+ const changed=await db.update(schema.jobs).set({title:body.data.title}).where(eq(schema.jobs.id,id)).returning({id:schema.jobs.id,title:schema.jobs.title});
+ return changed.length?Response.json(changed[0]):Response.json({error:"Video not found."},{status:404});
+});

@@ -18,6 +18,7 @@ import { smallJson } from "@/lib/http";
 import { conversationExists } from "@/lib/workspace";
 
 const bodySchema = z.object({
+  title: z.string().trim().min(1).max(80).optional(),
   conversationId: z.uuid().optional(),
   requestId: z.uuid().optional(),
   parentJobId: z.uuid().optional(),
@@ -80,7 +81,7 @@ async function handlePOST(request: Request) {
   const params = previewSource === "existing" ? existingParams(framing.params) : { ...framing.params, previewSource };
   if (previewSource === "existing") {
     analysis.durationSeconds = params.durationSeconds;
-    analysis.reason = "Reuse the existing CAM film with its recorded Dylan voice and 12 animated clips. Local montage, no new generation.";
+    analysis.reason = "Reuse the existing CAM film with its recorded narration and 12 animated clips. Local montage, no new generation.";
   }
   const recipe = getActiveRecipe(params.templateSlug)!;
   if (!isSimulation() && recipe.concept) {
@@ -110,14 +111,14 @@ async function handlePOST(request: Request) {
     const conversation = conversationId ? { id: conversationId } : (await tx.insert(schema.conversations).values({ mode, title: script.slice(0, 60) }).returning())[0];
     const draft = {
       conversationId: conversation.id, analysis, params,
-      template: template ? { slug: template.slug, name: template.name, description: template.description } : null,
+      template: template ? { slug: template.slug, name: template.name, description: recipe.description } : null,
       estimate, balance, brain, simulation: isSimulation(),
       media: previewSource === "existing" ? existingMediaSummary() : null,
       canConfirm: isSimulation() || (!estimate.unpriced?.length && balance >= estimate.totalBilledUsd),
     };
     await tx.insert(schema.messages).values({ conversationId: conversation.id, role: "user", content: { type: "script", text: script, parentJobId } });
     const [job] = await tx.insert(schema.jobs).values({
-      id: jobId, conversationId: conversation.id, templateId: template?.id, status: "estimated", script,
+      id: jobId, conversationId: conversation.id, templateId: template?.id, status: "estimated", script, title: parsed.data.title ?? null,
       params: { ...params, live: !isSimulation() && Boolean(recipe.concept), executionMode: providerMode(), preparation, draft, originRequestHash: requestHash, parentJobId },
       estimateUsd: !isSimulation()&&recipe.concept ? null : estimate.totalBilledUsd.toFixed(2),
     }).returning();

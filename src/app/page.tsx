@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { DraftAssistant } from "@/components/draft-assistant";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PreparationReview } from "./preparation-review";
 import { RequestRecovery } from "./request-recovery";
@@ -92,6 +92,8 @@ export default function StudioPage() {
   const [tone, setTone] = useState<"serious" | "energetic" | "calm">("serious");
   const [tier, setTier] = useState<"standard" | "premium">("standard");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
+  const [title, setTitle] = useState("");
+  const [conversationId, setConversationId] = useState<string>();
   const [script, setScript] = useState("");
   const [example, setExample] = useState<Example | null>(null);
   const [previewSource, setPreviewSource] = useState<"planning" | "existing">("planning");
@@ -188,7 +190,7 @@ export default function StudioPage() {
     setLoading(true);
     setError(null);
     try {
-      const body = JSON.stringify({script,mode,previewSource,overrides:mode === "manual" ? {templateSlug,tone,tier,aspectRatio} : {aspectRatio}});
+      const body = JSON.stringify({script,mode,previewSource,conversationId,title:title.trim()||undefined,overrides:mode === "manual" ? {templateSlug,tone,tier,aspectRatio} : {aspectRatio}});
       if(framingAttempt.current?.body!==body)framingAttempt.current={body,id:crypto.randomUUID()};
       const res = await fetch("/api/productions", {
         method: "POST",
@@ -263,19 +265,20 @@ export default function StudioPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Studio</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Create a video</h1>
         <p className="text-muted mt-1">
-          {connected ? "Turn your script into a CAM film with Bram. Prepare the scenes, approve the budget, then review the voice and visuals before the final montage." : "Prepare your script, review the recording and scenes, then assemble a free preview. Paid generation is disabled in this version."}
+          {connected ? "Turn your script into a CAM film with narration. Prepare the scenes, approve the budget, then review the voice and visuals before the final montage." : "Prepare your script, review the recording and scenes, then assemble a free preview. Paid generation is disabled in this version."}
         </p>
       </div>
 
       {(framing?.conversationId || job?.conversationId) && <a href={`/conversations/${framing?.conversationId || job?.conversationId}`} className="inline-block text-accent text-sm">Open conversation, references and video versions</a>}
+      {!job && !framing && <><label className="block text-sm font-medium">Video title<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={80} placeholder="Give your video a short name" className="block mt-2 w-full bg-surface border border-line rounded-xl p-3"/></label>{connected && <DraftAssistant onDraft={setScript} onConversation={setConversationId}/>}</>}
       {/* Step 1: script + mode */}
       {example && !connected && !framing && !job && !restoring && <section className="bg-surface border border-accent/40 rounded-xl p-5 space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-medium">Try the existing CAM film</h2>
-            <p className="text-sm text-muted mt-1">12 animated clips, the original Dylan recording and timed subtitles. Rebuilt locally in 9:16, with no generation charge.</p>
+            <p className="text-sm text-muted mt-1">12 animated clips, the original recording and timed subtitles. Rebuilt locally in 9:16, with no generation charge.</p>
           </div>
           <span className="text-accent font-mono whitespace-nowrap">$0.00</span>
         </div>
@@ -284,7 +287,7 @@ export default function StudioPage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`/recipes/cam-clay/${id}.png`} alt={label} className="w-16 h-20 object-contain bg-surface-2 rounded-lg mb-1" />{label}
           </div>)}
-          {example.voiceUrl && <label className="text-xs text-muted space-y-1"><span className="block">Listen to Dylan · existing recording</span><audio aria-label="Existing Dylan voice recording" controls preload="none" src={example.voiceUrl} className="h-9 max-w-full" /></label>}
+          {example.voiceUrl && <label className="text-xs text-muted space-y-1"><span className="block">Listen to original · existing recording</span><audio aria-label="Existing original voice recording" controls preload="none" src={example.voiceUrl} className="h-9 max-w-full" /></label>}
         </div>
         {example.available ? <div className="flex items-center gap-3">
           <button disabled={previewSource === "existing"} onClick={() => { setScript(example.script); setPreviewSource("existing"); setMode("manual"); setTemplateSlug("cam-clay"); setAspectRatio("9:16"); setTone("serious"); setTier("premium"); setError(null); }} className="bg-accent text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50">{previewSource === "existing" ? "Existing film selected" : "Load CAM example"}</button>
@@ -405,7 +408,7 @@ export default function StudioPage() {
         )}
       </section>
 
-      {connected && !framing && !job && <p className="text-xs text-muted">Preparing scenes uses Claude through OpenRouter, up to $0.25 per analysis. The media quote comes next; Bram, images and animation start after you approve that budget. Need help writing? <Link className="text-accent" href="/conversations">Open a conversation</Link>.</p>}
+      {connected && !framing && !job && <p className="text-xs text-muted">Preparing scenes uses Claude through OpenRouter, up to $0.25 per analysis. The media quote comes next; Narration, images and animation start after you approve that budget. Use the assistant above if you need help writing.</p>}
 
       {error && (
         <div className="border border-danger/40 bg-danger/10 text-danger rounded-lg px-4 py-3 text-sm">
@@ -417,7 +420,7 @@ export default function StudioPage() {
       {framing && !job && (
         <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
           <h2 className="font-medium">{framing.preparation?.quote ? "2. Scene plan & quote preparation" : "2. Framing & price"}</h2>
-          {framing.simulation && <p className="text-sm text-muted">{framing.media ? "Existing animated characters and the original Dylan recording will be assembled locally. No new media will be generated. No credits will be deducted." : "Free local preview. Choose a test voice and add visuals below. The prices are provisional estimates for future generation; this preview costs $0."}</p>}
+          {framing.simulation && <p className="text-sm text-muted">{framing.media ? "Existing animated characters and the original recording will be assembled locally. No new media will be generated. No credits will be deducted." : "Free local preview. Choose a test voice and add visuals below. The prices are provisional estimates for future generation; this preview costs $0."}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-surface-2 border border-line rounded-lg p-4 space-y-2 text-sm">
               <div className="flex justify-between items-center gap-3">
@@ -535,7 +538,7 @@ export default function StudioPage() {
                 controls
                 className="rounded-lg border border-line bg-black max-h-[60vh] max-w-full w-auto mx-auto"
               />
-              {job.simulation ? <p className="text-sm text-muted">{job.media ? "Film rebuilt from the existing CAM characters and Dylan recording, with timed subtitles. No credits were deducted. A new script needs its own voice and scenes." : job.preparation?.narration?.selected ? "Preview assembled with the reviewed imported recording and supplied word timings. Missing scene visuals remain placeholders. No credits were deducted." : "Free preview complete. Added visuals and the selected test voice are included; empty scenes remain placeholders. Subtitle word positions are approximate. No credits were deducted."}</p> : <p className="text-sm text-muted">
+              {job.simulation ? <p className="text-sm text-muted">{job.media ? "Film rebuilt from the existing CAM characters and original recording, with timed subtitles. No credits were deducted. A new script needs its own voice and scenes." : job.preparation?.narration?.selected ? "Preview assembled with the reviewed imported recording and supplied word timings. Missing scene visuals remain placeholders. No credits were deducted." : "Free preview complete. Added visuals and the selected test voice are included; empty scenes remain placeholders. Subtitle word positions are approximate. No credits were deducted."}</p> : <p className="text-sm text-muted">
                 Billed <span className="font-mono text-foreground">${job.billedUsd?.toFixed(2)}</span>
                 {" "}(estimate ${job.estimateUsd?.toFixed(2)}) — deducted from your credits.
               </p>}
@@ -549,9 +552,9 @@ export default function StudioPage() {
               </div>}
               {job.artifacts?.some((a) => a.label === "Offline sequence test video (test voice)") && <details className="border border-line rounded-lg p-4 text-sm space-y-3">
                 <summary className="cursor-pointer font-medium text-accent">Complete production test · $0</summary>
-                <p>Voice, word timing, approved images, animation and montage have been connected and checked offline. The target request uses Bram; the audio here is the selected Mac test voice.</p>
+                <p>Voice, word timing, approved images, animation and montage have been connected and checked offline. The audio here is a local test recording.</p>
                 <video aria-label="Complete offline production test" controls preload="metadata" src={job.artifacts.find((a) => a.label === "Offline sequence test video (test voice)")!.url} className="rounded-lg max-h-80 max-w-full mx-auto bg-black" />
-                <p className="text-muted">This test uses marked calibration images and simulated approvals. Word timing is approximate. A new Bram recording, creative review and real provider quotes are still required. No paid request or trial was started.</p>
+                <p className="text-muted">This test uses marked calibration images and simulated approvals. Word timing is approximate. A new narration recording, creative review and real provider quotes are still required. No paid request or trial was started.</p>
               </details>}
               {job.id && <FormatDownloads jobId={job.id} />}
               {job.artifacts && <details className="border border-line rounded-lg p-4"><summary className="cursor-pointer text-sm font-medium">Audio, subtitles and production documents</summary><div className="flex flex-wrap gap-3 text-sm mt-3">{job.artifacts.map((artifact) => <a key={artifact.url} href={artifact.url} target="_blank" className="text-accent hover:underline">{artifact.label} ↗</a>)}</div></details>}

@@ -1,0 +1,5 @@
+import { withAccess } from "@/lib/access";
+import { pool } from "@/db";
+import { stripeClient } from "@/lib/stripe-billing";
+import { z } from "zod";
+export const GET=withAccess(async (_request,{params}:{params:Promise<{id:string}>})=>{const {id}=await params;if(!z.uuid().safeParse(id).success)return new Response(null,{status:400});const order=(await pool.query("SELECT session_id FROM credit_orders WHERE id=$1 AND status='paid' AND live=true",[id])).rows[0];if(!order)return Response.json({error:"No paid receipt for this recharge."},{status:404});try{const session=await stripeClient().checkout.sessions.retrieve(order.session_id,{expand:['payment_intent.latest_charge']});const intent=session.payment_intent,charge=typeof intent==='object'&&intent?intent.latest_charge:null;const receipt=typeof charge==='object'&&charge?charge.receipt_url:null;if(!receipt)throw Error();const url=new URL(receipt);if(url.protocol!=='https:'||!url.hostname.endsWith('.stripe.com'))throw Error();return Response.redirect(url.href,303);}catch{return Response.json({error:"Receipt temporarily unavailable. Contact contact@bina-prod.com."},{status:409});}});

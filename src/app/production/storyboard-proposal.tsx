@@ -60,7 +60,7 @@ export function StoryboardProposal({ jobId, title, sheet, voice, descriptions }:
     <header>
       <p className="text-xs font-semibold tracking-widest text-accent uppercase">CAM · Storyboard à valider</p>
       <h1 className="text-3xl font-semibold mt-2">{title}</h1>
-      <p className="text-sm text-muted mt-3">Les deux premiers plans sont conservés. Le troisième devient une adresse simple au spectateur, avec les mots de Bram au-dessus du personnage.</p>
+      <p className="text-sm text-muted mt-3">Les deux premiers plans sont conservés. Le troisième devient une adresse simple au spectateur, avec les mots de la narration au-dessus du personnage.</p>
       <p className="text-sm text-accent mt-2">Aucune animation vidéo lancée. Aucun crédit fal.ai utilisé pour ce storyboard.</p>
     </header>
     <div className="grid grid-cols-1 min-[600px]:grid-cols-3 gap-5" id="storyboard-panels">
@@ -90,17 +90,17 @@ export function StoryboardProposal({ jobId, title, sheet, voice, descriptions }:
       })}
     </div>
     <section className="rounded-2xl border border-accent/40 bg-surface p-5 space-y-3">
-      <h2 className="font-semibold">Essayer le texte avec Bram</h2>
-      <p className="text-sm text-muted">Le texte entre en fondu et monte légèrement, puis chaque mot passe au bleu au moment où Bram le prononce. Le personnage reste fixe dans cet aperçu ; son léger geste sera animé après validation.</p>
+      <h2 className="font-semibold">Essayer le texte avec la narration</h2>
+      <p className="text-sm text-muted">Le texte entre en fondu et monte légèrement, puis chaque mot passe au bleu au moment où il est prononcé. Le personnage reste fixe dans cet aperçu ; son léger geste sera animé après validation.</p>
       <div className="flex gap-4 items-center flex-wrap">
-        <button onClick={() => void play()} className="bg-accent text-white rounded-lg px-4 py-2">{playing ? "Rejouer" : "Lire le texte avec Bram"}</button>
+        <button onClick={() => void play()} className="bg-accent text-white rounded-lg px-4 py-2">{playing ? "Rejouer" : "Lire le texte avec la narration"}</button>
         <button onClick={() => { audio.current?.pause(); setPlaying(false); setTime(voice.phraseEnd + .4); }} className="text-sm text-accent">Revenir à la planche fixe</button>
       </div>
       <label className="text-xs text-muted block">Scruter l’animation du texte
         <input aria-label="Position de l’animation du texte" className="w-full mt-2" type="range" min={voice.phraseStart - .4} max={voice.phraseEnd + .8} step=".01" value={playing ? absoluteTime : time} onChange={e => { audio.current?.pause(); setPlaying(false); setTime(Number(e.target.value)); }} />
       </label>
       <audio ref={audio} preload="metadata" src={`/api/media/concepts/${jobId}/live/storyboard-proposal/${voice.file}`} onEnded={() => { setPlaying(false); setTime(voice.phraseEnd + .4); }} />
-      <p className="text-xs text-muted">Aperçu d’environ {duration.toFixed(1).replace(".", ",")} secondes, avec un extrait du Bram déjà enregistré.</p>
+      <p className="text-xs text-muted">Aperçu d’environ {duration.toFixed(1).replace(".", ",")} secondes, avec un extrait de la narration déjà enregistrée.</p>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     </section>
     <section className="rounded-2xl border border-line bg-surface p-5 flex items-center gap-6 flex-wrap">

@@ -38,7 +38,8 @@
     "test:access:production": "tsx --env-file-if-exists=.env scripts/check-access.ts --production",
     "release:package": "tsx scripts/package-release.ts",
     "test:assistant": "tsx --env-file-if-exists=.env scripts/check-assistant.ts",
-    "test:connected-production": "tsx --env-file-if-exists=.env scripts/check-connected-production.ts"
+    "test:connected-production": "tsx --env-file-if-exists=.env scripts/check-connected-production.ts",
+    "test:client-audit": "tsx --env-file-if-exists=.env scripts/check-client-audit.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.39",
@@ -56,6 +57,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sharp": "^0.35.3",
+    "stripe": "^23.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
