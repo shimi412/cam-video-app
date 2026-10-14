@@ -20,6 +20,7 @@ import { uploadReference, downloadResult } from '../src/lib/concept/media-transf
 import { verifiedSceneMedia } from '../src/lib/concept/imported-media';
 import type { SceneMedia } from '../src/lib/concept/preview-inputs';
 import type { sceneRepairPlan } from '../src/lib/concept/scene-repair';
+import { StoryboardSheetSchema, StoryboardDecisionSchema, requireApprovedStoryboardPanel } from '../src/lib/concept/storyboard-review';
 
 type Plan = ReturnType<typeof sceneRepairPlan>;
 type Phase = { operation: GenerationOperation; payload: Record<string, unknown>; quote: BudgetQuote; approval: BudgetApproval };
@@ -118,6 +119,11 @@ async function main() {
     if (Object.values(trial.reviews).some(r => r.decision === 'rejected')) throw new Error('Trial rejected; no further spend on it.');
     for (const parent of op.dependsOn) if (trial.reviews[parent]?.decision !== 'approved') throw new Error('Review the preceding image first.');
     if (trial.media[op.id]) { console.log(JSON.stringify({ awaitingReview: op.id, media: trial.media[op.id] })); return; }
+    if(op.kind==='video'){
+      const sheet=StoryboardSheetSchema.parse(JSON.parse(await readFile(path.join(root,'../../storyboard-review.json'),'utf8')));
+      const human=StoryboardDecisionSchema.parse(JSON.parse(await readFile(path.join(root,'../../storyboard-reviews',`${sheet.target}.json`),'utf8')));
+      requireApprovedStoryboardPanel(sheet,human,{scene:op.scene!,startSha256:trial.media[`scene-${op.scene}-start`].sha256,endSha256:trial.media[`scene-${op.scene}-end`]?.sha256,motion:trial.plan.repair.direction.motion});
+    }
     const assets = connectCamAssets(); const transfer = { directory: path.join(dir, 'transfers'), transport: assets, assertOwned: lock.assertOwned };
     let phase = trial.phases[op.id];
     if (!phase) {

@@ -89,7 +89,12 @@ async function main(){
   while(!view.finished){
    assert(view.review,JSON.stringify(view));
    await assert.rejects(()=>updateLiveProduction(id,{action:"review",target:"f".repeat(64),decision:"approved"},"qa"),/review changed/);
-   await updateLiveProduction(id,{action:"review",target:view.review.target,decision:"approved"},"qa");reviews++;
+   if(view.review.stage==="storyboard"){
+    assert(view.storyboard);assert.equal(view.storyboard.status,"pending");assert.equal(submissions,3);
+    await assert.rejects(()=>updateLiveProduction(id,{action:"review",target:view.review!.target,decision:"approved"},"qa"),/Confirm that you reviewed/);
+    const count:number=submissions;await runLiveProduction(id,dependencies);assert.equal(submissions,count);
+   }
+   await updateLiveProduction(id,{action:"review",target:view.review.target,decision:"approved",storyboardConfirmed:view.review.stage==="storyboard"},"qa");reviews++;
    await runLiveProduction(id,dependencies);view=await liveView(id);
    if(view.error?.includes("quote expired")){
     assert(!renewed);const before:number=submissions;
@@ -109,7 +114,7 @@ async function main(){
   const [exported]=await db.select().from(schema.jobs).where(eq(schema.jobs.id,id));
   const downloads=await exportView(exported);assert.equal(downloads.state?.status,"complete");assert.equal(downloads.state.files.length,3);
   await runLiveProduction(id,dependencies);assert.equal(submissions,4);
-  const proof={status:"passed",providerResponses:"injected fixtures only",voice:"local Daniel test voice, not Bram",networkCalls:network,paidCalls:0,creditsSpent:0,draftEditsInvalidateQuote:true,approvedScenesCannotMutate:true,threeFormats:true,staleQuoteRejected:true,staleReviewRejected:true,reconnectReusesVoice:true,expiredQuoteRenewedWithoutDuplicates:renewed,connectionErrorSaved:true,fullControllerRenders:true,pendingCostsNotInvented:true,clientNotDebited:true,submissionsSimulated:submissions,reviews};
+  const proof={status:"passed",providerResponses:"injected fixtures only",voice:"local Daniel test voice, not Bram",networkCalls:network,paidCalls:0,creditsSpent:0,draftEditsInvalidateQuote:true,approvedScenesCannotMutate:true,threeFormats:true,staleQuoteRejected:true,staleReviewRejected:true,reconnectReusesVoice:true,expiredQuoteRenewedWithoutDuplicates:renewed,connectionErrorSaved:true,fullControllerRenders:true,explicitStoryboardConfirmationRequired:true,pendingCostsNotInvented:true,clientNotDebited:true,submissionsSimulated:submissions,reviews};
   await writeFile("storage/qa/cam-connected-controller-proof.json",JSON.stringify(proof,null,2));console.log(proof);
  }finally{
   Date.now=realNow;

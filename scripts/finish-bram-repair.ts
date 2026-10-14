@@ -11,6 +11,7 @@ import { sha256 } from '../src/lib/concept/checkpoints';
 import { requestReceipts } from '../src/lib/concept/request-journal';
 import { renderProductionFlow,type RenderPacket } from '../src/lib/concept/production-flow';
 import { ClipEditSchema } from '../src/lib/concept/finishing';
+import { StoryboardSheetSchema, StoryboardDecisionSchema, requireApprovedStoryboardPanel } from '../src/lib/concept/storyboard-review';
 const Selection=z.object({trials:z.array(z.string().regex(/^[a-z0-9-]+$/)).min(1).max(3),clips:z.record(z.string(),ClipEditSchema),minimumSceneSeconds:z.record(z.string(),z.number().min(.25).max(15))}).strict();
 async function main(){
  globalThis.fetch=async()=>{throw new Error('Network forbidden in local finishing.');};
@@ -18,11 +19,15 @@ async function main(){
  const lock=await acquireJobLock(id);if(!lock)throw new Error('Production busy.');
  try{
   const base=path.join(process.cwd(),'storage/concepts',id,'live'), repairRoot=path.join(base,'repairs/bram-method-20261014');
+  const sheet=StoryboardSheetSchema.parse(JSON.parse(await readFile(path.join(base,'storyboard-review.json'),'utf8')));
+  const human=StoryboardDecisionSchema.parse(JSON.parse(await readFile(path.join(base,'storyboard-reviews',`${sheet.target}.json`),'utf8')));
+  if(sheet.retrospective||human.target!==sheet.target||human.decision!=='approved')throw new Error('A revised storyboard needs human approval before republishing this film.');
   const session=JSON.parse(await readFile(path.join(repairRoot,'session.json'),'utf8')) as {trials:Record<string,ReviewedSceneRepair>};
   const selection=Selection.parse(JSON.parse(await readFile(path.join(repairRoot,'selection.json'),'utf8')));
   const original=JSON.parse(await readFile(path.join(base,'state.json'),'utf8')).render as RenderPacket;
   const originalReceipts=JSON.stringify(await requestReceipts(path.join(base,'requests')));
   const selected=selection.trials.map(n=>{if(!session.trials[n])throw new Error('Unknown reviewed trial.');return session.trials[n];});
+  for(const trial of selected){const scene=trial.plan.repair.scene;requireApprovedStoryboardPanel(sheet,human,{scene,startSha256:trial.media[`scene-${scene}-start`].sha256,endSha256:trial.media[`scene-${scene}-end`]?.sha256,motion:trial.plan.repair.direction.motion});}
   const packet=applyReviewedSceneRepairs(original,selected,getRecipe('cam-clay')!);
   const revision=path.join(base,'finishing/claude-method-v4');await mkdir(revision,{recursive:true});
   await writeFile(path.join(revision,'render-packet.json'),JSON.stringify(packet,null,2));

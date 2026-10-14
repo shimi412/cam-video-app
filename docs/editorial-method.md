@@ -2,6 +2,18 @@
 
 Integrated on 2026-10-14 from the October 5 production sources and Shimi's Claude handoff. Rendering a valid MP4 is not editorial acceptance.
 
+## Human storyboard approval before animation
+
+User correction, 2026-10-14: physical plausibility is not narrative meaning. The V4 cupboard/dove reveal was rejected because it did not explain how context changes interpretation.
+
+The production chain now prepares **all scenes’ keyframes first**. Individual direction/start/end checks remain, followed by one complete storyboard containing the narration, intended meaning, action, and actual start/end images of every scene. Imported existing media is explicitly labelled as reused. No new animation can be submitted until the whole storyboard has a matching human decision.
+
+CAM displays the sheet above the film with a dedicated checkbox and **Approve storyboard & animate** action. Budget approval never supplies that decision. The authenticated controller requires `storyboardConfirmed: true`, stores the actor/time/note separately, and verifies that evidence when the worker resumes. A refusal requires feedback, stops the chain and preserves prior files; prepare a revised version from the conversation. Changes to pictures, wording, order, motion, voice context or parent reviews invalidate the target. Existing animations from a different target are blocked from duplicate submission and require deliberate reuse in a new version.
+
+The original V4 keyframes are shown retrospectively with Shimi’s scene-3 rejection. They are never represented as prior human approval. The repair and finishing operator scripts also require a current human-approved storyboard. Their old technical reviews alone cannot authorize continuation. New direction requests must explain the inference supported by the picture and avoid arbitrary symbolic reveals. This prompt guidance is not an automatic semantic quality guarantee.
+
+Verified with 160 unit tests, TypeScript/lint/build, the offline production/recovery check, and the injected connected controller/export check. Proofs `storage/qa/cam-production-flow-proof.json` and `cam-connected-controller-proof.json` include the whole-board pause, refusal without spend, explicit controller confirmation, and recovery after approval. No external generation is part of these checks.
+
 ## Before paid generation
 
 Claude supplies a physical metaphor, initial scene, physical gestures, selected characters, action duration, inter-phrase breath, and a distinct final scene for every state change. The scene editor exposes those choices. Image prompts contain only the selected characters, preserve the locked clothing, prohibit generated lettering/logos and specify a full-frame miniature set. All typography and CAM branding are composited locally.

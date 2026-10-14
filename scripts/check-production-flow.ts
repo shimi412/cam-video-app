@@ -59,24 +59,9 @@ async function main() {
     await fixture.decide(state.review!); state = await advance(); assert.equal(state.phase, "end");
     const endImage = state.review!.media!;
     await fixture.decide(state.review!);
-    fixture.services.authorize = async (plan) => plan.operations[0].kind === "video" ? null : authorize(plan);
-    state = await advance(); assert.equal(state.status, "awaiting-budget"); assert.equal(state.phase, "scene-1-clip");
-    assert.equal(state.plan!.timingBasis, "simulation-alignment"); assert(state.plan!.voiceEvidence?.audioSha256);
-    const clipSeconds = Number(state.plan!.operations[0].input.duration);
-    assert.equal(clipSeconds, Math.max(3, Math.ceil(timing.phrases[1].start)));
-    fixture.services.authorize = authorize;
-    const queue = fixture.services.queue;
-    let delayed = false;
-    fixture.services.queue = (op, payload) => {
-      const q = queue(op, payload);
-      return { ...q, poll: async (requestId) => {
-        if (op.id === "scene-1-clip" && !delayed) { delayed = true; return { state: "pending" }; } return q.poll(requestId);
-      } };
-    };
-    state = await advance(); assert.equal(state.status, "pending"); const beforePoll = fixture.stats.submissions;
-    state = await advance(); assert.equal(state.phase, "clip"); assert.equal(fixture.stats.submissions, beforePoll);
-    await fixture.decide(state.review!); state = await advance(); assert.equal(state.phase, "direction"); assert.equal(state.review!.scene, 2);
+    state = await advance(); assert.equal(state.phase, "direction"); assert.equal(state.review!.scene, 2);
     await fixture.decide(state.review!);
+    const queue = fixture.services.queue;
     let lost = false;
     fixture.services.queue = (op, payload) => {
       const q = queue(op, payload);
@@ -99,6 +84,29 @@ async function main() {
     fixture.services.queue = queue;
     state = await advance(); assert.equal(state.phase, "start"); assert.equal(fixture.stats.submissions, beforeRetry);
     await fixture.decide(state.review!);
+    state = await advance(); assert.equal(state.phase, "storyboard"); assert.equal(state.review!.storyboard!.length, 2);
+    assert.equal(fixture.stats.submissions, 5); // Voice, alignment, all three endpoint images, no animation.
+    const storyboard = state.review!, countBeforeBoard = fixture.stats.submissions;
+    assert(storyboard.storyboard![0].start && storyboard.storyboard![0].end && storyboard.storyboard![1].start);
+    await advance(); assert.equal(fixture.stats.submissions, countBeforeBoard);
+    await fixture.decide(storyboard, "rejected"); assert.equal((await advance()).status, "rejected"); assert.equal(fixture.stats.submissions, countBeforeBoard);
+    await fixture.decide(storyboard);
+    fixture.services.authorize = async (plan) => plan.operations[0].kind === "video" ? null : authorize(plan);
+    state = await advance(); assert.equal(state.status, "awaiting-budget"); assert.equal(state.phase, "scene-1-clip");
+    assert.equal(state.plan!.timingBasis, "simulation-alignment"); assert(state.plan!.voiceEvidence?.audioSha256);
+    const clipSeconds = Number(state.plan!.operations[0].input.duration);
+    assert.equal(clipSeconds, Math.max(3, Math.ceil(timing.phrases[1].start)));
+    fixture.services.authorize = authorize;
+    let delayed = false;
+    fixture.services.queue = (op, payload) => {
+      const q = queue(op, payload);
+      return { ...q, poll: async (requestId) => {
+        if (op.id === "scene-1-clip" && !delayed) { delayed = true; return { state: "pending" }; } return q.poll(requestId);
+      } };
+    };
+    state = await advance(); assert.equal(state.status, "pending"); const beforePoll = fixture.stats.submissions;
+    state = await advance(); assert.equal(state.phase, "clip"); assert.equal(fixture.stats.submissions, beforePoll);
+    await fixture.decide(state.review!);
     const cost = fixture.services.cost;
     fixture.services.cost = async (op, requestId) => op.id === "scene-2-clip" ? null : cost(op, requestId);
     state = await advance(); assert.equal(state.status, "awaiting-cost"); const beforeCost = fixture.stats.submissions;
@@ -106,7 +114,7 @@ async function main() {
     state = await advance(); assert.equal(state.phase, "clip"); assert.equal(fixture.stats.submissions, beforeCost);
     await fixture.decide(state.review!);
     state = await advance(); assert.equal(state.status, "ready-to-render"); assert(state.render);
-    assert.equal(Object.keys(state.render.media).length, 2); assert.equal(state.render.reviews.length, 9);
+    assert.equal(Object.keys(state.render.media).length, 2); assert.equal(state.render.reviews.length, 10);
     // Tampering with either the packet or approved voice must fail before render.
     await assert.rejects(renderProductionFlow({ ...state.render, audioSha256: "0".repeat(64) }, workspace, directory, assertOwned), /packet changed/);
     const audio = await readFile(state.render.voiceFile); await writeFile(state.render.voiceFile, "tampered QA audio");
@@ -143,7 +151,7 @@ async function main() {
     assert.equal(networkAttempts, 0);
     await lock.db.update(schema.jobs).set({ status: "succeeded", error: null, outputPath: rendered.output, billedUsd: "0", finishedAt: new Date() }).where(eq(schema.jobs.id, id));
     const proof = { jobId: id, status: "succeeded", voice: "Daniel, local test recording; Bram request contract only", approvals: "simulation-fixtures",
-      ...counts, pipelineRequests: complete.length, approvalStops: true, budgetStops: true, pendingPollResumed: true, unknownSubmitReconciled: true, missingCostBlocked: true,
+      ...counts, pipelineRequests: complete.length, approvalStops: true, wholeStoryboardBlocksAllAnimation: true, rejectedStoryboardSpendsNothing: true, budgetStops: true, pendingPollResumed: true, unknownSubmitReconciled: true, missingCostBlocked: true,
       exactNormalizedAudioUsed: true, duration: rendered.duration, clipsUseAlignedDurations: true, renderReused: true,
       approvedKeyframesReused: true,
       networkAttempts, ledgerEntries: 0, paidRequests: 0, billedUsd: 0, finalBramVoiceApproved: false, output: rendered.output };

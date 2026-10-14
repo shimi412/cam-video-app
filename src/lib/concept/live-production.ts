@@ -25,6 +25,7 @@ import { CAM_VOICE } from "./cam-voice";
 import { requestReceipts } from "./request-journal";
 import { mediaFile } from "./preview-inputs";
 import { DirectionSchema } from "./types";
+import { StoryboardSheetSchema, StoryboardDecisionSchema, validateStoryboardAction } from "./storyboard-review";
 
 const approval=z.object({quote:Hash,actor:z.string().min(1),at:z.number()});
 const decision=z.object({id:z.uuid(),target:Hash,decision:z.enum(["approved","rejected"]),mode:z.literal("live")});
@@ -35,13 +36,18 @@ const hashInput=(script:string,params:ProductionParams,references:unknown)=>sha2
 export const LiveAction=z.discriminatedUnion("action",[
  z.object({action:z.literal("quote")}).strict(),
  z.object({action:z.literal("approve"),quote:Hash}).strict(),
- z.object({action:z.literal("review"),target:Hash,decision:z.enum(["approved","rejected"])}).strict(),
+ z.object({action:z.literal("review"),target:Hash,decision:z.enum(["approved","rejected"]),storyboardConfirmed:z.boolean().optional(),note:z.string().trim().max(2000).optional()}).strict(),
  z.object({action:z.literal("resume")}).strict(),
  z.object({action:z.literal("edit"),scene:z.number().int().positive().max(36),direction:DirectionSchema}).strict(),
 ]);
 async function readState(id:string){return readCheckpoint(path.join(directory(id),"production.json"),stateSchema);}
 export async function liveView(id:string){
  const state=await readState(id),outcome=await readCheckpoint(path.join(directory(id),"state.json"),z.custom<FlowOutcome>());
+ const sheet=await readCheckpoint(path.join(directory(id),"storyboard-review.json"),StoryboardSheetSchema);
+ const sheetDecision=sheet?await readCheckpoint(path.join(directory(id),"storyboard-reviews",`${sheet.target}.json`),StoryboardDecisionSchema):null;
+ const thumbnail=(m:import("./preview-inputs").SceneMedia|undefined)=>m?{url:`/api/media/imports/${id}/${mediaFile(m)}`,kind:m.kind,width:m.width,height:m.height}:null;
+ const storyboard=sheet?{target:sheet.target,retrospective:sheet.retrospective,status:sheetDecision?.decision??"pending",note:sheetDecision?.note??null,rejectedScene:sheetDecision?.scene??null,
+  panels:sheet.panels.map(p=>({...p,start:thumbnail(p.start),end:thumbnail(p.end),existing:thumbnail(p.existing)}))}:null;
  const repairProgress=await readCheckpoint(path.join(directory(id),"repair-progress.json"),z.object({capUsdMicros:z.number(),reservedUsdMicros:z.number(),costsSettled:z.literal(false),trials:z.array(z.object({name:z.string(),scene:z.number(),quoteUsdMicros:z.number(),requests:z.number(),completed:z.number(),reviews:z.array(z.enum(["approved","rejected"]))}))}));
  const finishingReview=await readCheckpoint(path.join(directory(id),"finishing-review.json"),z.object({status:z.string(),message:z.string(),scenes:z.array(DirectionSchema.extend({index:z.number(),narration:z.string()})).optional(),variants:z.array(z.object({name:z.string(),url:z.string().startsWith("/api/media/")})),listeningUrl:z.string().startsWith("/api/media/"),waveformUrl:z.string().startsWith("/api/media/"),reportUrl:z.string().startsWith("/api/media/"),newPaidRequests:z.number(),sourceTailNeedsListening:z.boolean()}));
  const repairQuote=await readCheckpoint(path.join(directory(id),"repair-quote.json"),z.object({approved:z.literal(false),expiresAt:z.number(),caps:z.object({usd:z.number()}),lines:z.array(z.object({id:z.string(),description:z.string(),maximum:z.number()}))}));
@@ -50,7 +56,7 @@ export async function liveView(id:string){
  let audio:string|null=null;
  if(review?.audio){const relative=path.relative(path.join(process.cwd(),"storage"),review.audio.file);if(relative.startsWith("..")||path.isAbsolute(relative))throw new Error("Invalid review audio.");audio=`/api/media/${relative.split(path.sep).join("/")}`;}
  const receipts=await requestReceipts(path.join(directory(id),"requests"));
- return {repairProgress,finishingReview,repairQuote:repairQuote?{...repairQuote,expired:repairQuote.expiresAt<=Date.now()}:null,quote:state?.pendingQuote??state?.quote??null,approved:Boolean(state?.approval),renewing:Boolean(state?.pendingQuote),finished:state?.finished??false,error:state?.error??null,
+ return {storyboard,repairProgress,finishingReview,repairQuote:repairQuote?{...repairQuote,expired:repairQuote.expiresAt<=Date.now()}:null,quote:state?.pendingQuote??state?.quote??null,approved:Boolean(state?.approval),renewing:Boolean(state?.pendingQuote),finished:state?.finished??false,error:state?.error??null,
   phase:outcome?.phase??"quote",status:outcome?.status??"awaiting-budget",review:review?{stage:review.stage,scene:review.scene,target:review.target,media,audio,duration:review.audio?.duration,width:review.media?.width,height:review.media?.height}:null,
   requests:receipts.map(r=>({operation:r.binding?.operation,state:r.state,requestId:r.requestId??null})),
   costsPending:outcome?.events.filter(e=>e.stage.startsWith("cost-receipt-pending-")).length??0};
@@ -112,6 +118,12 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
    if(!outcome?.review||outcome.review.target!==action.target)throw new Error("This review changed. Reload the current scene.");
    const old=state.decisions.find(d=>d.target===action.target);
    if(old&&old.decision!==action.decision)throw new Error("This decision is already saved. Create a new version for changed creative choices.");
+   if(outcome.review.stage==="storyboard"){
+    const sheet=await readCheckpoint(path.join(directory(id),"storyboard-review.json"),StoryboardSheetSchema);
+    if(!sheet||sheet.retrospective)throw new Error("Review the storyboard of the active production.");
+    validateStoryboardAction(action.target,sheet.target,action.decision,action.storyboardConfirmed,action.note);
+    await saveCheckpoint(path.join(directory(id),"storyboard-reviews",`${sheet.target}.json`),StoryboardDecisionSchema.parse({target:sheet.target,decision:action.decision,actor,at:new Date().toISOString(),note:action.note??"Complete storyboard and narrative meaning approved."}),lock.assertOwned);
+   }
    if(!old)state.decisions.push({id:randomUUID(),mode:"live",target:action.target,decision:action.decision});
    state.error=null;await save();
   }else if(!state.approval)throw new Error("Approve the production quote first.");
@@ -137,7 +149,12 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
   try{
    const outcome=await advanceProductionFlow({jobId:id,script:job.script,params,recipe,references,directory:directory(id),assertOwned:lock.assertOwned,
     services:{mode:"live",assets:dependencies.assets(),allowPendingCost:true,
-     review:async request=>state.decisions.find(d=>d.target===request.target) as FlowDecision??null,
+     review:async request=>{
+      const saved=state.decisions.find(d=>d.target===request.target) as FlowDecision??null;
+      if(request.stage!=="storyboard"||!saved)return saved;
+      const human=await readCheckpoint(path.join(directory(id),"storyboard-reviews",`${request.target}.json`),StoryboardDecisionSchema);
+      return human?.target===request.target&&human.decision===saved.decision?saved:null;
+     },
      queue:(op,payload)=>op.kind==="voice"?bramQueue(payload,"live",providers.higgsfield):op.kind==="alignment"?transcriptionQueue(payload,"live",providers.fal):falQueue(op,payload,"live",providers.fal),
      authorize:async plan=>{
       const saved=state.phases[plan.fingerprint];

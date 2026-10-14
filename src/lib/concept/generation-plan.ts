@@ -37,7 +37,7 @@ export type GenerationOperation = {
 /** No network or SDK imports. A plan is never a budget authorization. */
 export function generationPlan(script: string, params: ProductionParams, board: ConceptBoard, timing: ConceptTiming, references: Reference[], voiceEvidence?: VoiceEvidence) {
   const operations: GenerationOperation[] = [];
-  const blockers = ["Paid execution disabled", "Review scene directions", "Review new Bram reading and pacing", "Align the final voice before fixing clip durations", "Approve keyframes before animation", "Approve a complete provider quote and budget"];
+  const blockers = ["Paid execution disabled", "Review scene directions", "Review new Bram reading and pacing", "Align the final voice before fixing clip durations", "Approve keyframes before animation", "Human approval of the complete storyboard and narrative meaning", "Approve a complete provider quote and budget"];
   const add = (op: Omit<GenerationOperation, "fingerprint">) => {
     const parents = op.dependsOn.map((id) => {
       const parent = operations.find((item) => item.id === id);
@@ -78,7 +78,7 @@ export function generationPlan(script: string, params: ProductionParams, board: 
     if (seconds > 15) blockers.push(`Scene ${shot.index} lasts ${seconds}s: split it before animation (15s maximum)`);
     add({ id: `${id}-clip`, kind: "video", transport: "fal-queue", model: VIDEO_ENDPOINT, scene: shot.index,
       dependsOn: ["voice-alignment", `${id}-start`, ...(shot.endImagePrompt ? [`${id}-end`] : [])],
-      gates: ["final-voice-alignment", "keyframe-review", "paid-budget", ...(changesState(shot) ? ["state-change-end-frame"] : []), ...(issues.length ? ["correct-physical-direction"] : []), ...(seconds > 15 ? ["split-scene"] : [])],
+      gates: ["final-voice-alignment", "keyframe-review", "human-storyboard-review", "paid-budget", ...(changesState(shot) ? ["state-change-end-frame"] : []), ...(issues.length ? ["correct-physical-direction"] : []), ...(seconds > 15 ? ["split-scene"] : [])],
       input: { prompt: shot.motionPrompt, duration: String(seconds), generate_audio: false },
       bindings: { start_image_url: `output:${id}-start`, ...(shot.endImagePrompt ? { end_image_url: `output:${id}-end` } : {}) } });
   }

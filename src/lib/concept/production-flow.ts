@@ -27,10 +27,11 @@ import { subtitleFile } from "./existing-run";
 import { selectedNarration } from "./narration";
 import { finishingBoard, type Finishing } from "./finishing";
 import { prepareEditorialAudio, checkEditorialAudio } from "./editorial-audio";
+import type { StoryboardPanel } from "./storyboard-review";
 
 export type FlowPlan = ReturnType<typeof generationPlan>;
-export type FlowReview = { stage: "script" | "voice" | "direction" | "start" | "end" | "clip"; scene: number | null; target: string;
-  media?: SceneMedia; audio?: { file: string; sha256: string; duration: number }; timing?: ConceptTiming };
+export type FlowReview = { stage: "script" | "voice" | "direction" | "start" | "end" | "storyboard" | "clip"; scene: number | null; target: string;
+  media?: SceneMedia; storyboard?: StoryboardPanel[]; audio?: { file: string; sha256: string; duration: number }; timing?: ConceptTiming };
 const Decision = z.object({ id: z.uuid(), target: Hash, decision: z.enum(["approved", "rejected"]), mode: z.enum(["simulation", "live"]) }).strict();
 export type FlowDecision = z.infer<typeof Decision>;
 type Reservation = { budget: ReturnType<typeof createBudget>; quote: BudgetQuote; approval: BudgetApproval };
@@ -73,6 +74,7 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
   const events: FlowEvent[] = [], decisions: FlowDecision[] = [];
   const review = async (stage: FlowReview["stage"], scene: number | null, data: unknown, details: Partial<FlowReview> = {}) => {
     const request: FlowReview = { ...details, stage, scene, target: flowReviewTarget(services.mode, jobId, stage, data) };
+    if (stage === "storyboard") await saveCheckpoint(path.join(directory, "storyboard-review.json"), { version: 1, target: request.target, panels: details.storyboard, retrospective: false }, assertOwned);
     await assertOwned(); const value = await services.review(request);
     if (!value) throw new Pause({ status: "awaiting-review", phase: stage, review: request });
     const decision = Decision.parse(value);
@@ -91,6 +93,7 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
     // A semantic plan fingerprint alone cannot distinguish replaced normalized
     // files, renewed reviews or changed hosted URLs in the submitted payload.
     const operation = { ...op, fingerprint: sha256(JSON.stringify({ mode: services.mode, operation: op.fingerprint, payload, evidence })) };
+    if (op.kind === "video" && receipts.some(r => r.binding?.operation === op.id && r.fingerprint !== operation.fingerprint)) throw new Error("This scene already has a saved animation request under a different review. Reuse that result in a new version; no duplicate animation was submitted.");
     const phasePlan: FlowPlan = { ...plan, operations: [operation], fingerprint: sha256(JSON.stringify({ version: 1, operation })) };
     await assertOwned(); const reservation = await services.authorize(phasePlan);
     if (!reservation) throw new Pause({ status: "awaiting-budget", phase: op.id, plan: phasePlan });
@@ -150,6 +153,9 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
     if (importedVoice) plan = generationPlan(input.script, input.params, board, timing, input.references, importedVoice.evidence);
     if (plan.operations.some((op) => op.gates.includes("split-scene"))) throw new Pause({ status: "blocked-duration", phase: "split-scenes", plan });
     const media: Record<string, SceneMedia> = {}, referenceUrls: Record<string, string> = {};
+    const panels: StoryboardPanel[] = [];
+    const prepared: { shot: ConceptBoard["shots"][number]; parent: FlowDecision; urls: Record<string,string>; imported?: SceneMedia }[] = [];
+    // Generate and inspect ALL keyframes before the first animation can run.
     for (const shot of board.shots) {
       const context = { jobId, shot, params: input.params, references: input.references };
       const workflow = sceneWorkflow(context);
@@ -161,12 +167,14 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
         const binding = input.params.sceneMediaWorkflow?.[shot.index], clip = workflow.stages.find((s) => s.stage === "clip")!;
         if (binding && (clip.status !== "approved" || clip.target !== binding)) throw new Error("Imported animation workflow changed.");
         await verifiedSceneMedia(jobId, imported);
-        await review("clip", shot.index, { media: imported, direction, voice: voiceDecision, timing: alignmentHash(alignment) }, { media: imported });
-        media[shot.index] = imported; events.push({ stage: `reuse-scene-${shot.index}`, fingerprint: imported.sha256, reused: true }); continue;
+        prepared.push({shot,parent:direction,urls:{},imported});
+        panels.push({scene:shot.index,narration:shot.narration,meaning:shot.metaphor??"Explain how this image supports the narration before approving.",startScene:shot.scene,endScene:shot.endScene,motion:shot.motion,actionSeconds:shot.actionSeconds??shot.clipSeconds,existing:imported});
+        continue;
       }
       let parent = direction;
       const urls: Record<string, string> = {};
-      for (const stage of ["start", "end", "clip"] as const) {
+      const frames: { start?: SceneMedia; end?: SceneMedia } = {};
+      for (const stage of ["start", "end"] as const) {
         const op = plan.operations.find((item) => item.id === `scene-${shot.index}-${stage}`);
         if (!op) continue;
         const existing = workflow.stages.find((s) => s.stage === stage)!;
@@ -179,14 +187,30 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
             const ref = input.references.find((r) => r.id === key); if (!ref) throw new Error("Missing locked reference.");
             referenceUrls[`reference:${key}`] = await upload(ref.filePath, ref.sha256, "image/png");
           }
-          const result = await execute(plan, op, { ...referenceUrls, ...urls }, { parent, ...(stage === "clip" ? { voice: voiceDecision } : {}) });
+          const result = await execute(plan, op, { ...referenceUrls, ...urls }, { parent });
           const received = await receive(result); if (!received.media) throw new Error("No normalized visual."); asset = received.media;
         }
-        if (stage === "clip" && (!asset.duration || asset.duration + 1 / 30 < Number(op.input.duration))) throw new Error("Animation is shorter than the requested synchronized duration.");
-        parent = await review(stage, shot.index, { operation: op.fingerprint, media: asset, parent, ...(stage === "clip" ? { voice: voiceDecision } : {}) }, { media: asset });
-        if (stage === "clip") media[shot.index] = asset;
-        else urls[`output:${op.id}`] = await upload(path.join(process.cwd(), "storage/imports", jobId, mediaFile(asset)), asset.sha256, "image/png");
+        parent = await review(stage, shot.index, { operation: op.fingerprint, media: asset, parent }, { media: asset });
+        frames[stage] = asset;
+        urls[`output:${op.id}`] = await upload(path.join(process.cwd(), "storage/imports", jobId, mediaFile(asset)), asset.sha256, "image/png");
       }
+      prepared.push({shot,parent,urls});
+      panels.push({scene:shot.index,narration:shot.narration,meaning:shot.metaphor??"Explain how this image supports the narration before approving.",startScene:shot.scene,endScene:shot.endScene,motion:shot.motion,actionSeconds:shot.actionSeconds??shot.clipSeconds,...frames});
+    }
+    const storyboardDecision = await review("storyboard", null, { board, panels, voice: voiceDecision, timing: alignmentHash(alignment), parents: prepared.map(p=>p.parent), format: input.params.aspectRatio }, {storyboard:panels});
+    for (const {shot,parent,urls,imported} of prepared) {
+      if (imported) {
+        await review("clip", shot.index, { media: imported, direction:parent, voice:voiceDecision, timing:alignmentHash(alignment), storyboard:storyboardDecision }, {media:imported});
+        media[shot.index]=imported; events.push({stage:`reuse-scene-${shot.index}`,fingerprint:imported.sha256,reused:true}); continue;
+      }
+      const op=plan.operations.find(item=>item.id===`scene-${shot.index}-clip`)!;
+      const existing=sceneWorkflow({jobId,shot,params:input.params,references:input.references}).stages.find(s=>s.stage==="clip")!;
+      let asset:SceneMedia;
+      if(existing.status==="approved"&&existing.media){asset=(await verifiedSceneMedia(jobId,existing.media)).media;events.push({stage:`reuse-${op.id}`,fingerprint:asset.sha256,reused:true});}
+      else {const received=await receive(await execute(plan,op,{...referenceUrls,...urls},{parent,voice:voiceDecision,storyboard:storyboardDecision}));if(!received.media)throw new Error("No normalized animation.");asset=received.media;}
+      if(!asset.duration||asset.duration+1/30<Number(op.input.duration))throw new Error("Animation is shorter than the requested synchronized duration.");
+      await review("clip",shot.index,{operation:op.fingerprint,media:asset,parent,voice:voiceDecision,storyboard:storyboardDecision},{media:asset});
+      media[shot.index]=asset;
     }
     const packet = { mode: services.mode, jobId, board, timing, aspectRatio: input.params.aspectRatio, voiceOrigin: importedVoice ? "reviewed-import" as const : "generated-bram" as const, voiceFile, audioSha256: audio.sha256,
       alignmentSha256: alignmentHash(alignment), media, reviews: decisions };
