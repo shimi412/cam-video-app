@@ -48,7 +48,7 @@ export async function liveView(id:string){
  if(review?.audio){const relative=path.relative(path.join(process.cwd(),"storage"),review.audio.file);if(relative.startsWith("..")||path.isAbsolute(relative))throw new Error("Invalid review audio.");audio=`/api/media/${relative.split(path.sep).join("/")}`;}
  const receipts=await requestReceipts(path.join(directory(id),"requests"));
  return {quote:state?.pendingQuote??state?.quote??null,approved:Boolean(state?.approval),renewing:Boolean(state?.pendingQuote),finished:state?.finished??false,error:state?.error??null,
-  phase:outcome?.phase??"quote",status:outcome?.status??"awaiting-budget",review:review?{stage:review.stage,scene:review.scene,target:review.target,media,audio,duration:review.audio?.duration}:null,
+  phase:outcome?.phase??"quote",status:outcome?.status??"awaiting-budget",review:review?{stage:review.stage,scene:review.scene,target:review.target,media,audio,duration:review.audio?.duration,width:review.media?.width,height:review.media?.height}:null,
   requests:receipts.map(r=>({operation:r.binding?.operation,state:r.state,requestId:r.requestId??null})),
   costsPending:outcome?.events.filter(e=>e.stage.startsWith("cost-receipt-pending-")).length??0};
 }
