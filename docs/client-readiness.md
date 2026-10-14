@@ -87,3 +87,11 @@ Final local checks on 2026-10-13: 108 unit tests, workspace integration, real HT
 - Local installation preflight passes; a real first administrator is still required. Source/media packages exclude credentials, the development database, uploads and QA logs. Only the 15 pinned historical source files accompany the code. They retain the Dylan identity.
 
 See `docs/deployment.md` for installation, backup/restore and the remaining server acceptance steps. Docker is absent from the development Mac; packaging is not evidence of a working remote deployment.
+
+## Presenter storyboard presented on October 14
+
+A separate read-only proposal at `/production/2b0df353-688e-4d7c-b5aa-6a31cd4b2f21/storyboard` preserves the first two scenes and replaces the rejected bird shot with the locked clay presenter and the exact narration above his head. It includes a local typography preview with the existing Bram excerpt and the original CAM logo ending. The production page links to it; the complete screenshot is saved in the conversation references.
+
+Proposal `aceef573766cd69769321138152ad2ce59b6f748f075ac14c4c4033dd25e75cc` is **awaiting human storyboard approval**. The rejected historical sheet and existing V4 video remain intact. One still keyframe was produced with built-in image generation; no fal.ai credits or new voice generation were used. The page has no production or approval action. Future animation must use this exact proposed image and a recorded human decision.
+
+Verification: TypeScript and lint passed; authenticated browser inspection confirmed the full sheet, correct title placement, and playing 3.18-second audio excerpt without a media error. Screenshot: `storage/qa/cam-bram-storyboard-presenter.png`. Source, prompt, preview audio and proposed sheet are under the job's `live/storyboard-proposal/` and `live/storyboard-proposal.json`. This is a storyboard presentation, not a new finished film.

@@ -1,4 +1,6 @@
 import { after } from "next/server";
+import { access } from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db,schema } from "@/db";
@@ -20,7 +22,8 @@ export const GET=withAccess(async(_request,context:Context)=>{
  const output=await storedVideoUrl(job.outputPath);
  const outputUrl=output&&params.finishingRevision?`${output}?v=${encodeURIComponent(params.finishingRevision)}`:output;
  const view=await liveView(id);
- return Response.json({id,script:job.script,conversationId:job.conversationId,format:params.aspectRatio,scenes:view.finishingReview?.scenes??board.shots,jobStatus:job.status,outputUrl,busy:await jobWorkerActive(id),...view});
+ const storyboardProposalUrl=await access(path.join(process.cwd(),"storage/concepts",id,"live/storyboard-proposal.json")).then(()=>`/production/${id}/storyboard`).catch(()=>null);
+ return Response.json({id,script:job.script,conversationId:job.conversationId,format:params.aspectRatio,scenes:view.finishingReview?.scenes??board.shots,jobStatus:job.status,outputUrl,storyboardProposalUrl,busy:await jobWorkerActive(id),...view});
 });
 export const POST=withAccess(async(request,context:Context)=>{
  const {id}=await context.params;if(!z.uuid().safeParse(id).success)return Response.json({error:"Invalid production ID."},{status:400});
