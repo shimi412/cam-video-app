@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "connected": "tsx scripts/connected-local.ts",
     "demo": "tsx scripts/local-demo.ts",
     "demo:prepare": "tsx scripts/local-demo.ts --prepare-only",
     "build": "next build",
@@ -35,7 +36,9 @@
     "test:installation": "tsx --env-file-if-exists=.env scripts/check-fresh-installation.ts",
     "test:exports": "tsx --env-file-if-exists=.env scripts/check-format-exports.ts",
     "test:access:production": "tsx --env-file-if-exists=.env scripts/check-access.ts --production",
-    "release:package": "tsx scripts/package-release.ts"
+    "release:package": "tsx scripts/package-release.ts",
+    "test:assistant": "tsx --env-file-if-exists=.env scripts/check-assistant.ts",
+    "test:connected-production": "tsx --env-file-if-exists=.env scripts/check-connected-production.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.39",
@@ -48,6 +51,7 @@
     "hyperframes": "0.8.91",
     "next": "16.3.1",
     "next-auth": "5.0.0-beta.32",
+    "pdfjs-dist": "^6.4.299",
     "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",

@@ -52,5 +52,6 @@ storage/
 
 /tsconfig.access-test.json
 /tsconfig.demo.json
+/tsconfig.connected.json
 /.backups/
 /release/

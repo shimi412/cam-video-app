@@ -1,5 +1,7 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PreparationReview } from "./preparation-review";
 import { RequestRecovery } from "./request-recovery";
@@ -52,6 +54,7 @@ type SheetEntry = {
 type JobState = {
   conversationId?: string;
   draft?: Framing | null;
+  live?: boolean;
   preparation?: ConceptPreparation | null;
   id?: string;
   canResume?: boolean;
@@ -80,8 +83,10 @@ const ASPECTS: Array<{ value: AspectRatio; label: string }> = [
 ];
 
 export default function StudioPage() {
+  const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
+  const [connected, setConnected] = useState(false);
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [templateSlug, setTemplateSlug] = useState<string>("");
   const [tone, setTone] = useState<"serious" | "energetic" | "calm">("serious");
@@ -99,6 +104,7 @@ export default function StudioPage() {
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollEpoch = useRef(0);
+  const framingAttempt = useRef<{body:string;id:string}|null>(null);
 
   const stopPolling = useCallback(() => {
     pollEpoch.current += 1;
@@ -129,6 +135,7 @@ export default function StudioPage() {
           throw new Error("Could not retrieve this production. Reload to try again.");
         }
         const next: JobState = await response.json();
+        if(next.live){router.push(`/production/${id}`);stopPolling();return;}
         if (epoch !== pollEpoch.current) return;
         if (next.status === "estimated" && next.draft) { setFraming(next.draft); setJob(null); stopPolling(); }
         else setJob(next);
@@ -142,7 +149,7 @@ export default function StudioPage() {
     };
     pollRef.current = setInterval(() => void refresh(), 1500);
     void refresh();
-  }, [stopPolling]);
+  }, [stopPolling,router]);
 
   useEffect(() => {
     // Read browser-only persistence after hydration; cancel on a quick navigation.
@@ -161,6 +168,7 @@ export default function StudioPage() {
   }, [watchJob, stopPolling]);
 
   useEffect(() => {
+    fetch("/api/account").then(r=>r.json()).then(d=>setConnected(d.connected===true)).catch(()=>{});
     fetch("/api/examples/cam-clay").then((r) => {
       if (!r.ok) throw new Error("Could not check existing media");
       return r.json();
@@ -180,18 +188,16 @@ export default function StudioPage() {
     setLoading(true);
     setError(null);
     try {
+      const body = JSON.stringify({script,mode,previewSource,overrides:mode === "manual" ? {templateSlug,tone,tier,aspectRatio} : {aspectRatio}});
+      if(framingAttempt.current?.body!==body)framingAttempt.current={body,id:crypto.randomUUID()};
       const res = await fetch("/api/productions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          script,
-          mode,
-          previewSource,
-          overrides: mode === "manual" ? { templateSlug, tone, tier, aspectRatio } : { aspectRatio },
-        }),
+        body: JSON.stringify({...JSON.parse(body),requestId:framingAttempt.current.id}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Framing failed");
+      if (!data.simulation) { router.push(`/production/${data.jobId}`); return; }
       setFraming(data);
       window.history.replaceState(null, "", `/?job=${data.jobId}`);
       try { localStorage.setItem("cam-last-job", data.jobId); } catch { /* Optional draft persistence. */ }
@@ -259,14 +265,13 @@ export default function StudioPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Studio</h1>
         <p className="text-muted mt-1">
-          Prepare your script, review the recording and scenes, then assemble a free preview.
-          Paid generation is disabled in this version.
+          {connected ? "Turn your script into a CAM film with Bram. Prepare the scenes, approve the budget, then review the voice and visuals before the final montage." : "Prepare your script, review the recording and scenes, then assemble a free preview. Paid generation is disabled in this version."}
         </p>
       </div>
 
       {(framing?.conversationId || job?.conversationId) && <a href={`/conversations/${framing?.conversationId || job?.conversationId}`} className="inline-block text-accent text-sm">Open conversation, references and video versions</a>}
       {/* Step 1: script + mode */}
-      {example && !framing && !job && !restoring && <section className="bg-surface border border-accent/40 rounded-xl p-5 space-y-3">
+      {example && !connected && !framing && !job && !restoring && <section className="bg-surface border border-accent/40 rounded-xl p-5 space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-medium">Try the existing CAM film</h2>
@@ -386,7 +391,7 @@ export default function StudioPage() {
           onChange={(e) => setScript(e.target.value)}
           disabled={settingsDisabled}
           rows={7}
-          placeholder="Paste the script generated by your monitoring app…"
+          placeholder="Paste the narration for your film…"
           className="w-full bg-surface-2 border border-line rounded-lg p-3 text-sm placeholder:text-muted/60 focus:outline-none focus:border-accent disabled:opacity-60"
         />
         {!framing && !job && (
@@ -395,10 +400,12 @@ export default function StudioPage() {
             disabled={loading || restoring || templates.length === 0 || script.trim().length < 40}
             className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
           >
-            {loading ? "Framing…" : previewSource === "existing" ? "Prepare existing film · $0" : "Frame my request"}
+            {loading ? "Preparing scenes…" : connected ? "Prepare scenes with Claude" : previewSource === "existing" ? "Prepare existing film · $0" : "Frame my request"}
           </button>
         )}
       </section>
+
+      {connected && !framing && !job && <p className="text-xs text-muted">Preparing scenes uses Claude through OpenRouter, up to $0.25 per analysis. The media quote comes next; Bram, images and animation start after you approve that budget. Need help writing? <Link className="text-accent" href="/conversations">Open a conversation</Link>.</p>}
 
       {error && (
         <div className="border border-danger/40 bg-danger/10 text-danger rounded-lg px-4 py-3 text-sm">

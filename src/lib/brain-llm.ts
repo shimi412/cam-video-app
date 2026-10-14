@@ -1,8 +1,8 @@
 /**
  * LLM-backed framing, three modes via BRAIN_MODE:
- *  - "api":  Claude via the Anthropic API through the AI SDK (default, delivery mode).
- *            Model id comes from the admin setting "chat_model"
- *            (default claude-sonnet-5), never exposed to the client.
+ *  - "api":  Claude via OpenRouter, with persisted usage and no automatic retry.
+ *            Model id comes from the admin setting "ai_deep_model"
+ *            (default anthropic/claude-sonnet-5), never exposed to the client.
  *  - "cli":  local Claude Code CLI in headless mode (dev only, never shipped).
  *  - "mock": deterministic heuristic (zero cost, offline).
  * Every mode returns the same shape as resolveParams(); on any failure the
@@ -64,7 +64,7 @@ async function frameWithApi(script: string): Promise<Framing | null> {
     const object = await requestBrainObject({
       schema: FramingSchema,
       prompt: FRAMING_PROMPT(script),
-      maxRetries: 2,
+      maxRetries: 0,
     });
     return object;
   } catch (err) {
@@ -82,7 +82,7 @@ export async function frameProduction(
   const brain = brainMode();
 
   // Manual mode with an explicit model: nothing to decide, skip the LLM.
-  if (brain === "mock" || (mode === "manual" && overrides?.templateSlug)) {
+  if (brain === "mock" || activeRecipes().length === 1 || (mode === "manual" && overrides?.templateSlug)) {
     return { ...heuristic, brain: "mock" };
   }
 

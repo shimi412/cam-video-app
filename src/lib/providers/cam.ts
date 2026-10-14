@@ -1,18 +1,20 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { assertCamLiveExecution, type JsonRequest, type McpCall } from "../concept/provider-transports";
+import { assertCamConfigured } from "./live-policy";
+import { higgsfieldAccessToken } from "./higgsfield-auth";
 
-/** Network wiring for a future authorized run. No route calls this factory;
- * its unconditional gate runs before reading credentials or connecting.
+/** Network wiring for a persisted, explicitly approved production or read-only quote.
+ * Its execution gate runs before reading credentials or connecting.
  * No OAuth login, subscription selection, trial activation or POST retry.
  */
-export async function connectCamProviders(): Promise<{ fal: JsonRequest; higgsfield: McpCall; close: () => Promise<void> }> {
-  assertCamLiveExecution();
+export async function connectCamProviders(purpose: "generation" | "quote" = "generation"): Promise<{ fal: JsonRequest; higgsfield: McpCall; close: () => Promise<void> }> {
+  if (purpose === "generation") assertCamLiveExecution(); else assertCamConfigured();
   const falKey = process.env.FAL_KEY;
-  const higgsfieldToken = process.env.CAM_HIGGSFIELD_ACCESS_TOKEN;
+  const higgsfieldToken = await higgsfieldAccessToken();
   if (!falKey || !higgsfieldToken) throw new Error("CAM provider credentials are missing.");
   const guardedFetch: typeof fetch = async (input, init) => {
-    assertCamLiveExecution();
+    if (purpose === "generation") assertCamLiveExecution(); else assertCamConfigured();
     return fetch(input, { ...init, redirect: "error", signal: init?.signal ?? AbortSignal.timeout(20_000) });
   };
   const client = new Client({ name: "cam-video-app", version: "0.1.0" });
@@ -25,7 +27,9 @@ export async function connectCamProviders(): Promise<{ fal: JsonRequest; higgsfi
   return {
     async fal(url, init) {
       const parsed = new URL(url);
-      if (parsed.origin !== "https://queue.fal.run" || parsed.username || parsed.password) throw new Error("Unexpected fal queue URL.");
+      const pricing = parsed.origin === "https://api.fal.ai" && ["/v1/models/pricing", "/v1/models/pricing/estimate", "/v1/models/billing-events"].includes(parsed.pathname);
+      if ((!pricing && (purpose === "quote" || parsed.origin !== "https://queue.fal.run")) || parsed.username || parsed.password) throw new Error("Unexpected fal URL.");
+      if (pricing && init.method !== (parsed.pathname.endsWith("/estimate") ? "POST" : "GET")) throw new Error("Unsupported pricing method.");
       const response = await guardedFetch(url, { ...init, headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" } });
       // Do not log provider error bodies or credentials. A failed POST stays
       // ambiguous in the journal, even on a timeout or a 5xx response.
@@ -45,8 +49,10 @@ export async function connectCamProviders(): Promise<{ fal: JsonRequest; higgsfi
       return JSON.parse(Buffer.concat(parts).toString("utf8"));
     },
     async higgsfield(name, args) {
-      assertCamLiveExecution();
-      if (name !== "generate_audio" && name !== "jobs_wait") throw new Error("Unsupported CAM voice operation.");
+      if (purpose === "generation") assertCamLiveExecution(); else assertCamConfigured();
+      const quote = name === "generate_audio" && typeof args.params === "object" && args.params !== null && "get_cost" in args.params && args.params.get_cost === true;
+      if (purpose === "quote" && !quote && !["models_explore", "balance", "transactions"].includes(name)) throw new Error("This connection can only read provider configuration and quotes.");
+      if (!["generate_audio", "jobs_wait", "models_explore", "balance", "transactions"].includes(name)) throw new Error("Unsupported CAM voice operation.");
       try { return await client.callTool({ name, arguments: args }, undefined, { timeout: 20_000 }); }
       catch { throw new Error("CAM voice provider call failed. Reconcile submissions or resume the saved request ID."); }
     },

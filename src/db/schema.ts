@@ -101,11 +101,11 @@ export const apiCalls = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     jobId: uuid("job_id").references(() => jobs.id),
     conversationId: uuid("conversation_id").references(() => conversations.id),
-    provider: text("provider").notNull(), // anthropic | fal | mock | hyperframes
+    provider: text("provider").notNull(), // openrouter | fal | higgsfield | mock | hyperframes
     kind: callKind("kind").notNull(),
     model: text("model").notNull(),
-    realCostUsd: numeric("real_cost_usd", { precision: 10, scale: 4 }).notNull(),
-    billedUsd: numeric("billed_usd", { precision: 10, scale: 4 }).notNull(),
+    realCostUsd: numeric("real_cost_usd", { precision: 14, scale: 8 }).notNull(),
+    billedUsd: numeric("billed_usd", { precision: 14, scale: 8 }).notNull(),
     meta: jsonb("meta").notNull().default({}),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },

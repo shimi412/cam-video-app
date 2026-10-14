@@ -34,6 +34,7 @@ export type FlowDecision = z.infer<typeof Decision>;
 type Reservation = { budget: ReturnType<typeof createBudget>; quote: BudgetQuote; approval: BudgetApproval };
 export type FlowServices = {
   mode: TransportMode; assets: AssetTransport;
+  allowPendingCost?: boolean; // Keep the approved reservation while a receipt is unavailable.
   queue: (operation: GenerationOperation, payload: Record<string, unknown>) => QueueRequest;
   authorize: (plan: FlowPlan) => Promise<Reservation | null>;
   cost: (operation: GenerationOperation, requestId: string) => Promise<{ unit: "usd" | "higgsfield-credit"; actual: number; evidence: string } | null>;
@@ -44,9 +45,9 @@ export type FlowInput = { jobId: string; script: string; params: ProductionParam
   directory: string; assertOwned: () => Promise<void>; services: FlowServices };
 export type FlowEvent = { stage: string; scene?: number | null; fingerprint: string; reused?: boolean; requestId?: string };
 export type RenderPacket = { mode: TransportMode; jobId: string; board: ConceptBoard; timing: ConceptTiming; aspectRatio: ProductionParams["aspectRatio"];
-  voiceFile: string; audioSha256: string; alignmentSha256: string; media: Record<string, SceneMedia>; reviews: FlowDecision[]; fingerprint: string };
+  voiceOrigin?: "generated-bram" | "reviewed-import"; voiceFile: string; audioSha256: string; alignmentSha256: string; media: Record<string, SceneMedia>; reviews: FlowDecision[]; fingerprint: string };
 export type FlowOutcome = { status: "awaiting-review" | "rejected" | "awaiting-budget" | "awaiting-cost" | "pending" | "blocked-duration" | "ready-to-render";
-  phase: string; events: FlowEvent[]; review?: FlowReview; plan?: FlowPlan; render?: RenderPacket; paidGenerationAuthorized: false };
+  phase: string; events: FlowEvent[]; review?: FlowReview; plan?: FlowPlan; render?: RenderPacket; paidGenerationAuthorized: boolean };
 class Pause extends Error {
   constructor(readonly result: Omit<FlowOutcome, "events" | "paidGenerationAuthorized">) { super(result.phase); }
 }
@@ -54,8 +55,8 @@ export function flowReviewTarget(mode: TransportMode, jobId: string, stage: Flow
   return sha256(JSON.stringify({ version: 1, mode, jobId, stage, data }));
 }
 
-/** One resumable production chain. Live mode is refused before any callback,
- * file access or provider connection. Every downstream request is bound to the
+/** One resumable production chain. Live mode requires the connected controller
+ * and authenticated execution context before any provider access. Every downstream request is bound to the
  * actual reviewed inputs, including normalized voice and image bytes.
  */
 export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutcome> {
@@ -101,9 +102,13 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
     events.push({ stage: op.id, scene: op.scene, fingerprint: operation.fingerprint, requestId: result.requestId, reused: result.reused });
     if (result.state !== "complete" || !result.requestId || !result.output) throw new Pause({ status: "pending", phase: op.id });
     await assertOwned(); const cost = await services.cost(operation, result.requestId);
-    if (!cost) throw new Pause({ status: "awaiting-cost", phase: op.id });
-    const settlement = await reservation.budget.settle(reservation.approval.id, operation.fingerprint, cost);
-    if (settlement.overrun) throw new Error("Provider cost exceeded the approved amount. Production stopped.");
+    if (!cost) {
+      if (!services.allowPendingCost) throw new Pause({ status: "awaiting-cost", phase: op.id });
+      events.push({stage:`cost-receipt-pending-${op.id}`,fingerprint:operation.fingerprint,requestId:result.requestId});
+    } else {
+      const settlement = await reservation.budget.settle(reservation.approval.id, operation.fingerprint, cost);
+      if (settlement.overrun) throw new Error("Provider cost exceeded the approved amount. Production stopped.");
+    }
     return { ...result, operation, output: result.output, requestId: result.requestId };
   };
   const receive = async (result: Awaited<ReturnType<typeof execute>>) => {
@@ -180,13 +185,13 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
         else urls[`output:${op.id}`] = await upload(path.join(process.cwd(), "storage/imports", jobId, mediaFile(asset)), asset.sha256, "image/png");
       }
     }
-    const packet = { mode: services.mode, jobId, board, timing, aspectRatio: input.params.aspectRatio, voiceFile, audioSha256: audio.sha256,
+    const packet = { mode: services.mode, jobId, board, timing, aspectRatio: input.params.aspectRatio, voiceOrigin: importedVoice ? "reviewed-import" as const : "generated-bram" as const, voiceFile, audioSha256: audio.sha256,
       alignmentSha256: alignmentHash(alignment), media, reviews: decisions };
-    outcome = { status: "ready-to-render", phase: "montage", events, paidGenerationAuthorized: false, plan,
+    outcome = { status: "ready-to-render", phase: "montage", events, paidGenerationAuthorized: services.mode === "live", plan,
       render: { ...packet, fingerprint: sha256(JSON.stringify(packet)) } };
   } catch (error) {
     if (!(error instanceof Pause)) throw error;
-    outcome = { ...error.result, events, paidGenerationAuthorized: false };
+    outcome = { ...error.result, events, paidGenerationAuthorized: services.mode === "live" };
   }
   await saveCheckpoint(path.join(directory, "state.json"), outcome, assertOwned);
   return outcome;
@@ -207,6 +212,8 @@ export async function renderProductionFlow(packet: RenderPacket, workspace: stri
   const durations = packet.timing.phrases.map((p, i) => (packet.timing.phrases[i + 1]?.start ?? packet.timing.duration) - (i === 0 ? 0 : p.start));
   const staged = await stageSceneMedia(packet.jobId, packet.media, workspace, durations);
   const composition = await writeMontage(workspace, packet.board, packet.timing, packet.aspectRatio, staged);
+  await writeFile(path.join(workspace,"storyboard.json"),JSON.stringify(packet.board));
+  await writeFile(path.join(workspace,"timing.json"),JSON.stringify(packet.timing));
   validateTiming(packet.timing, composition.captions);
   for (const kind of ["srt", "vtt"] as const) await writeFile(path.join(workspace, `captions.${kind}`), subtitleFile(composition.captions, kind));
   const output = path.join(workspace, "preview.mp4");
@@ -215,7 +222,7 @@ export async function renderProductionFlow(packet: RenderPacket, workspace: stri
   await controls(output, workspace, composition.cues.map((s) => s.start), composition.width, composition.height, packet.timing.duration, { requireAudibleVoice: true, captions: composition.captions });
   await assertOwned();
   const proof = { mode: packet.mode, fingerprint, voiceSha256: packet.audioSha256, alignmentSha256: packet.alignmentSha256,
-    duration: packet.timing.duration, timingEstimated: packet.timing.estimated, finalBramVoiceApproved: false, paidGenerationAuthorized: false, media: packet.media, renderReused: rendering.reused };
+    duration: packet.timing.duration, timingEstimated: packet.timing.estimated, finalBramVoiceApproved: packet.mode === "live" && packet.voiceOrigin === "generated-bram", paidGenerationAuthorized: packet.mode === "live", media: packet.media, renderReused: rendering.reused };
   await writeFile(path.join(workspace, "production-flow.json"), JSON.stringify(proof, null, 2));
   return { output, ...proof };
 }

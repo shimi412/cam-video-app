@@ -1,5 +1,6 @@
 import { db, schema } from "@/db";
 import { getActiveRecipe } from "@/lib/recipes";
+import { isSimulation } from "@/lib/providers/mode";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ export default async function LibraryPage() {
                   </span>
                 </div>
                 <p className="text-sm text-muted">{t.description}</p>
-                {recipe.concept?.previewOnly && <p className="text-xs text-accent">Free local previews · existing film available</p>}
+                {recipe.concept?.previewOnly && <p className="text-xs text-accent">{isSimulation()?"Free local previews · existing film available":"Bram narration · scenes reviewed before animation"}</p>}
                 <div className="text-xs text-muted bg-surface-2 border border-line rounded-lg p-3 space-y-1">
                   <p><span className="text-foreground">Look:</span> {recipe.bible?.artDirection}</p>
                   <p><span className="text-foreground">Palette:</span> {recipe.bible?.palette}</p>

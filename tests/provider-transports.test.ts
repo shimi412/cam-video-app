@@ -39,7 +39,7 @@ it("uses the exact Bram request without Dylan speed settings or trial flags", as
   const call = vi.fn().mockResolvedValueOnce(wrapped({ results: [{ id: "bram-job-1", type: "audio", model: "text2speech_v2" }] })).mockResolvedValueOnce(complete());
   const queue = bramQueue(materializeRequest(voice, {}), "simulation", call);
   expect(await queue.submit()).toEqual({ requestId: "bram-job-1" });
-  expect(call).toHaveBeenNthCalledWith(1, "generate_audio", { params: { model: "text2speech_v2", variant: "elevenlabs", voice_type: "preset", voice_id: CAM_VOICE.voiceId, count: 1, prompt: script } });
+  expect(call).toHaveBeenNthCalledWith(1, "generate_audio", { params: { model: "text2speech_v2", variant: "elevenlabs", voice_type: "preset", voice_id: CAM_VOICE.voiceId, count: 1, prompt: script, use_unlim: false } });
   expect(await queue.poll("bram-job-1")).toEqual({ state: "complete", output: "https://cdn.higgsfield.ai/audio.wav" });
   expect(call).toHaveBeenLastCalledWith("jobs_wait", { jobs: [{ index: 0, job_id: "bram-job-1" }], timeout_seconds: 0 });
   expect(() => bramQueue({ ...voice.input, speech_rate: 22 }, "simulation", call)).toThrow();

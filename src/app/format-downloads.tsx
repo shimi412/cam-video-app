@@ -20,7 +20,7 @@ export function FormatDownloads({ jobId }: { jobId: string }) {
   }, [load, active]);
   return <section className="border border-line rounded-xl p-5 space-y-3">
     <h3 className="font-semibold">Download in three formats</h3>
-    <p className="text-sm text-muted">Keep the same scenes, recording and timing. New previews adapt their titles and captions to each format. Historical films keep the original picture with a background around it.</p>
+    <p className="text-sm text-muted">Keep the same scenes, recording and timing. New films adapt their titles and captions to each format. Historical films keep the original picture with a background around it.</p>
     {(view?.canStart || !view) && <button disabled={busy || !view} onClick={async () => {
       setBusy(true); setError("");
       try {
@@ -33,7 +33,7 @@ export function FormatDownloads({ jobId }: { jobId: string }) {
     {active && <p role="status" className="text-sm">Preparing formats… {view?.state?.files.length ?? 0}/3 ready. You can return to this production later.</p>}
     {view?.state?.status === "failed" && <p role="alert" className="text-sm text-danger">{view.state.error}</p>}
     {view?.state?.status === "complete" && <div className="flex gap-3 flex-wrap">{view.state.files.map(file => <a key={file.aspect} href={file.url} download={`cam-${jobId}-${file.aspect.replace(":", "x")}.mp4`} className="rounded-lg border border-line px-4 py-3 text-sm text-accent">{labels[file.aspect]}</a>)}</div>}
-    {view?.state?.status === "complete" && <p className="text-xs text-muted">Watch each format before publishing. The voice is the recording used for this preview.</p>}
+    {view?.state?.status === "complete" && <p className="text-xs text-muted">Watch each format before publishing. The voice is the recording used for this film.</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
   </section>;
 }

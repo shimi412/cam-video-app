@@ -2,6 +2,20 @@
 
 Local development of CAM's video production tool. Read `BLUEPRINT.md` before changes and the relevant Next.js documentation in `node_modules/next/dist/docs/` before changing pages or routes. The framework rules live in `AGENTS.md`.
 
+## Connected local version · October 14
+
+Run `pnpm connected` or `demarrer-cam-connecte.command`, then open `http://127.0.0.1:3108/`. Authentication is required. The runtime secret and existing Higgsfield grant path are kept outside the repository in `~/.config/cam-video-app/runtime.json`; OpenRouter is configured in Admin → AI connections. Starting the app never generates content.
+
+Conversations use DeepSeek for simple messages and Claude for documents, scripts and detailed analysis, through OpenRouter. Preparing a new scene plan also uses Claude. A request reserves at most $0.25 against the shared monthly AI limit (initially $25). Unknown outcomes are not resubmitted. PDFs are inspected locally before native multimodal submission; external links are saved but not fetched.
+
+The connected production page edits directions, reads current provider prices, requires explicit approval, produces Bram, then pauses at each voice/direction/image/animation review. Quotes can be renewed without regenerating completed work. Completed films provide three local exports, preserving the reviewed voice. The shared media ceiling is $100 and 100 Higgsfield credits; every film still requires its own quote approval. Missing provider cost receipts remain reservations, not fabricated charges. The current fal key lacks billing receipt access; customer billing is not settled automatically.
+
+`pnpm test:assistant` and `pnpm test:connected-production` exercise persisted requests, budget limits, recovery and real local rendering with injected responses, without paid calls. `pnpm exec tsx --env-file-if-exists=.env scripts/check-access.ts --production --connected` checks the compiled account boundary. A paid user test and creative acceptance are still needed. Full remaining scope: `docs/client-readiness.md`.
+
+## Offline preview reference
+
+The sections below document the preserved offline workflow and its earlier milestones. Connected behavior is described above; 3107 remains the isolated historical-film demonstration.
+
 ## Safe local workflow
 
 ```bash
@@ -14,7 +28,7 @@ pnpm dev:preview
 
 `dev:preview` binds to localhost and forces offline media and brain providers, even if `.env` contains production credentials. Simulation never writes a credit consumption or refund. Its hypothetical costs are stored separately in API-call metadata and `jobs.params.simulatedBilledUsd`.
 
-The old five styles are archived in the database and the source catalogue. They remain available to the explicit offline CLI below for regression checks. The client library and new-production endpoints do not offer them. CAM Clay offers free local previews; its live production gate remains closed.
+The old five styles are archived in the database and the source catalogue. They remain available to the explicit offline CLI below for regression checks. The client library and new-production endpoints do not offer them. CAM Clay offers free local previews and a separately authenticated connected production page.
 
 The first presentation on October 15, 2026 will run on Shimi's Mac. His October 14 decision is to wait until CAM's monthly payment is in place before paying for hosting. Use `pnpm demo` and [docs/local-demo.md](docs/local-demo.md). Zero provider-credit spending and no paid trials remain binding. The in-app **Help** page explains the available workflow; it does not claim the complete contracted product is delivered. The future dedicated-host package is documented in [docs/deployment.md](docs/deployment.md); Docker/HTTPS/restore still require a server rehearsal. Only an empty Hetzner project was created, with no server purchased.
 
@@ -28,7 +42,7 @@ Run `pnpm db:migrate` after updating an existing database. Auth.js protects data
 
 ## Conversations, references and campaigns
 
-**Conversations** saves notes and scripts, reference links/files and the associated production versions. A user can prepare an exact narration in the existing Studio or derive a fresh draft with a different script/format. The parent remains unchanged; media/voice approvals and quotes are not silently inherited. Creation retries use stable request IDs: repeated identical requests reuse their result and changed payloads are refused. Message/draft creation is transactional. Acknowledgements are deterministic local responses, not an active free-form LLM assistant.
+**Conversations** saves notes and scripts, reference links/files and the associated production versions. A user can prepare an exact narration in the existing Studio or derive a fresh draft with a different script/format. The parent remains unchanged; media/voice approvals and quotes are not silently inherited. Creation retries use stable request IDs: repeated identical requests reuse their result and changed payloads are refused. Message/draft creation is transactional. Offline acknowledgements are deterministic; the connected workspace enables the OpenRouter assistant.
 
 Reference uploads are bounded to 16 MB, 30 references per conversation. Still PNG/JPEG/WebP are decoded, resized and stripped of metadata; images and PDFs have content hashes checked at download. PDFs are download-only under a restrictive content policy, not parsed or presented as verified evidence. HTTPS links reject embedded credentials and are never fetched. References do not automatically become approved scene inputs. File paths are generated server-side and confined to `storage/references/<conversation>/`. Data and downloads require workspace access.
 
@@ -48,7 +62,7 @@ Reviewed imports bypass both voice generation and paid transcription in the full
 
 **Production preparation** lists unreviewed inputs and placeholder scenes. **Download production dossier** gathers the script, declared audio provenance, timing, scene reviews and quote worksheet in a single JSON document. It verifies selected/approved files and cannot authorize spending. The rendered result contains an immutable attempt snapshot plus MP4, WAV, subtitles and review reports.
 
-**Productions** lists the local CAM Clay drafts and results, with script search, status filters and keyset pagination. A link opens the selected draft/result independently of the last-opened browser item; **New production** starts a clean draft. Download links only point to files present under local storage. This catalogue remains disabled in live mode. Authentication is implemented separately above; no cleanup policy or remote hosting is implied.
+**Productions** lists the local CAM Clay drafts and results, with script search, status filters and keyset pagination. A link opens the selected draft/result independently of the last-opened browser item; **New production** starts a clean draft. Download links only point to files present under local storage. Connected productions have their own filtered catalogue and open the live production page. Authentication is implemented separately above; no cleanup policy or remote hosting is implied.
 
 ```bash
 pnpm test:narration
@@ -211,7 +225,7 @@ PROVIDER_MODE=dryrun BRAIN_MODE=mock pnpm build
 pnpm check:providers
 ```
 
-Provider diagnostics perform an Anthropic model lookup, upload one dummy byte to fal storage, and optionally read Runway's organization endpoint. They do not generate text, images, audio or video. Failure exits nonzero. Passing only proves the specific access checked, not sufficient credits, inference availability or media quality.
+Provider diagnostics check the OpenRouter key without inference, upload one dummy byte to fal storage, and optionally read Runway's organization endpoint. They do not generate text, images, audio or video. Failure exits nonzero. Passing only proves the specific access checked, not sufficient credits, inference availability or media quality.
 
 Offline end-to-end regression, with PostgreSQL running and recipes seeded:
 
@@ -225,7 +239,7 @@ This blocks Node fetch, submits the same job twice concurrently, renders a place
 
 ## Production mode
 
-`PROVIDER_MODE=fal` enables the legacy media adapters. CAM Clay remains behind its unconditional live gate. `BRAIN_MODE=api` enables the Anthropic brain in real mode. `VIDEO_PROVIDER=runway` changes only the video adapter. Keep secrets in the gitignored `.env` file; `.env.example` lists the configuration.
+`PROVIDER_MODE=fal` enables the legacy media adapters. CAM Clay remains behind its unconditional live gate. `BRAIN_MODE=api` with `CAM_LIVE_ENABLED=1` enables OpenRouter in real mode. Quick chat uses DeepSeek; documents and production planning use Claude. `VIDEO_PROVIDER=runway` changes only the video adapter. Keep secrets in the gitignored `.env` file; `.env.example` lists the configuration.
 
 A paid test still requires Shimon's approval of its script, style, voice and estimated budget. No paid generation is part of the development checks above.
 
@@ -235,3 +249,13 @@ A production snapshots its execution mode. Confirmation and execution refuse a m
 L'hébergement attend la mise en place du paiement mensuel CAM. La démonstration se lance sur le Mac avec `pnpm demo` ou `demarrer-cam.command`, à `http://127.0.0.1:3107/productions`. Elle utilise une base séparée, reprend seulement le film historique et ses trois exports, présente les fonctions côté client et verrouille les appels payants. Les dossiers de développement restent conservés.
 
 Parcours et limites : [guide de démonstration](docs/local-demo.md). Contrôle préalable sans lancement : `pnpm demo:prepare`.
+
+## OpenRouter assistant
+
+Admin → AI connections accepts and verifies the OpenRouter key, configures the two models and the workspace monthly AI budget. The key lives in `~/.config/cam-video-app/credentials.json` (permissions 0600), or the private `CAM_CREDENTIALS_FILE` path; `OPENROUTER_API_KEY` takes precedence. It is never returned to the browser.
+
+Run `pnpm db:migrate` before enabling the assistant. Conversations send only selected reference files (six maximum, 18 MB total) and the latest 30 messages. PDFs are inspected in an isolated local process, then sent as native files to Claude. External links are not fetched. An explicit user message or production preparation starts inference; GETs never do. Each request reserves up to $0.25 against one shared monthly budget; completed calls record OpenRouter's actual USD receipt. Unknown outcomes retain their reservation and are never automatically resubmitted. Deleting a conversation preserves its spending. This budget does not include media generation.
+
+Checks: `pnpm test:assistant` verifies replay, unknown outcomes, citations, actual metering and shared budget using injected responses with the network forbidden. Unit tests cover routing, request contracts and local PDF inspection. A successful key check does not confirm generation quality or available credit. The isolated demo remains offline even when a key is configured.
+
+Provider contracts: [OpenRouter models](https://openrouter.ai/docs/guides/overview/models), [native PDF input](https://openrouter.ai/docs/guides/overview/multimodal/pdfs), [provider selection and price limits](https://openrouter.ai/docs/guides/routing/provider-selection).

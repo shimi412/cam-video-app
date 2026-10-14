@@ -8,7 +8,6 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { acquireJobLock, jobWorkerActive } from "./job-lock";
-import { isSimulation } from "./providers/mode";
 import { storedVideoUrl } from "./stored-media";
 import { compositionHash, checkpointedRender } from "./concept/render-checkpoint";
 import { conceptCanvas, writeMontage } from "./concept/montage";
@@ -36,11 +35,12 @@ function parameters(job: Job) { return job.params as Record<string, unknown> & {
 
 async function sourceFor(job: Job) {
   const params = parameters(job), attempt = params.execution?.attemptId;
-  if (job.status !== "succeeded" || params.templateSlug !== "cam-clay" || !z.uuid().safeParse(attempt).success ||
-    !["mock", "dryrun"].includes(String(params.executionMode)) || !(await storedVideoUrl(job.outputPath))) {
-    throw new Error("Complete a CAM Clay preview before preparing its download formats.");
+  const live=params.live===true&&params.executionMode==="fal";
+  if (job.status !== "succeeded" || params.templateSlug !== "cam-clay" || (!live&&(!z.uuid().safeParse(attempt).success ||
+    !["mock", "dryrun"].includes(String(params.executionMode)))) || !(await storedVideoUrl(job.outputPath))) {
+    throw new Error("Complete a CAM Clay production before preparing its download formats.");
   }
-  const root = path.join(process.cwd(), "storage/concepts", job.id, "attempts", attempt!);
+  const root = live ? path.join(process.cwd(),"storage/concepts",job.id,"live/montage") : path.join(process.cwd(), "storage/concepts", job.id, "attempts", attempt!);
   const fingerprint = createHash("sha256").update("cam-formats-v1").update(await compositionHash(root)).update(await digest(job.outputPath!));
   for (const name of ["storyboard.json", "timing.json", "cues.json"]) fingerprint.update(await digest(path.join(root, name)));
   fingerprint.update(JSON.stringify([params.aspectRatio, params.previewSource, params.finalDurationSeconds]));
@@ -72,7 +72,6 @@ export async function exportView(job: Job) {
 }
 
 export async function queueExports(id: string) {
-  if (!isSimulation()) throw new Error("Format exports are available in offline mode only.");
   const lock = await acquireJobLock(id);
   if (!lock) return false;
   try {
@@ -101,7 +100,6 @@ export async function runExports(id: string) {
       await lock.db.update(schema.jobs).set({ params: { ...params, formatExports: state } }).where(eq(schema.jobs.id, id));
     };
     try {
-      if (!isSimulation()) throw new Error("Offline mode required.");
       const source = await sourceFor(job);
       if (source.hash !== state.sourceHash) throw new Error("Source changed.");
       await publish();

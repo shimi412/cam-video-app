@@ -1,10 +1,10 @@
 /** Explicit credential diagnostics, with no billable inference. */
-import { checkAnthropic, checkFal, checkRunway } from "../src/lib/providers/health";
-import { DEFAULT_CHAT_MODEL } from "../src/lib/providers/brain";
+import { checkFal, checkRunway } from "../src/lib/providers/health";
+import { checkOpenrouter } from "../src/lib/providers/openrouter";
 
 async function main() {
   const checks = await Promise.all([
-    checkAnthropic(process.env.CHAT_MODEL ?? DEFAULT_CHAT_MODEL),
+    checkOpenrouter().then(result => ({provider:"openrouter",...result})),
     checkFal(),
     ...((process.env.VIDEO_PROVIDER ?? "fal") === "runway" ? [checkRunway()] : []),
   ]);

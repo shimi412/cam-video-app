@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 type Overview = {
+  connected:boolean;
+  aiUsage:{settled:number;reserved:number;cap:number};
+  mediaBudget:{caps:{usd:number;"higgsfield-credit":number};usage:{usd:number;"higgsfield-credit":number}};
   balance: number;
   ledger: Array<{ id: string; deltaUsd: number; kind: string; note: string | null; createdAt: string }>;
   apiCalls: Array<{ id: string; provider: string; kind: string; model: string; realCostUsd: number; billedUsd: number; createdAt: string }>;
@@ -53,9 +56,11 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between"><h1 className="text-2xl font-semibold tracking-tight">Admin</h1><a href="/admin/users" className="text-accent">Manage workspace access</a></div>
+      <div className="flex justify-between"><h1 className="text-2xl font-semibold tracking-tight">Admin</h1><div className="flex gap-4"><a href="/admin/connections" className="text-accent">AI connections</a><a href="/admin/users" className="text-accent">Manage workspace access</a></div></div>
 
-      <div className="grid grid-cols-3 gap-4">
+      {data.connected&&<div className="grid gap-4 sm:grid-cols-2"><section className="border border-line bg-surface rounded-xl p-5 space-y-2"><h2 className="font-medium">Monthly AI usage</h2><p>${data.aiUsage.settled.toFixed(4)} confirmed · ${data.aiUsage.reserved.toFixed(2)} reserved</p><p className="text-sm text-muted">Monthly limit: ${data.aiUsage.cap.toFixed(2)}. DeepSeek and Claude share this budget.</p><a href="/admin/connections" className="text-accent text-sm">Models and budget settings</a></section><section className="border border-line bg-surface rounded-xl p-5 space-y-2"><h2 className="font-medium">Media budget</h2><p>${(data.mediaBudget.usage.usd/1e6).toFixed(2)} / ${(data.mediaBudget.caps.usd/1e6).toFixed(2)} allowed</p><p>{(data.mediaBudget.usage["higgsfield-credit"]/1e6).toFixed(2)} / {(data.mediaBudget.caps["higgsfield-credit"]/1e6).toFixed(2)} Higgsfield credits allowed</p><p className="text-xs text-muted">Confirmed costs and pending reservations count toward these workspace limits. Each film also requires its own budget approval. These are spending limits, not purchased credit balances.</p></section></div>}
+      {!data.connected&&<div className="grid grid-cols-3 gap-4">
+
         <section className="bg-surface border border-line rounded-xl p-5">
           <h2 className="text-sm text-muted">Credit balance</h2>
           <p className="text-3xl font-mono font-semibold mt-2">${data.balance.toFixed(2)}</p>
@@ -98,14 +103,13 @@ export default function AdminPage() {
         </section>
 
         <section className="bg-surface border border-line rounded-xl p-5">
-          <h2 className="text-sm text-muted">Chat model</h2>
-          <p className="text-lg font-mono mt-2">{String(data.settings.chat_model ?? "claude-sonnet-5")}</p>
+          <h2 className="text-sm text-muted">Assistant routing</h2>
+          <p className="text-lg mt-2">DeepSeek + Claude</p>
           <p className="text-xs text-muted mt-2">
-            Admin-side only, never exposed to the client. Wired to the live chat in the next
-            build phase.
+            Quick conversations use DeepSeek. Analysis, documents and production planning use Claude through OpenRouter.
           </p>
         </section>
-      </div>
+      </div>}
 
       <section className="bg-surface border border-line rounded-xl p-5">
         <h2 className="font-medium mb-3">Productions</h2>

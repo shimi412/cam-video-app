@@ -1,24 +1,25 @@
 # Client delivery checklist
 
-Updated 2026-10-14 for the first version due October 15. Development proceeds autonomously. No provider credits, paid trials, external messages or deployment are part of the current checks. The packaged deliverable is explicitly a preview workspace; the full contracted live-production system remains incomplete.
+Updated 2026-10-14. The connected local workspace is now available at `http://127.0.0.1:3108/` through `pnpm connected` or `demarrer-cam-connecte.command`. The real administrator account was created by Shimi, who chose the password and signed in. The earlier offline presentation on 3107 remains a separate fallback.
 
-**Presentation decision, October 14:** show the version locally on Shimi's Mac. Wait for CAM's monthly payment before incurring hosting charges. No server was bought; the empty Hetzner CAM project can remain for later. `pnpm demo` opens a separate persistent local database containing only the finished historical example, with client permissions and no paid provider access. See `docs/local-demo.md` for the five-minute walkthrough and the Desktop `cam-demo` fallback videos. This is not an online client delivery.
+Shimi requested a functioning product and will run the paid video test himself. No inference, paid media generation, trial, credit purchase, hosting order or external message was initiated by the agent. Hosting remains deferred until CAM's monthly payment is in place.
 
-Local demonstration verification: startup, duplicate-launch reuse, stop/restart, saved-note persistence, development database preservation, client access/admin rejection, three exact video downloads and HTTP byte ranges passed. Browser playback shows the 52.267-second historical Dylan film without media errors. A canceled-download stream race was fixed and checked with 30 unit cancellations plus 20 interrupted HTTP downloads. 122 unit tests, TypeScript, lint and the production build pass. Proof: `storage/qa/cam-local-demo-proof.json`. No accounts, test credits or development conversations are copied into the demonstration.
-
-| Area | Verified locally | Still required for client delivery |
+| Area | Implemented and checked | Remaining validation or scope |
 | --- | --- | --- |
-| CAM Clay production | Imported scenes/audio, review, exact audio reuse, captions, rendering and recovery; simulated generation chain | New Bram reading and approved final visuals; actual provider outputs, quotes, cost evidence and reconciliation |
-| Accounts | Auth.js credentials; invited clients/admins; session revocation; persistent attempt limits; authenticated media/routes | First real administrator and users; invitation email delivery and production configuration |
-| Production library | Search, statuses, draft/result links; three 1080p download formats, exact audio reuse, export recovery and file-integrity checks | Client acceptance of each layout; historical films are fitted with a background, not creatively reframed |
-| Conversation | Saved notes/scripts, bounded image/PDF references and HTTPS links, Studio framing, linked fresh versions, retry deduplication | Free-form LLM conversation, document analysis and selective reuse of approved media across versions |
-| Campaigns | Three editable local outlines, narration drafts, one conversation per brief, linked production and brief updates | Client editorial acceptance; generative assistant remains inactive |
-| Account and budget | Metering, ledger, provider-budget reservations, simulation isolation | Monthly statements/caps and payment workflow |
-| Stripe | Not activated | Test-mode implementation and credentials, then separately authorized live configuration |
-| Other CAM styles | Historical reference films exist | Recipe integration and final editorial acceptance |
-| Base44 | No inbound connector active | Authenticated inbound brief endpoint and source application audit |
-| Hosting | Fresh database install and upgrades tested; Docker/PostgreSQL/Caddy package, offline startup checks, backup/empty-target restore scripts prepared | Docker/TLS/render and full backup/restore rehearsal on the dedicated CAM environment; real accounts and access delivery |
-| Training | In-app guide covers invitations, dossiers, scenes, audio, recovery and three-format downloads | Client training session and acceptance |
+| Assistant | OpenRouter key saved privately by Shimi and verified read-only; automatic DeepSeek / Claude routing, selected image and PDF input, proposed narration and revisions, durable requests and shared monthly budget | Actual model response quality and native PDF output on a paid user request |
+| Scene planning | Claude directions from the exact narration; editable scenes, movement, characters and titles before approval | Editorial acceptance of generated directions |
+| Bram production | Actual provider adapters, current quote, explicit budget approval, voice and per-scene reviews, word timing, montage, resume and quote renewal | Shimi's first real generation and full voice/visual review |
+| Recovery and budget | Requests persisted before submission, accepted IDs reused after lost polls, unknown submissions blocked, stale quotes/reviews rejected, refreshed remaining budget preserves previous work | A provider submission with no returned ID requires investigation; no automatic retry. Expired hosted references and failed provider jobs may need a new version |
+| Costs | OpenRouter actual receipts; shared monthly AI limit; separate fal USD and Higgsfield-credit reservations; media workspace ceiling $100 plus 100 Higgsfield credits, with a separate approval per film | Current fal key returns 403 for billing receipts. Higgsfield transaction data cannot reliably attribute one job. Media reservations stay estimates; no invented settled costs or customer debit |
+| Accounts | Actual first administrator, credentials and cookies, client/admin roles, invitation links, disabled-session revocation and protected files; HTTP checks on compiled connected app | Invitations are copied as private links; no email service or remote hosting |
+| Exports and library | Connected production history, exact audio reuse, local rendering into three 1080p formats, download integrity and recovery | Client review of each final layout |
+| Campaigns | Three editable outlines, references, brief conversations and linked video versions | Outlines are rule-based; editorial development uses the assistant in the conversation |
+| Other styles / Base44 | Existing historical reference material | Additional recipe integration and authenticated inbound Base44 connector |
+| Commercial operations | No paid hosting, subscription or trial started | Stripe/monthly statements, client billing terms and hosting deployment remain separate unfinished delivery scope |
+
+Verification: 141 unit tests; assistant integration with network forbidden; full connected controller with injected provider responses and a local Daniel test voice, including expired quote renewal, edited scene invalidation, lost polling response, completed montage and three download formats. Zero inference/media credit spent in those checks. TypeScript, lint and build passed; compiled connected HTTP account tests passed. A disposable browser fixture successfully retrieved the actual provider quote (read-only) and saved a scene edit that invalidated it; it was removed unapproved. This is not evidence of a real Bram recording or generated client film.
+
+Proof files under `storage/qa`: `cam-assistant-proof.json`, `cam-connected-controller-proof.json`, `cam-access-connected-proof.json`. The older offline proof files remain dated historical checks. Nonfatal Turbopack warnings concern dynamic runtime-storage tracing.
 
 ## Account implementation
 

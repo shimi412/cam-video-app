@@ -25,6 +25,7 @@ import { getMarginMultiplier } from "./settings";
 import { MODEL_MAP, providerMode, saveSheet, type SheetEntry } from "./sheet";
 import { produceCollage } from "./collage/run";
 import { isSimulation } from "./providers/mode";
+import { withBrainRequest } from "./providers/brain";
 import { produceConcept } from "./concept/run";
 
 const exec = promisify(execFile);
@@ -89,7 +90,7 @@ function clipSecondsFor(audioSeconds: number): number {
 export async function runJob(jobId: string, options: { resume?: boolean } = {}): Promise<void> {
   const lock = await acquireJobLock(jobId);
   if (!lock) return;
-  try { await executeJob(jobId, lock, options); }
+  try { await withBrainRequest({requestId: jobId, jobId}, () => executeJob(jobId, lock, options)); }
   finally { await lock.release(); }
 }
 

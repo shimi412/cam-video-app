@@ -2,6 +2,9 @@ import { withAccess } from "@/lib/access";
 import { z } from "zod";
 import { createHash, randomUUID } from "node:crypto";
 import { db, schema } from "@/db";
+import { directConcept } from "@/lib/concept/ai-direction";
+import { assertCamConfigured } from "@/lib/providers/live-policy";
+import { withBrainRequest } from "@/lib/providers/brain";
 import { frameProduction } from "@/lib/brain-llm";
 import { estimateProduction } from "@/lib/pricing";
 import { getBalanceUsd } from "@/lib/credits";
@@ -62,11 +65,16 @@ async function handlePOST(request: Request) {
       await verifyExistingAssets();
     } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Existing media unavailable." }, { status: 409 }); }
   }
-  if (!isSimulation() && (overrides?.templateSlug ? getActiveRecipe(overrides.templateSlug)?.concept?.previewOnly : activeRecipes().every((r) => r.concept?.previewOnly))) {
+  if (!isSimulation() && process.env.CAM_LIVE_ENABLED !== "1" && (overrides?.templateSlug ? getActiveRecipe(overrides.templateSlug)?.concept?.previewOnly : activeRecipes().every((r) => r.concept?.previewOnly))) {
     return Response.json({ error: "CAM Clay is currently available for free previews only. Final production is being prepared." }, { status: 409 });
   }
+  if (!isSimulation()) {
+    try { assertCamConfigured(); } catch { return Response.json({error:"Open the connected CAM workspace to prepare a production."},{status:409}); }
+    if (!requestId) return Response.json({error:"A production request identifier is required."},{status:400});
+  }
+  const jobId = requestId ?? randomUUID();
   let framing;
-  try { framing = await frameProduction(script, mode, overrides); }
+  try { framing = await withBrainRequest({ requestId: jobId, conversationId }, () => frameProduction(script, mode, overrides)); }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to plan this script." }, { status: 400 }); }
   const { analysis, brain } = framing;
   const params = previewSource === "existing" ? existingParams(framing.params) : { ...framing.params, previewSource };
@@ -75,7 +83,10 @@ async function handlePOST(request: Request) {
     analysis.reason = "Reuse the existing CAM film with its recorded Dylan voice and 12 animated clips. Local montage, no new generation.";
   }
   const recipe = getActiveRecipe(params.templateSlug)!;
-  const jobId = requestId ?? randomUUID();
+  if (!isSimulation() && recipe.concept) {
+    try { params.sceneDirections = await withBrainRequest({requestId:jobId,conversationId}, () => directConcept(script,params,recipe)); }
+    catch(error) { return Response.json({error:error instanceof Error?error.message:"The storyboard could not be prepared."},{status:409}); }
+  }
   let preparation = null;
   if (recipe.concept && previewSource === "planning") {
     try { preparation = await prepareConcept(script, params, recipe, jobId); }
@@ -107,8 +118,8 @@ async function handlePOST(request: Request) {
     await tx.insert(schema.messages).values({ conversationId: conversation.id, role: "user", content: { type: "script", text: script, parentJobId } });
     const [job] = await tx.insert(schema.jobs).values({
       id: jobId, conversationId: conversation.id, templateId: template?.id, status: "estimated", script,
-      params: { ...params, executionMode: providerMode(), preparation, draft, originRequestHash: requestHash, parentJobId },
-      estimateUsd: estimate.totalBilledUsd.toFixed(2),
+      params: { ...params, live: !isSimulation() && Boolean(recipe.concept), executionMode: providerMode(), preparation, draft, originRequestHash: requestHash, parentJobId },
+      estimateUsd: !isSimulation()&&recipe.concept ? null : estimate.totalBilledUsd.toFixed(2),
     }).returning();
     await tx.insert(schema.messages).values({ conversationId: conversation.id, role: "assistant", content: { type: "framing", jobId: job.id, analysis, params, estimate } });
     return Response.json({ ...draft, jobId: job.id, preparation });

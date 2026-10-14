@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BramRequestSchema, ImageRequestSchema, VideoRequestSchema, IMAGE_ENDPOINT, VIDEO_ENDPOINT, type GenerationOperation } from "./generation-plan";
 import { isSimulation } from "../providers/mode";
+import { assertAuthorizedExecution } from "../providers/live-policy";
 
 export type TransportMode = "simulation" | "live";
 export type QueueRequest = {
@@ -11,12 +12,8 @@ export type QueueRequest = {
 export type JsonRequest = (url: string, init: { method: "GET" | "POST"; body?: string }) => Promise<unknown>;
 export type McpCall = (name: string, args: Record<string, unknown>) => Promise<unknown>;
 
-/** Deliberately independent of credentials, environment flags and subscription
- * status. Opening this gate requires implementing budget reservation, approval
- * and final voice alignment, plus explicit authorization for paid execution.
- */
 export function assertCamLiveExecution(): void {
-  throw new Error("CAM paid generation is disabled. No paid request or trial is authorized.");
+  assertAuthorizedExecution();
 }
 
 export function assertTransportMode(mode: TransportMode) {
@@ -77,7 +74,7 @@ export function falQueue(operation: GenerationOperation, input: Record<string, u
 /** MCP may return structuredContent or JSON text. Never mistake an estimate,
  * upgrade offer or an error for an acknowledged audio generation request.
  */
-function mcpData(value: unknown) {
+export function mcpData(value: unknown) {
   const envelope = object.parse(value);
   if (envelope.isError) throw new Error("Higgsfield tool returned an error.");
   if (envelope.structuredContent) return object.parse(envelope.structuredContent);
@@ -93,7 +90,7 @@ export function bramQueue(input: Record<string, unknown>, mode: TransportMode, c
   return {
     mode,
     async submit() {
-      const result = object.parse(await call("generate_audio", { params: payload }));
+      const result = object.parse(await call("generate_audio", { params: { ...payload, use_unlim: false } }));
       const parsed = z.object({ results: z.array(z.object({ id: requestIdSchema, type: z.literal("audio").optional(), model: z.literal("text2speech_v2").optional() })).length(1) }).safeParse(result);
       if (!parsed.success) throw new Error("No unique Bram request ID. Reconcile before retrying; no plan or trial will be selected automatically.");
       return { requestId: parsed.data.results[0].id };

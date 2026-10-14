@@ -4,6 +4,7 @@ import { isSimulation } from "@/lib/providers/mode";
 export const GET = withAccess(async (request) => {
   const user = await actorFor(request);
   return Response.json({ user, balance: await getBalanceUsd(), preview: isSimulation(),
+    connected: !isSimulation() && process.env.CAM_LIVE_ENABLED === "1",
     localDemo: user?.local === true && process.env.CAM_LOCAL_DEMO === "1",
   }, { headers: { "Cache-Control": "no-store" } });
 });

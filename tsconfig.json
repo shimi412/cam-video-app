@@ -39,6 +39,7 @@
   "exclude": [
     "node_modules",
     ".next-access-test",
-    ".next-demo"
+    ".next-demo",
+    ".next-connected"
   ]
 }

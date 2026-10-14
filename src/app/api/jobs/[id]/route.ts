@@ -22,6 +22,7 @@ async function handleGET(
   const canResume = recoveryAllowed(job) && !recentlyQueued(job) && !(await jobWorkerActive(id));
   return Response.json({
     id: job.id,
+    live: jobParams.live === true,
     conversationId: job.conversationId,
     draft: job.status === "estimated" && current.draft ? { ...current.draft, jobId: job.id, preparation: current.preparation } : null,
     canResume,

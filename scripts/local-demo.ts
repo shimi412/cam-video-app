@@ -12,7 +12,7 @@ const database = "postgres://cam:cam@127.0.0.1:5433/cam_local_demo";
 const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: database, NODE_ENV: "development", CAM_LOCAL_DEMO: "1",
   CAM_AUTH_MODE: "local", CAM_RELEASE: "preview", PROVIDER_MODE: "dryrun", BRAIN_MODE: "mock",
   CAM_NEXT_DIR: ".next-demo", CAM_TS_CONFIG: "tsconfig.demo.json", APP_URL: origin, AUTH_URL: origin,
-  FAL_KEY: "", ANTHROPIC_API_KEY: "", CAM_HIGGSFIELD_ACCESS_TOKEN: "",
+  FAL_KEY: "", OPENROUTER_API_KEY: "", CAM_LIVE_ENABLED: "0", ANTHROPIC_API_KEY: "", CAM_HIGGSFIELD_ACCESS_TOKEN: "",
   NEXT_TELEMETRY_DISABLED: "1", HYPERFRAMES_NO_TELEMETRY: "1", HYPERFRAMES_NO_UPDATE_CHECK: "1",
   HYPERFRAMES_NO_AUTO_INSTALL: "1", HYPERFRAMES_SKIP_SKILLS: "1" };
 Object.assign(process.env, env);

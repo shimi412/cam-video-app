@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { assistantAvailable } from "./assistant";
 
 export const Id = z.uuid();
 export const MessageInput = z.object({ id: Id, text: z.string().trim().min(1).max(6000) }).strict();
@@ -22,7 +23,7 @@ export async function conversationView(id: string) {
     db.select({ id: schema.attachments.id, label: schema.attachments.label, kind: schema.attachments.kind, url: schema.attachments.url, size: schema.attachments.size }).from(schema.attachments).where(eq(schema.attachments.conversationId, id)).orderBy(asc(schema.attachments.createdAt)),
     db.select({ id: schema.jobs.id, status: schema.jobs.status, script: schema.jobs.script, createdAt: schema.jobs.createdAt, aspectRatio: sql<string>`${schema.jobs.params}->>'aspectRatio'`, parentJobId: sql<string | null>`${schema.jobs.params}->>'parentJobId'` }).from(schema.jobs).where(eq(schema.jobs.conversationId, id)).orderBy(desc(schema.jobs.createdAt)).limit(100),
   ]);
-  return { conversation, messages, attachments: attachments.map((item) => ({ ...item, url: item.kind === "link" ? item.url : `/api/attachments/${item.id}` })), jobs };
+  return { conversation, messages, assistant: { available: await assistantAvailable(), maximumMessageUsd: 0.25 }, attachments: attachments.map((item) => ({ ...item, url: item.kind === "link" ? item.url : `/api/attachments/${item.id}` })), jobs };
 }
 export async function addMessage(conversationId: string, input: z.infer<typeof MessageInput>) {
   return db.transaction(async (tx) => {

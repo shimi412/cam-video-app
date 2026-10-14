@@ -50,7 +50,9 @@ async function main() {
   await db
     .insert(schema.settings)
     .values([
-      { key: "chat_model", value: "claude-sonnet-5" },
+      { key: "ai_fast_model", value: "deepseek/deepseek-v4.1-flash" },
+      { key: "ai_deep_model", value: "anthropic/claude-sonnet-5" },
+      { key: "assistant_monthly_usd", value: 25 },
       { key: "margin_multiplier", value: 2.5 },
     ])
     .onConflictDoNothing();
