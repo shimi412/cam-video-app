@@ -14,10 +14,12 @@ type Context={params:Promise<{id:string}>};
 export const GET=withAccess(async(_request,context:Context)=>{
  const {id}=await context.params;if(!z.uuid().safeParse(id).success)return Response.json({error:"Invalid production ID."},{status:400});
  const [job]=await db.select().from(schema.jobs).where(eq(schema.jobs.id,id));if(!job)return Response.json({error:"Production not found."},{status:404});
- const params=job.params as ProductionParams&{live?:boolean};const recipe=getActiveRecipe(params.templateSlug);
+ const params=job.params as ProductionParams&{live?:boolean;finishingRevision?:string};const recipe=getActiveRecipe(params.templateSlug);
  if(!params.live||!recipe?.concept)return Response.json({error:"This is a local preview. Open it in the Studio."},{status:409});
  const board=planConcept(job.script,recipe,params.aspectRatio,params.sceneDirections);
- return Response.json({id,script:job.script,conversationId:job.conversationId,format:params.aspectRatio,scenes:board.shots,jobStatus:job.status,outputUrl:await storedVideoUrl(job.outputPath),busy:await jobWorkerActive(id),...await liveView(id)});
+ const output=await storedVideoUrl(job.outputPath);
+ const outputUrl=output&&params.finishingRevision?`${output}?v=${encodeURIComponent(params.finishingRevision)}`:output;
+ return Response.json({id,script:job.script,conversationId:job.conversationId,format:params.aspectRatio,scenes:board.shots,jobStatus:job.status,outputUrl,busy:await jobWorkerActive(id),...await liveView(id)});
 });
 export const POST=withAccess(async(request,context:Context)=>{
  const {id}=await context.params;if(!z.uuid().safeParse(id).success)return Response.json({error:"Invalid production ID."},{status:400});

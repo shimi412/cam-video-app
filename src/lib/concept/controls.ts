@@ -16,7 +16,7 @@ export function validateTiming(timing: ConceptTiming, captions: Caption[]) {
 }
 
 /** One frame per shot, plus both sides of every cut, with the safe area visible. */
-export async function controls(video: string, root: string, starts: number[], width: number, height: number, duration: number, options: { estimatedTiming?: boolean; captions?: Caption[]; requireAudibleVoice?: boolean } = {}) {
+export async function controls(video: string, root: string, starts: number[], width: number, height: number, duration: number, options: { estimatedTiming?: boolean; captions?: Caption[]; requireAudibleVoice?: boolean; denseFrames?: boolean } = {}) {
   const dir = path.join(root, "controls");
   await mkdir(dir, { recursive: true });
   const samples = starts.map((start, i) => Math.min(duration - .1, (start + (starts[i + 1] ?? duration)) / 2));
@@ -36,6 +36,12 @@ export async function controls(video: string, root: string, starts: number[], wi
   };
   await makeBoard("shots", samples);
   await makeBoard("transitions", boundaries);
+  // Paginated four-fps strips make blinks, reversed actions and disappearing
+  // objects inspectable; a single midpoint frame cannot detect those defects.
+  if (options.denseFrames) for (let start = 0, page = 1; start < duration; start += 4, page++) {
+    const count = Math.min(16, Math.ceil((duration - start) * 4));
+    await makeBoard(`motion-${page}`, Array.from({ length: count }, (_, i) => Math.min(duration - .04, start + i / 4)));
+  }
   const captionBoards: string[] = [];
   for (let i = 0; i < (options.captions?.length ?? 0); i += 12) {
     const name = `captions-${1 + i / 12}`;

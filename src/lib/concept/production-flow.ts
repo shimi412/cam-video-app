@@ -26,6 +26,7 @@ import { controls, validateTiming } from "./controls";
 import { subtitleFile } from "./existing-run";
 import { selectedNarration } from "./narration";
 import { finishingBoard, type Finishing } from "./finishing";
+import { prepareEditorialAudio, checkEditorialAudio } from "./editorial-audio";
 
 export type FlowPlan = ReturnType<typeof generationPlan>;
 export type FlowReview = { stage: "script" | "voice" | "direction" | "start" | "end" | "clip"; scene: number | null; target: string;
@@ -124,6 +125,7 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
     const board = planConcept(input.script, input.recipe, input.params.aspectRatio, input.params.sceneDirections);
     const phrases = board.shots.map((s) => s.narration);
     let plan = generationPlan(input.script, input.params, board, placeholderTiming(phrases), input.references);
+    if (plan.operations.some((op) => op.gates.includes("correct-physical-direction"))) throw new Error(plan.blockers.filter((b) => b.startsWith("Scene ")).join(" "));
     const scriptDecision = await review("script", null, { script: input.script, voice: CAM_VOICE, format: input.params.aspectRatio });
     const importedVoice = await selectedNarration(jobId, phrases, input.params);
     const recording = importedVoice ? null : await receive(await execute(plan, plan.operations[0], {}, { script: scriptDecision }));
@@ -198,10 +200,13 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
   return outcome;
 }
 
-/** Render only a complete, reviewed packet. The voice is copied unchanged;
- * word timings and scene intervals come from that exact recording. */
+/** The immutable recording remains intact; local pacing and mixing are derived
+ * assets with their own timing and evidence, never a new voice generation. */
 export async function renderProductionFlow(packet: RenderPacket, workspace: string, checkpoints: string, assertOwned: () => Promise<void>, finishing?: Finishing) {
-  assertTransportMode(packet.mode); await assertOwned();
+  // Free finishing needs no live provider access; the packet and reviews below
+  // still have to match the exact completed production.
+  if (!["live", "simulation"].includes(packet.mode)) throw new Error("Invalid rendering mode.");
+  await assertOwned();
   const { fingerprint, ...content } = packet;
   if (sha256(JSON.stringify(content)) !== fingerprint) throw new Error("Render packet changed.");
   const board = finishingBoard(packet.board, finishing);
@@ -211,20 +216,23 @@ export async function renderProductionFlow(packet: RenderPacket, workspace: stri
   for (const decision of packet.reviews) if (Decision.parse(decision).mode !== packet.mode || decision.decision !== "approved") throw new Error("Invalid production review.");
   await mkdir(path.join(workspace, "assets"), { recursive: true });
   await writeFile(path.join(workspace, "assets/narration.wav"), voiceBytes);
-  const durations = packet.timing.phrases.map((p, i) => (packet.timing.phrases[i + 1]?.start ?? packet.timing.duration) - (i === 0 ? 0 : p.start));
-  const staged = await stageSceneMedia(packet.jobId, packet.media, workspace, durations);
-  const composition = await writeMontage(workspace, board, packet.timing, packet.aspectRatio, staged);
+  const audio = await prepareEditorialAudio(workspace, board, packet.timing, { breaths: finishing?.breaths });
+  const timing = audio.timing;
+  const durations = timing.phrases.map((p, i) => (timing.phrases[i + 1]?.start ?? audio.duration) - (i === 0 ? 0 : p.start));
+  const staged = await stageSceneMedia(packet.jobId, packet.media, workspace, durations, finishing?.clips, board.shots.filter(s => s.endScene).map(s => s.index));
+  const composition = await writeMontage(workspace, board, timing, packet.aspectRatio, staged, { audio, endingVariant: finishing?.ending });
   await writeFile(path.join(workspace,"storyboard.json"),JSON.stringify(board));
-  await writeFile(path.join(workspace,"timing.json"),JSON.stringify(packet.timing));
-  validateTiming(packet.timing, composition.captions);
+  await writeFile(path.join(workspace,"timing.json"),JSON.stringify(timing));
+  validateTiming(timing, composition.captions);
   for (const kind of ["srt", "vtt"] as const) await writeFile(path.join(workspace, `captions.${kind}`), subtitleFile(composition.captions, kind));
   const output = path.join(workspace, "preview.mp4");
   const rendering = await checkpointedRender({ project: workspace, output, checkpointDir: path.join(checkpoints, "render"), assertOwned,
     render: (file) => renderConcept(workspace, file) });
-  await controls(output, workspace, [...composition.cues.map((s) => s.start), packet.timing.duration], composition.width, composition.height, composition.duration, { requireAudibleVoice: true, estimatedTiming: packet.timing.estimated, captions: composition.captions });
+  const audioReport = await checkEditorialAudio(output, workspace, timing, [...timing.phrases.slice(1).map((p) => p.start), audio.logoStart]);
+  await controls(output, workspace, [...composition.cues.map((s) => s.start), audio.logoStart], composition.width, composition.height, composition.duration, { requireAudibleVoice: true, estimatedTiming: timing.estimated, captions: composition.captions, denseFrames: true });
   await assertOwned();
   const proof = { mode: packet.mode, fingerprint, voiceSha256: packet.audioSha256, alignmentSha256: packet.alignmentSha256,
-    duration: composition.duration, narrationDuration: packet.timing.duration, brandEnding: composition.brandEnding, timingEstimated: packet.timing.estimated, finalBramVoiceApproved: packet.mode === "live" && packet.voiceOrigin === "generated-bram", paidGenerationAuthorized: packet.mode === "live", media: packet.media, renderReused: rendering.reused,
+    duration: composition.duration, narrationDuration: timing.duration, brandEnding: composition.brandEnding, audioReport, editorialApproval: "pending-listening-and-picture-review", timingEstimated: timing.estimated, finalBramVoiceApproved: packet.mode === "live" && packet.voiceOrigin === "generated-bram", paidGenerationAuthorized: packet.mode === "live", media: packet.media, renderReused: rendering.reused,
     ...(finishing ? { finishing: { ...finishing, sourceFingerprint: fingerprint, boardSha256: sha256(JSON.stringify(board)), completedAt: new Date().toISOString(), newPaidRequests: 0 } } : {}) };
   await writeFile(path.join(workspace, "production-flow.json"), JSON.stringify(proof, null, 2));
   return { output, ...proof };

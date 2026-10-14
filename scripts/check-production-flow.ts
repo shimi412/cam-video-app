@@ -33,7 +33,7 @@ async function main() {
     const params = job.params as ProductionParams, recipe = getRecipe(params.templateSlug)!;
     let board = planConcept(script, recipe, params.aspectRatio);
     const shot = board.shots[0];
-    params.sceneDirections = { 1: { scene: shot.scene, motion: shot.motion, references: shot.references, overlay: "OFFLINE TEST", strike: false, endScene: shot.scene } };
+    params.sceneDirections = { 1: { scene: shot.scene, motion: shot.motion, references: shot.references, overlay: "OFFLINE TEST", strike: false, endScene: `${shot.scene} The magnifying glass now rests at the far edge of the page.` } };
     board = planConcept(script, recipe, params.aspectRatio, params.sceneDirections);
     const directory = path.join(process.cwd(), "storage/concepts", id, "checkpoints/production-sequence");
     const workspace = path.join(process.cwd(), "storage/qa", `flow-${id}`);

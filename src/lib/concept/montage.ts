@@ -3,6 +3,9 @@ import path from "node:path";
 import type { ConceptBoard, ConceptTiming } from "./types";
 import type { AspectRatio } from "../recipes";
 import { brandEnding } from "./brand-ending";
+import type { EditorialAudio } from "./editorial-audio";
+export type MontageMedia = { kind: "image" | "video"; file: string; heldSeconds: number; mediaStart?: number; playbackRate?: number; sourceAspect?: number };
+export type MontageOptions = { brandEnding?: boolean; endingVariant?: "cream" | "last-frame"; endingTiming?: { start: number; end: number; voiceEnd: number }; audio?: EditorialAudio };
 
 export const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 export function conceptCanvas(aspect: AspectRatio) {
@@ -43,8 +46,8 @@ export function captionGroups(timing: ConceptTiming): Caption[] {
 
 /** Re-layout each canvas; no automatic crop that could remove captions or faces. */
 export async function writeMontage(root: string, board: ConceptBoard, timing: ConceptTiming, aspect: AspectRatio,
-  media: Record<number, { kind: "image" | "video"; file: string; heldSeconds: number }> = {},
-  options: { brandEnding?: boolean } = {}) {
+  media: Record<number, MontageMedia> = {},
+  options: MontageOptions = {}) {
   const { width: w, height: h } = conceptCanvas(aspect);
   await mkdir(path.join(root, "assets"), { recursive: true });
   await copyFile(path.join(process.cwd(), "node_modules/gsap/dist/gsap.min.js"), path.join(root, "assets/gsap.min.js"));
@@ -52,11 +55,14 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
   const fontSize = Math.min(48, Math.round(w * 0.045));
   const captionTop = Math.round(Math.min(h * 0.67, h * .78 - fontSize * 2.5 - 28));
   const nodes: string[] = [];
+  const ending = options.brandEnding === false ? null : await brandEnding(root, options.audio?.voiceEnd ?? options.endingTiming?.voiceEnd ?? timing.duration, w, h,
+    { start: options.audio?.logoStart ?? options.endingTiming?.start, end: options.audio?.duration ?? options.endingTiming?.end, variant: options.endingVariant });
+  const duration = ending?.cue.end ?? timing.duration;
   const cues = board.shots.map((shot, i) => {
     const start = i === 0 ? 0 : timing.phrases[i].start;
-    const end = timing.phrases[i + 1]?.start ?? timing.duration;
+    const end = timing.phrases[i + 1]?.start ?? (ending ? duration : timing.duration);
     const asset = media[shot.index];
-    if (asset?.kind === "video") nodes.push(`<video id="scene-${i}" class="clip scene imported" src="${asset.file}" muted playsinline data-start="${start}" data-duration="${end - start}" data-track-index="1"></video>`);
+    if (asset?.kind === "video") nodes.push(`<video id="scene-${i}" class="clip scene imported" src="${asset.file}" muted playsinline data-start="${start}" data-duration="${end - start}" data-media-start="${asset.mediaStart ?? 0}" data-playback-rate="${asset.playbackRate ?? 1}" data-track-index="1" style="object-fit:${Math.abs((asset.sourceAspect ?? 0) - w / h) < .015 ? "cover" : "contain"}"></video>`);
     else if (asset) nodes.push(`<div id="scene-${i}" class="clip scene" data-start="${start}" data-duration="${end - start}" data-track-index="1"><img class="imported" src="${asset.file}" alt=""></div>`);
     else nodes.push(`<div id="scene-${i}" class="clip scene" data-start="${start}" data-duration="${end - start}" data-track-index="1"><div class="placeholder"><div class="book"></div><p class="shot-number">SHOT ${shot.index}</p><p class="notice">PLACEHOLDER VISUAL</p></div></div>`);
     if (shot.overlay) nodes.push(`<div id="title-${i}" class="clip title ${shot.strike ? "struck" : ""}" data-start="${start}" data-duration="${end - start}" data-track-index="10">${escapeHtml(shot.overlay)}</div>`);
@@ -67,10 +73,9 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
   for (const [i, cap] of captions.entries()) {
     nodes.push(`<div id="caption-${i}" class="clip caption" data-start="${cap.start}" data-duration="${cap.end - cap.start}" data-track-index="20">${escapeHtml(cap.text)}</div>`);
   }
-  nodes.push(`<audio id="voice" src="assets/narration.wav" data-start="0" data-duration="${timing.duration}" data-track-index="30"></audio>`);
-  const ending = options.brandEnding === false ? null : await brandEnding(root, timing.duration, w, h);
+  nodes.push(`<audio id="voice" src="${options.audio?.voiceFile ?? "assets/narration.wav"}" data-start="0" data-duration="${timing.duration}" data-volume="${options.audio?.gain ?? 1}" data-track-index="30"></audio>`);
+  if (options.audio) nodes.push(`<audio id="music-bed" src="${options.audio.bedFile}" data-start="0" data-duration="${duration}" data-volume="${options.audio.gain}" data-track-index="31"></audio>`);
   if (ending) nodes.push(ending.html);
-  const duration = ending?.cue.end ?? timing.duration;
   const html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><title>CAM clay preview</title><script src="assets/gsap.min.js"></script><style>
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#FFF4DC;color:#3B2416;font-family:sans-serif}
 #root{position:relative;width:100%;height:100%;overflow:hidden;background:#FFF4DC}
@@ -85,6 +90,6 @@ export async function writeMontage(root: string, board: ConceptBoard, timing: Co
 </style></head><body><div id="root" data-composition-id="main" data-width="${w}" data-height="${h}" data-start="0" data-duration="${duration}">${nodes.join("\n")}</div>
 <script>const tl=gsap.timeline({paused:true});${ending?.motion ?? ""}tl.to({}, {duration:${duration}},0);window.__timelines["main"]=tl;</script></body></html>`;
   await writeFile(path.join(root, "index.html"), html);
-  await writeFile(path.join(root, "cues.json"), JSON.stringify({ duration, narrationDuration: timing.duration, brandEnding: ending?.cue ?? null, shots: cues, captions, safeArea: { x: left, y: Math.round(h * .12), width: safeWidth, bottom: Math.floor(h * .78) } }, null, 2));
+  await writeFile(path.join(root, "cues.json"), JSON.stringify({ duration, narrationDuration: timing.duration, brandEnding: ending?.cue ?? null, montageOptions: options, shots: cues, captions, safeArea: { x: left, y: Math.round(h * .12), width: safeWidth, bottom: Math.floor(h * .78) } }, null, 2));
   return { cues, captions, duration, brandEnding: ending?.cue ?? null, width: w, height: h };
 }

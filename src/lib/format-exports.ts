@@ -10,7 +10,8 @@ import { db, schema } from "@/db";
 import { acquireJobLock, jobWorkerActive } from "./job-lock";
 import { storedVideoUrl } from "./stored-media";
 import { compositionHash, checkpointedRender } from "./concept/render-checkpoint";
-import { conceptCanvas, writeMontage } from "./concept/montage";
+import { conceptCanvas, writeMontage, type MontageOptions, type MontageMedia } from "./concept/montage";
+import { checkEditorialAudio } from "./concept/editorial-audio";
 import { controls, validateTiming } from "./concept/controls";
 import { renderConcept } from "./concept/render";
 import { subtitleFile } from "./concept/existing-run";
@@ -107,7 +108,7 @@ export async function runExports(id: string) {
       const timing = JSON.parse(await readFile(path.join(source.root, "timing.json"), "utf8")) as ConceptTiming;
       const historical = params.previewSource === "existing";
       const board = JSON.parse(await readFile(path.join(source.root, "storyboard.json"), "utf8")) as ConceptBoard;
-      const cues = JSON.parse(await readFile(path.join(source.root, "cues.json"), "utf8")) as { brandEnding?: { version: number }; shots: { shot: number; media?: { kind: "image" | "video"; file: string; heldSeconds: number } }[] };
+      const cues = JSON.parse(await readFile(path.join(source.root, "cues.json"), "utf8")) as { montageOptions?: MontageOptions; brandEnding?: { version: number; start: number; end: number; voiceEnd: number }; shots: { shot: number; media?: MontageMedia }[] };
       for (const aspect of FORMATS) {
         const directory = path.join(base, aspect.replace(":", "x"));
         await mkdir(directory, { recursive: true });
@@ -130,12 +131,16 @@ export async function runExports(id: string) {
             await cp(path.join(source.root, "assets"), path.join(directory, "assets"), { recursive: true });
             const media = Object.fromEntries(cues.shots.filter((s) => s.media).map((s) => [s.shot, s.media!]));
             // Follow the saved film; exporting an older film must not append a new ending.
-            const composition = await writeMontage(directory, board, timing, aspect, media, { brandEnding: Boolean(cues.brandEnding) });
+            const composition = await writeMontage(directory, board, timing, aspect, media, { ...cues.montageOptions, endingTiming: cues.brandEnding, brandEnding: Boolean(cues.brandEnding) });
             validateTiming(timing, composition.captions);
             for (const kind of ["srt", "vtt"] as const) await writeFile(path.join(directory, `captions.${kind}`), subtitleFile(composition.captions, kind));
             await checkpointedRender({ project: directory, output: temporary, checkpointDir: path.join(directory, "checkpoints"), assertOwned: lock.assertOwned, render: (target) => renderConcept(directory, target) });
           }
           const duration = Number(params.finalDurationSeconds ?? timing.duration);
+          if (cues.montageOptions?.audio) {
+            await copyFile(path.join(source.root, "audio-finishing.json"), path.join(directory, "audio-finishing.json"));
+            await checkEditorialAudio(temporary, directory, timing, [cues.montageOptions.audio.logoStart]);
+          }
           await controls(temporary, directory, [0], size.width, size.height, duration);
           if ((await sourceFor(job)).hash !== source.hash) throw new Error("Source changed during export.");
           await lock.assertOwned(); await rename(temporary, output);

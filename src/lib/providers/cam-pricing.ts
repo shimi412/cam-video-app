@@ -25,6 +25,7 @@ export function renewCamQuote(previous:CamQuote, current:CamQuote, attemptedIds:
 const micros=(value:number)=>Math.ceil(Number((value*1e6).toPrecision(12)));
 /** A quote is read-only. Never select an upgrade, trial or automatic refill. */
 export async function priceCamPlan(plan:ReturnType<typeof generationPlan>, providers:{fal:JsonRequest;higgsfield:McpCall}, now=Date.now()):Promise<CamQuote>{
+  if(plan.operations.some(op=>op.gates.includes("correct-physical-direction")))throw new Error("Review the physical action and its start/end images before requesting a quote.");
   const endpoints=[IMAGE_ENDPOINT,VIDEO_ENDPOINT,ALIGNMENT_ENDPOINT];
   const response=z.object({prices:z.array(z.object({endpoint_id:z.string(),unit_price:z.number().nonnegative(),unit:z.string(),currency:z.literal("USD")}))}).parse(await providers.fal(`https://api.fal.ai/v1/models/pricing?${endpoints.map(e=>`endpoint_id=${encodeURIComponent(e)}`).join("&")}`,{method:"GET"}));
   const price=(model:string,unit:string)=>{const result=response.prices.find(p=>p.endpoint_id===model);if(!result||result.unit!==unit)throw new Error("The provider pricing unit changed. Refresh the production quote.");return result.unit_price;};
@@ -34,9 +35,9 @@ export async function priceCamPlan(plan:ReturnType<typeof generationPlan>, provi
     const unit=op.kind==="voice"?"higgsfield-credit" as const:"usd" as const;
     // Voice controls clip length. Reserve the supported 15-second maximum until
     // the actual recording is aligned; unused capacity never becomes a charge.
-    const quantity=op.kind==="video"?15:op.kind==="alignment"?1250:1;
+    const quantity=op.kind==="video"?(plan.timingBasis==="reviewed-voice-alignment"?Number(op.input.duration):15):op.kind==="alignment"?1250:1;
     const unitPrice=op.kind==="voice"?(voiceQuote!.cost.credits_exact??voiceQuote!.cost.credits):price(op.model,op.kind==="image"?"images":op.kind==="video"?"seconds":"compute seconds");
-    return {id:op.id,model:op.model,kind:op.kind,unit,quantity,unitPrice,maximum:micros(quantity*unitPrice),description:op.kind==="voice"?"Bram narration, paid credits":op.kind==="alignment"?"Word synchronization, maximum compute allowance":op.kind==="image"?"One approved-scene keyframe (2K)":"Animation, up to 15 seconds after voice alignment"};
+    return {id:op.id,model:op.model,kind:op.kind,unit,quantity,unitPrice,maximum:micros(quantity*unitPrice),description:op.kind==="voice"?"Bram narration, paid credits":op.kind==="alignment"?"Word synchronization, maximum compute allowance":op.kind==="image"?"One approved-scene keyframe (2K)":plan.timingBasis==="reviewed-voice-alignment"?`Animation, ${quantity} seconds for the reviewed action`:"Animation, up to 15 seconds after voice alignment"};
   });
   const caps={usd:0,"higgsfield-credit":0};for(const line of lines)caps[line.unit]+=line.maximum;
   let falBillingAvailable=false;

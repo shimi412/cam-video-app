@@ -7,6 +7,11 @@ export const DirectionSchema = z.object({
   endScene: z.string().trim().min(1).max(3000).nullable(),
   overlay: z.string().max(100).nullable(),
   strike: z.boolean(),
+  // Optional on historical packets; required in newly requested AI directions.
+  metaphor: z.string().trim().min(1).max(500).optional(),
+  stateChange: z.boolean().optional(),
+  actionSeconds: z.number().min(3).max(15).optional(),
+  breathBefore: z.number().min(0.25).max(0.8).optional(),
 }).strict();
 export type SceneDirection = z.infer<typeof DirectionSchema>;
 export const ShotSchema = DirectionSchema.extend({ narration: z.string().min(1) });

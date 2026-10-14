@@ -16,8 +16,9 @@ it("adds the original CAM logo in all three formats without extending speech, ca
     for (const aspect of ["9:16", "1:1", "16:9"] as const) {
       const result = await writeMontage(root, board, timing, aspect);
       const html = await readFile(path.join(root, "index.html"), "utf8");
-      expect(result.duration).toBe(timing.duration + 3);
-      expect(result.cues.at(-1)!.end).toBe(timing.duration);
+      expect(result.duration).toBeCloseTo(timing.duration + 3.4);
+      expect(result.brandEnding!.start).toBeCloseTo(timing.duration + .8);
+      expect(result.cues.at(-1)!.end).toBe(result.duration);
       expect(result.captions.every((c) => c.end <= timing.duration)).toBe(true);
       expect(html).toContain(`id="voice" src="assets/narration.wav" data-start="0" data-duration="${timing.duration}"`);
       expect(html).toContain('id="cam-ending"');

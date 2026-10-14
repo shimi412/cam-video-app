@@ -4,6 +4,7 @@ import type { ConceptBoard, ConceptTiming } from "./types";
 import type { ProductionParams } from "../brain";
 import { CAM_VOICE } from "./cam-voice";
 import { ALIGNMENT_ENDPOINT, TranscriptionRequest } from "./transcription";
+import { changesState, physicalDirectionIssues } from "./physical-direction";
 
 export const IMAGE_ENDPOINT = "fal-ai/nano-banana-pro/edit";
 export const VIDEO_ENDPOINT = "fal-ai/kling-video/v3/pro/image-to-video";
@@ -70,11 +71,14 @@ export function generationPlan(script: string, params: ProductionParams, board: 
       dependsOn: [`${id}-start`], gates: ["start-frame-review", "paid-budget"], input: { ...imageInput, prompt: `Image 1: approved start frame, preserve its camera, composition and lighting. ${referenceRoles(2)} ${shot.endImagePrompt}` },
       bindings: { image_urls: [`output:${id}-start`, ...refs] } });
     // Use the full montage interval, including lead-in, pauses and tail.
-    const seconds = Math.max(3, Math.ceil((timing.phrases[shot.index]?.start ?? timing.duration) - (shot.index === 1 ? 0 : timing.phrases[shot.index - 1].start)));
+    const issues = physicalDirectionIssues(shot);
+    blockers.push(...issues.map((issue) => `Scene ${shot.index}: ${issue}`));
+    const spokenInterval = (timing.phrases[shot.index]?.start ?? timing.duration) - (shot.index === 1 ? 0 : timing.phrases[shot.index - 1].start);
+    const seconds = Math.max(changesState(shot) ? 4 : 3, Math.ceil(shot.actionSeconds ?? spokenInterval));
     if (seconds > 15) blockers.push(`Scene ${shot.index} lasts ${seconds}s: split it before animation (15s maximum)`);
     add({ id: `${id}-clip`, kind: "video", transport: "fal-queue", model: VIDEO_ENDPOINT, scene: shot.index,
       dependsOn: ["voice-alignment", `${id}-start`, ...(shot.endImagePrompt ? [`${id}-end`] : [])],
-      gates: ["final-voice-alignment", "keyframe-review", "paid-budget", ...(seconds > 15 ? ["split-scene"] : [])],
+      gates: ["final-voice-alignment", "keyframe-review", "paid-budget", ...(changesState(shot) ? ["state-change-end-frame"] : []), ...(issues.length ? ["correct-physical-direction"] : []), ...(seconds > 15 ? ["split-scene"] : [])],
       input: { prompt: shot.motionPrompt, duration: String(seconds), generate_audio: false },
       bindings: { start_image_url: `output:${id}-start`, ...(shot.endImagePrompt ? { end_image_url: `output:${id}-end` } : {}) } });
   }
@@ -91,6 +95,7 @@ export function generationPlan(script: string, params: ProductionParams, board: 
 
 /** Pure contract check for the future transport. Does not upload, submit or charge. */
 export function materializeRequest(operation: GenerationOperation, urls: Record<string, string>) {
+  if (operation.gates.includes("correct-physical-direction")) throw new Error("Correct the physical action and its start/end states before generation.");
   const input = { ...operation.input };
   for (const [field, binding] of Object.entries(operation.bindings)) {
     const resolve = (key: string) => {
@@ -100,7 +105,10 @@ export function materializeRequest(operation: GenerationOperation, urls: Record<
     input[field] = Array.isArray(binding) ? binding.map(resolve) : resolve(binding);
   }
   if (operation.kind === "image") return ImageRequestSchema.parse(input);
-  if (operation.kind === "video") return VideoRequestSchema.parse(input);
+  if (operation.kind === "video") {
+    if (operation.gates.includes("state-change-end-frame") && !input.end_image_url) throw new Error("A change of state requires its approved end image.");
+    return VideoRequestSchema.parse(input);
+  }
   if (operation.kind === "alignment") return TranscriptionRequest.parse(input);
   return BramRequestSchema.parse(input);
 }

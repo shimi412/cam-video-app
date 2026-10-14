@@ -5,6 +5,8 @@ import { mkdir, writeFile, readFile, rm, realpath } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { SceneMediaSchema, mediaFile, type SceneMedia } from "./preview-inputs";
+import { ClipEditSchema, type ClipEdit } from "./finishing";
+import type { MontageMedia } from "./montage";
 
 const exec = promisify(execFile);
 export const MAX_MEDIA_BYTES = 32 * 1024 * 1024;
@@ -60,17 +62,24 @@ export async function verifiedSceneMedia(jobId: string, value: SceneMedia) {
 }
 
 /** Keep native picture speed; freeze the last frame if the voice outlasts a clip. */
-export async function stageSceneMedia(jobId: string, media: Record<string, SceneMedia>, root: string, durations: number[]) {
-  const result: Record<number, { kind: "image" | "video"; file: string; heldSeconds: number }> = {};
+export async function stageSceneMedia(jobId: string, media: Record<string, SceneMedia>, root: string, durations: number[], edits: Record<string, ClipEdit> = {}, stateChanges: number[] = []) {
+  const result: Record<number, MontageMedia> = {};
   for (const [index, value] of Object.entries(media)) {
     const shot = Number(index);
     if (!Number.isInteger(shot) || shot < 1 || shot > durations.length) throw new Error("Imported media refers to an unknown scene.");
     const verified = await verifiedSceneMedia(jobId, value);
     const file = `assets/scene-${shot}.${value.kind === "image" ? "png" : "mp4"}`;
     const seconds = durations[shot - 1];
+    const edit = ClipEditSchema.parse(edits[shot] ?? {});
+    const end = edit.mediaEnd ?? value.duration;
+    if (value.kind === "video" && (!end || end > value.duration! + .001 || end <= edit.mediaStart)) throw new Error("The selected clip range exceeds its source.");
+    if (value.kind === "video" && stateChanges.includes(shot)) {
+      if (!edits[shot]) edit.playbackRate = Math.max(.5, Math.min(2, (end! - edit.mediaStart) / seconds));
+      if ((end! - edit.mediaStart) / edit.playbackRate > seconds + 1 / 30) throw new Error(`Scene ${shot}: the full transformation cannot fit this interval. Review the excerpt or pacing; its final state must not be cut off.`);
+    } else if (edit.playbackRate < .8 || edit.playbackRate > 1.25) throw new Error("Character acting must stay between 0.8× and 1.25× speed.");
     if (value.kind === "image") await writeFile(path.join(root, file), verified.bytes);
-    else await exec("ffmpeg", ["-y", "-loglevel", "error", "-i", verified.file, "-an", "-vf", `tpad=stop_mode=clone:stop_duration=${seconds}`, "-t", String(seconds), "-r", "30", "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p", path.join(root, file)], { timeout: 120_000 });
-    result[shot] = { kind: value.kind, file, heldSeconds: value.kind === "video" ? Math.max(0, seconds - (value.duration ?? 0)) : 0 };
+    else await exec("ffmpeg", ["-y", "-loglevel", "error", "-i", verified.file, "-an", "-vf", `trim=end=${end},setpts=PTS-STARTPTS,crop=trunc(iw/${edit.crop}/2)*2:trunc(ih/${edit.crop}/2)*2,tpad=stop_mode=clone:stop_duration=${seconds * edit.playbackRate + edit.mediaStart}`, "-t", String(seconds * edit.playbackRate + edit.mediaStart), "-r", "30", "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p", path.join(root, file)], { timeout: 120_000 });
+    result[shot] = { kind: value.kind, file, sourceAspect: value.width / value.height, mediaStart: edit.mediaStart, playbackRate: edit.playbackRate, heldSeconds: value.kind === "video" ? Math.max(0, seconds - (end! - edit.mediaStart) / edit.playbackRate) : 0 };
   }
   return result;
 }

@@ -32,7 +32,7 @@ async function main() {
     await writeFile(path.join(root, "timing.json"), JSON.stringify(timing));
     const composition = await writeMontage(root, board, timing, "16:9", { 1: { kind: "image", file: "assets/scene-1.png", heldSeconds: 0 } });
     await renderConcept(root, output);
-    assert.equal(composition.duration, timing.duration + 3);
+    assert(Math.abs(composition.duration - timing.duration - 3.4) < .001);
     const params = { templateSlug: "cam-clay", aspectRatio: "16:9", executionMode: "dryrun", execution: { attemptId: attempt }, finalDurationSeconds: composition.duration };
     await db.insert(schema.jobs).values({ id, status: "succeeded", script: "Offline export check.", params, outputPath: output, billedUsd: "0.00" });
     assert.deepEqual((await Promise.all([queueExports(id), queueExports(id)])).sort(), [false, true], "Duplicate clicks queue once");

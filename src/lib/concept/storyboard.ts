@@ -4,6 +4,14 @@ import { BoardSchema, type ConceptBoard, type SceneDirection } from "./types";
 import { suggestDirection } from "./direction";
 import { conceptPhrases, estimatedSpeechSeconds, normalizedText } from "./text";
 import eyal from "./eyal-phrases.json";
+import { changesState } from "./physical-direction";
+import { aspectComposition } from "../recipes";
+
+function clayImage(scene: string, refs: SceneDirection["references"], aspect: AspectRatio) {
+  const characters = refs.map((ref) => ref === "narrator" ? "The exact locked adult narrator: cap, striped shirt, suspenders and brown trousers, never overalls."
+    : ref === "monster" ? "The exact locked black clay fabricators." : "The locked effigy is visibly being fabricated, never shown as a real identity.").join(" ");
+  return `A single full-frame shot, not a storyboard. Reference sheets specify exact identity and materials only, never their standing pose or grey backdrop. ${characters} ${scene} Premium handcrafted plasticine stop-motion, real miniature set, matte clay with fingerprints, shallow depth of field. Photographed on a real stop-motion set, not CGI. Warm cream, deep brown and mustard; red only for misinformation and rejection. ${aspectComposition(aspect)} No text, letters, numbers or logos anywhere. No new characters, children, gore or weapons aimed at people.`;
+}
 
 // The October beat sheet belongs to this exact script, never to an arbitrary new script.
 const EYAL_SCENES = [
@@ -52,10 +60,10 @@ export function planConcept(script: string, recipe: Recipe, aspect: AspectRatio,
     requiresReview: true,
     shots: board.shots.map((shot, index) => ({
       ...shot, index: index + 1,
-      imagePrompt: buildImagePrompt(recipe, `Use the locked references only for identity and materials, not their standing pose or grey backdrop. Create this new scene: ${shot.scene}`, aspect),
-      endImagePrompt: shot.endScene ? buildImagePrompt(recipe, `Preserve the start frame camera, light and identities. Target end state: ${shot.endScene}`, aspect) : null,
-      motionPrompt: buildMotionPrompt(recipe, shot.motion),
-      clipSeconds: Math.max(5, Math.ceil(estimatedSpeechSeconds(shot.narration) + 0.35)),
+      imagePrompt: recipe.slug === "cam-clay" ? clayImage(shot.scene, shot.references, aspect) : buildImagePrompt(recipe, shot.scene, aspect),
+      endImagePrompt: shot.endScene ? (recipe.slug === "cam-clay" ? clayImage(`Preserve the start camera and lighting. Final state: ${shot.endScene}`, shot.references, aspect) : buildImagePrompt(recipe, shot.endScene, aspect)) : null,
+      motionPrompt: recipe.slug === "cam-clay" ? `Handcrafted plasticine stop-motion animation, animated on twos with subtle clay boil. ${shot.motion} Keep the exact locked design${shot.references.includes("narrator") ? ", cap always on, striped shirt, suspenders and brown trousers" : ""}. No new objects, text, logos, cuts, dialogue or music. Continuous single take. Complete the action with a readable final hold.` : buildMotionPrompt(recipe, shot.motion),
+      clipSeconds: Math.max(changesState(shot) ? 4 : 3, Math.ceil(shot.actionSeconds ?? Math.max(5, estimatedSpeechSeconds(shot.narration) + .35))),
     })),
   };
 }
