@@ -9,7 +9,7 @@ import { sceneWorkflow, attachStage, reviewStage, type Stage } from "../src/lib/
 import { prepareQuote, saveQuoteDraft, microAmount, decimalAmount } from "../src/lib/concept/quote-preparation";
 import type { SceneMedia } from "../src/lib/concept/preview-inputs";
 
-const references = [{ id: "narrator", url: "/narrator.png", sha256: "a".repeat(64) }];
+const references = [{ id: "narrator", url: "/narrator.png", sha256: "a".repeat(64) , characterSheet:{status:"approved",sha256:"a".repeat(64),approvedAt:"2026-10-14"}}];
 function fixture(end = true) {
   const script = "Check the original source.", jobId = randomUUID(), { params } = resolveParams(script, "auto");
   const board = planConcept(script, getRecipe("cam-clay")!, params.aspectRatio);

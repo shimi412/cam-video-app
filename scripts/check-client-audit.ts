@@ -12,6 +12,11 @@ const url=new URL(source);url.searchParams.set('options',`-c search_path=${isola
 const {pool}=await import('../src/db');
 try{
  for(const file of (await readdir('migrations')).filter(f=>f.endsWith('.sql')).sort())await pool.query(await readFile(`migrations/${file}`,'utf8'));
+ const {listConversations}=await import('../src/lib/conversation-list');
+ const offlineConversation=randomUUID(),liveConversation=randomUUID(),draftConversation=randomUUID();
+ await pool.query("INSERT INTO conversations(id,title,execution_mode) VALUES($1,'Offline pipeline test','dryrun'),($2,'Long spoken narration here','fal'),($3,'New client draft','fal')",[offlineConversation,liveConversation,draftConversation]);
+ await pool.query("INSERT INTO jobs(conversation_id,script,title,params) VALUES($1,'Test','Test', $3),($2,'Before sharing a claim','Context matters',$4)",[offlineConversation,liveConversation,JSON.stringify({executionMode:'dryrun'}),JSON.stringify({executionMode:'fal'})]);
+ const visible=await listConversations('fal');assert(!visible.some(c=>c.id===offlineConversation));assert(visible.some(c=>c.id===draftConversation));assert.equal(visible.find(c=>c.id===liveConversation)?.title,'Context matters');assert((await listConversations('dryrun')).some(c=>c.id===offlineConversation));
  const {answerSupport,supportStatus,supportHistory}=await import('../src/lib/help-support');
  const {settleTopup}=await import('../src/lib/stripe-billing');
  let calls=0;

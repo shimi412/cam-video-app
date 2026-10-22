@@ -1,7 +1,9 @@
 "use client";
 
+import { VideoJourney } from "@/components/video-journey";
+import { WorkProgress } from "@/components/work-progress";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { DraftAssistant } from "@/components/draft-assistant";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PreparationReview } from "./preparation-review";
 import { RequestRecovery } from "./request-recovery";
@@ -52,6 +54,7 @@ type SheetEntry = {
   notes?: string;
 };
 type JobState = {
+  title?: string | null;
   conversationId?: string;
   draft?: Framing | null;
   live?: boolean;
@@ -76,6 +79,7 @@ type JobState = {
 };
 
 type AspectRatio = "9:16" | "16:9" | "1:1";
+type StoryboardLaunchCost = { token: string; estimatedAmountCents: number; maximumAmountCents: number; sceneCount: number; imageCount: number; expiresAt: number };
 const ASPECTS: Array<{ value: AspectRatio; label: string }> = [
   { value: "9:16", label: "9:16 · Reels / TikTok / Shorts" },
   { value: "16:9", label: "16:9 · YouTube / X" },
@@ -86,14 +90,10 @@ export default function StudioPage() {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
-  const [connected, setConnected] = useState(false);
-  const [mode, setMode] = useState<"auto" | "manual">("auto");
-  const [templateSlug, setTemplateSlug] = useState<string>("");
-  const [tone, setTone] = useState<"serious" | "energetic" | "calm">("serious");
-  const [tier, setTier] = useState<"standard" | "premium">("standard");
+  const [pricingReady,setPricingReady]=useState(false);
+  const [connected, setConnected] = useState<boolean|null>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [title, setTitle] = useState("");
-  const [conversationId, setConversationId] = useState<string>();
   const [script, setScript] = useState("");
   const [example, setExample] = useState<Example | null>(null);
   const [previewSource, setPreviewSource] = useState<"planning" | "existing">("planning");
@@ -106,7 +106,35 @@ export default function StudioPage() {
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollEpoch = useRef(0);
-  const framingAttempt = useRef<{body:string;id:string}|null>(null);
+  const framingAttempt = useRef<{body:string;id:string;token?:string}|null>(null);
+  const launchInFlight = useRef(false);
+  const [launchCost, setLaunchCost] = useState<{input:string;cost:StoryboardLaunchCost}|null>(null);
+  const [launchCostError, setLaunchCostError] = useState<{input:string;message:string}|null>(null);
+  const [costRevision, setCostRevision] = useState(0);
+  // Automatic direction for new films; retain the existing-film demo contract internally.
+  const mode = previewSource === "existing" ? "manual" : "auto";
+  const overrides = previewSource === "existing" ? {templateSlug:"cam-clay",tone:"serious",tier:"premium",aspectRatio} : {aspectRatio};
+  const launchInput = JSON.stringify({script,mode,previewSource,overrides});
+  const currentLaunchCost = launchCost?.input === launchInput ? launchCost.cost : null;
+
+  // Price disclosure only. Typing, loading and refreshing never launch media.
+  useEffect(() => {
+    if (!connected || !pricingReady || !templatesLoaded || restoring || loading || framing || job || script.trim().length < 40) return;
+    const controller = new AbortController();
+    let renewal: ReturnType<typeof setTimeout> | undefined;
+    const timer = setTimeout(() => {
+      void fetch("/api/productions/preparation", {method:"POST",headers:{"Content-Type":"application/json"},body:launchInput,signal:controller.signal})
+        .then(async response => { const value = await response.json(); if (!response.ok) throw new Error(value.error ?? "Preparation pricing is temporarily unavailable."); return value as StoryboardLaunchCost; })
+        .then(cost => {
+          if (controller.signal.aborted) return;
+          setLaunchCost({input:launchInput,cost});
+          setLaunchCostError(null);
+          renewal = setTimeout(() => setCostRevision(value => value + 1), Math.max(1000,cost.expiresAt-Date.now()-1000));
+        })
+        .catch(cause => { if (!controller.signal.aborted) setLaunchCostError({input:launchInput,message:cause instanceof Error?cause.message:"Preparation pricing is temporarily unavailable."}); });
+    }, 600);
+    return () => { clearTimeout(timer); clearTimeout(renewal); controller.abort(); };
+  }, [connected,pricingReady,templatesLoaded,restoring,loading,framing,job,script,launchInput,costRevision]);
 
   const stopPolling = useCallback(() => {
     pollEpoch.current += 1;
@@ -157,6 +185,13 @@ export default function StudioPage() {
     // Read browser-only persistence after hydration; cancel on a quick navigation.
     const restore = setTimeout(() => {
       const query = new URLSearchParams(window.location.search);
+      const source = query.get("source");
+      if (source && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source)) {
+        void fetch(`/api/jobs/${source}`).then(async response => { if (!response.ok) throw Error("This script could not be loaded."); return response.json() as Promise<JobState>; })
+          .then(saved => { setScript(saved.script??"");setTitle(saved.title??"");if(saved.aspectRatio)setAspectRatio(saved.aspectRatio);try { localStorage.removeItem("cam-last-job"); } catch { /* Optional persistence. */ } })
+          .catch(cause=>setError(cause.message)).finally(()=>setRestoring(false));
+        return;
+      }
       let id: string | null = query.get("job");
       try {
         if (query.get("new") === "1") { localStorage.removeItem("cam-last-job"); id = null; }
@@ -170,7 +205,14 @@ export default function StudioPage() {
   }, [watchJob, stopPolling]);
 
   useEffect(() => {
-    fetch("/api/account").then(r=>r.json()).then(d=>setConnected(d.connected===true)).catch(()=>{});
+    const refreshPricing=()=>{void fetch("/api/account").then(r=>{if(!r.ok)throw Error("Could not open your workspace. Reload this page.");return r.json();}).then(d=>{setConnected(d.connected===true);setPricingReady(d.pricingReady===true);}).catch(e=>setError(e.message));};
+    refreshPricing();
+    window.addEventListener("focus",refreshPricing);
+    return ()=>window.removeEventListener("focus",refreshPricing);
+  }, []);
+
+  useEffect(() => {
+
     fetch("/api/examples/cam-clay").then((r) => {
       if (!r.ok) throw new Error("Could not check existing media");
       return r.json();
@@ -180,25 +222,41 @@ export default function StudioPage() {
       .then((list: Template[]) => {
         const active = list.filter((t) => t.status === "active");
         setTemplates(active);
-        if (active.length > 0) setTemplateSlug((s) => s || active[0].slug);
       })
       .catch(() => setError("Could not load video styles. Please reload the page."))
       .finally(() => setTemplatesLoaded(true));
   }, []);
 
   async function frame() {
+    if (launchInFlight.current) return;
+    if (connected && (!currentLaunchCost || currentLaunchCost.expiresAt <= Date.now())) {
+      setCostRevision(value => value + 1);
+      return;
+    }
+    launchInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
-      const body = JSON.stringify({script,mode,previewSource,conversationId,title:title.trim()||undefined,overrides:mode === "manual" ? {templateSlug,tone,tier,aspectRatio} : {aspectRatio}});
-      if(framingAttempt.current?.body!==body)framingAttempt.current={body,id:crypto.randomUUID()};
+      const body = JSON.stringify({script,mode,previewSource,title:title.trim()||undefined,overrides});
+      if(framingAttempt.current?.body!==body)framingAttempt.current={body,id:crypto.randomUUID(),token:connected?currentLaunchCost!.token:undefined};
+      else if(connected&&!framingAttempt.current.token)framingAttempt.current.token=currentLaunchCost!.token;
       const res = await fetch("/api/productions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({...JSON.parse(body),requestId:framingAttempt.current.id}),
+        body: JSON.stringify({...JSON.parse(body),requestId:framingAttempt.current.id,storyboardLaunchToken:framingAttempt.current.token}),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Framing failed");
+      if (!res.ok) {
+        if (data.code === "STORYBOARD_LAUNCH_EXPIRED" || data.code === "STORYBOARD_LAUNCH_CHANGED") { framingAttempt.current=null; setCostRevision(value=>value+1); }
+        if (data.code === "STORYBOARD_LAUNCH_REPRICE_REQUIRED") {
+          // Keep the saved script/job and its AI result. A fresh price needs a
+          // deliberate click, never an automatic resubmission or a new job.
+          if(framingAttempt.current)framingAttempt.current.token=undefined;
+          setLaunchCost(null);
+          setCostRevision(value=>value+1);
+        }
+        throw new Error(data.error ?? "Could not prepare your storyboard.");
+      }
       if (!data.simulation) { router.push(`/production/${data.jobId}`); return; }
       setFraming(data);
       window.history.replaceState(null, "", `/?job=${data.jobId}`);
@@ -206,6 +264,7 @@ export default function StudioPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      launchInFlight.current = false;
       setLoading(false);
     }
   }
@@ -257,23 +316,24 @@ export default function StudioPage() {
     setError(null);
   }
 
-  const inputDisabled = framing !== null || job !== null || restoring;
+  const inputDisabled = framing !== null || job !== null || restoring || loading;
   const settingsDisabled = inputDisabled || previewSource === "existing";
-  const selectedTemplate = templates.find((t) => t.slug === templateSlug);
   const framedTemplate = framing ? templates.find((t) => t.slug === framing.params.templateSlug) : undefined;
 
+  if(connected===null)return error?<p role="alert">{error}</p>:<WorkProgress title="Opening CAM" description="Loading your workspace."/>;
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Create a video</h1>
+        <nav aria-label="Video category" className="flex gap-3 mt-4"><span className="rounded-xl bg-accent text-white px-4 py-2">Clay animation</span><Link className="rounded-xl border border-line px-4 py-2 text-accent" href="/motion/new">Motion design</Link><Link className="rounded-xl border border-line px-4 py-2 text-accent" href="/comics/new">Attack video</Link></nav>
         <p className="text-muted mt-1">
-          {connected ? "Turn your script into a CAM film with narration. Prepare the scenes, approve the budget, then review the voice and visuals before the final montage." : "Prepare your script, review the recording and scenes, then assemble a free preview. Paid generation is disabled in this version."}
+          {connected ? "Prepare your storyboard, review the images, then approve the animation price to create your film." : "Prepare your script, review the recording and scenes, then assemble a free preview. Paid generation is disabled in this version."}
         </p>
       </div>
 
       {(framing?.conversationId || job?.conversationId) && <a href={`/conversations/${framing?.conversationId || job?.conversationId}`} className="inline-block text-accent text-sm">Open conversation, references and video versions</a>}
-      {!job && !framing && <><label className="block text-sm font-medium">Video title<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={80} placeholder="Give your video a short name" className="block mt-2 w-full bg-surface border border-line rounded-xl p-3"/></label>{connected && <DraftAssistant onDraft={setScript} onConversation={setConversationId}/>}</>}
-      {/* Step 1: script + mode */}
+      {!job && !framing && <><label className="block text-sm font-medium">Video title<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={80} placeholder="Give your video a short name" className="block mt-2 w-full bg-surface border border-line rounded-xl p-3"/></label></>}
+      {/* Step 1: script */}
       {example && !connected && !framing && !job && !restoring && <section className="bg-surface border border-accent/40 rounded-xl p-5 space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -290,7 +350,7 @@ export default function StudioPage() {
           {example.voiceUrl && <label className="text-xs text-muted space-y-1"><span className="block">Listen to original · existing recording</span><audio aria-label="Existing original voice recording" controls preload="none" src={example.voiceUrl} className="h-9 max-w-full" /></label>}
         </div>
         {example.available ? <div className="flex items-center gap-3">
-          <button disabled={previewSource === "existing"} onClick={() => { setScript(example.script); setPreviewSource("existing"); setMode("manual"); setTemplateSlug("cam-clay"); setAspectRatio("9:16"); setTone("serious"); setTier("premium"); setError(null); }} className="bg-accent text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50">{previewSource === "existing" ? "Existing film selected" : "Load CAM example"}</button>
+          <button disabled={previewSource === "existing"} onClick={() => { setScript(example.script); setPreviewSource("existing"); setAspectRatio("9:16"); setError(null); }} className="bg-accent text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50">{previewSource === "existing" ? "Existing film selected" : "Load CAM example"}</button>
           {previewSource === "existing" && <button onClick={() => { setPreviewSource("planning"); setScript(""); }} className="text-muted hover:text-foreground text-sm">Use my own script</button>}
         </div> : <p role="status" className="text-sm text-muted">{example.reason}</p>}
       </section>}
@@ -299,26 +359,14 @@ export default function StudioPage() {
           New CAM video styles are being prepared. Production will be available once the first style is ready.
         </div>
       )}
+      <VideoJourney step={0}/>
       <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-medium">1. Your script</h2>
-          <div className="flex rounded-lg border border-line overflow-hidden text-sm">
-            {(["auto", "manual"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                disabled={settingsDisabled}
-                className={`px-4 py-1.5 capitalize ${
-                  mode === m ? "bg-accent text-white" : "bg-surface-2 text-muted hover:text-foreground"
-                } disabled:opacity-60`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
+
         </div>
 
-        <div className="grid grid-cols-3 gap-3 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           <label className="space-y-1">
             <span className="text-muted">Format</span>
             <select
@@ -332,62 +380,7 @@ export default function StudioPage() {
               ))}
             </select>
           </label>
-          {mode === "manual" && (
-            <>
-              <label className="space-y-1">
-                <span className="text-muted">Tone</span>
-                <select
-                  value={tone}
-                  disabled={settingsDisabled}
-                  onChange={(e) => setTone(e.target.value as typeof tone)}
-                  className="w-full bg-surface-2 border border-line rounded-md px-2 py-1.5"
-                >
-                  <option value="serious">Serious</option>
-                  <option value="calm">Calm</option>
-                  <option value="energetic">Energetic</option>
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-muted">Quality tier</span>
-                <select
-                  value={tier}
-                  disabled={settingsDisabled}
-                  onChange={(e) => setTier(e.target.value as typeof tier)}
-                  className="w-full bg-surface-2 border border-line rounded-md px-2 py-1.5"
-                >
-                  <option value="standard">Standard</option>
-                  <option value="premium">Premium</option>
-                </select>
-              </label>
-            </>
-          )}
         </div>
-
-        {mode === "manual" && (
-          <div className="space-y-2 text-sm">
-            <span className="text-muted">Video model</span>
-            <div className="grid grid-cols-5 gap-2">
-              {templates.map((t) => (
-                <button
-                  key={t.slug}
-                  type="button"
-                  disabled={settingsDisabled}
-                  onClick={() => setTemplateSlug(t.slug)}
-                  className={`text-left rounded-lg border overflow-hidden bg-surface-2 ${
-                    templateSlug === t.slug ? "border-accent ring-1 ring-accent" : "border-line hover:border-accent/60"
-                  } disabled:opacity-60`}
-                >
-                  {t.recipe.thumbnail && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={t.recipe.thumbnail} alt={t.name} className="w-full aspect-[9/16] object-cover" />
-                  )}
-                  <div className="px-2 py-1.5 text-xs leading-tight">{t.name}</div>
-                </button>
-              ))}
-            </div>
-            {selectedTemplate && <p className="text-muted text-xs">{selectedTemplate.description}</p>}
-          </div>
-        )}
 
         <textarea
           value={script}
@@ -397,18 +390,23 @@ export default function StudioPage() {
           placeholder="Paste the narration for your film…"
           className="w-full bg-surface-2 border border-line rounded-lg p-3 text-sm placeholder:text-muted/60 focus:outline-none focus:border-accent disabled:opacity-60"
         />
+        {connected && !framing && !job && script.trim().length >= 40 && <div className="text-sm" aria-live="polite">
+          {currentLaunchCost ? <><p>Storyboard preparation allowance: <strong>${currentLaunchCost.maximumAmountCents/100} USD</strong></p><p className="mt-1 text-xs text-muted">Starting analyses your script and prepares the storyboard within this amount. If its image needs cost more, you see the revised price first. Preparation is included in your final total.</p></> : launchCostError?.input===launchInput ? <p>{launchCostError.message} <button type="button" className="text-accent underline" onClick={()=>setCostRevision(value=>value+1)}>Check again</button></p> : <p role="status" className="text-muted">Checking preparation cost…</p>}
+        </div>}
         {!framing && !job && (
           <button
             onClick={frame}
-            disabled={loading || restoring || templates.length === 0 || script.trim().length < 40}
+            disabled={loading || restoring || (connected&&(!pricingReady||!currentLaunchCost)) || templates.length === 0 || script.trim().length < 40}
             className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
           >
-            {loading ? "Preparing scenes…" : connected ? "Prepare scenes with Claude" : previewSource === "existing" ? "Prepare existing film · $0" : "Frame my request"}
+            {loading ? <span className="inline-flex items-center gap-2"><span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white motion-safe:animate-spin"/>Preparing storyboard…</span> : connected ? "Start my video" : previewSource === "existing" ? "Prepare existing film · $0" : "Frame my request"}
           </button>
         )}
       </section>
 
-      {connected && !framing && !job && <p className="text-xs text-muted">Preparing scenes uses Claude through OpenRouter, up to $0.25 per analysis. The media quote comes next; Narration, images and animation start after you approve that budget. Use the assistant above if you need help writing.</p>}
+      {loading && <WorkProgress title="Preparing your storyboard" description="Organizing your scenes and preparing the images. Your storyboard opens automatically."/>}
+
+      {connected&&!pricingReady&&<p role="status" className="rounded-xl border border-line bg-surface p-4 text-sm">Your CAM credit pricing is being set up by Bina. You can write your script; production will be available once your price is configured.</p>}
 
       {error && (
         <div className="border border-danger/40 bg-danger/10 text-danger rounded-lg px-4 py-3 text-sm">

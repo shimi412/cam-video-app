@@ -9,7 +9,7 @@ async function main() {
   const id = "2b0df353-688e-4d7c-b5aa-6a31cd4b2f21", base = path.join(process.cwd(), "storage/concepts", id, "live/finishing/claude-method-v3");
   await mkdir(base, { recursive: true });
   const packet = JSON.parse(await readFile(path.join(base, "source-packet.json"), "utf8"));
-  const references = (await lockedAssets()).filter(a => a.id === "narrator").map(a => ({ id: a.id, url: a.url, sha256: a.sha256 }));
+  const references = (await lockedAssets()).filter(a => a.id === "narrator").map(a => ({ id: a.id, url: a.url, sha256: a.sha256, characterSheet: a.characterSheet }));
   const plan = sceneRepairPlan(packet, 2, {
     metaphor: "Reading the whole passage means opening the entire scroll, instead of looking at a fragment.",
     scene: "Medium three-quarter side view of the locked clay narrator seated at a warm brown clay table. A single tightly closed cream clay scroll cylinder lies across the near side of the table. Only a short blank free edge lies flat under his LEFT hand. His RIGHT palm rests on top of the roll. The space on the table AWAY from his body is empty. Both hands and the complete tabletop are visible. His eyes are open, looking at the roll. Cap, striped shirt, separate brown trousers and suspenders, no overalls.",

@@ -10,7 +10,7 @@ const exec = promisify(execFile);
 export function validateTiming(timing: ConceptTiming, captions: Caption[]) {
   if (!Number.isFinite(timing.duration) || timing.duration <= 0 || timing.words.length === 0) throw new Error("Missing narration timing");
   for (const [i, w] of timing.words.entries()) {
-    if (!Number.isFinite(w.start) || !Number.isFinite(w.end) || w.start < 0 || w.end <= w.start || w.end > timing.duration || (i > 0 && w.start < timing.words[i - 1].end - 0.002)) throw new Error("Invalid word timing");
+    if (!Number.isFinite(w.start) || !Number.isFinite(w.end) || w.start < 0 || w.end < w.start || w.end > timing.duration || (i > 0 && w.start < timing.words[i - 1].end - 0.002)) throw new Error("Invalid word timing");
   }
   if (captions.some((c) => c.end - c.start < 0.3 || c.end > timing.duration)) throw new Error("Caption flashes for less than 0.3 seconds");
 }

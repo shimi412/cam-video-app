@@ -61,7 +61,7 @@ export function StoryboardProposal({ jobId, title, sheet, voice, descriptions }:
       <p className="text-xs font-semibold tracking-widest text-accent uppercase">CAM · Storyboard à valider</p>
       <h1 className="text-3xl font-semibold mt-2">{title}</h1>
       <p className="text-sm text-muted mt-3">Les deux premiers plans sont conservés. Le troisième devient une adresse simple au spectateur, avec les mots de la narration au-dessus du personnage.</p>
-      <p className="text-sm text-accent mt-2">Aucune animation vidéo lancée. Aucun crédit fal.ai utilisé pour ce storyboard.</p>
+      <p className="text-sm text-accent mt-2">Aucune animation vidéo lancée. Validez le storyboard avant de poursuivre.</p>
     </header>
     <div className="grid grid-cols-1 min-[600px]:grid-cols-3 gap-5" id="storyboard-panels">
       {sheet.panels.map((panel, i) => {

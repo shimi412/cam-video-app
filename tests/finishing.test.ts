@@ -33,7 +33,7 @@ it("balances a long caption without leaving its last word alone or changing timi
 
 it("drops a translated AI title while preserving the generated scene and motion", async () => {
   const script = "Read the full passage.";
-  const direction = { index: 1, scene: "A clay narrator reads a scroll.", motion: "He unrolls the scroll.",
+  const direction = { index: 1, scene: "A clay narrator reads an open scroll.", motion: "He points along the complete passage.",
     references: ["narrator"], endScene: null, overlay: "Leggi il testo per intero", strike: true };
   brain.mockResolvedValueOnce({ scenes: [direction] });
   const result = await directConcept(script, resolveParams(script, "auto").params, getRecipe("cam-clay")!);

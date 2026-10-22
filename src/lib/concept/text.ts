@@ -14,6 +14,15 @@ export function conceptPhrases(script: string): string[] {
   });
 }
 
+/** Price-disclosure estimate only. These sentence units are NOT the production
+ * breakdown: the semantic director reads the complete script and replaces them.
+ * Never split a sentence by word count, including in this local preview. */
+export function editorialPhrases(script:string):string[] {
+  if(normalizedText(script)===normalizedText(eyal.join(" ")))return [...eyal];
+  const prose=script.trim().split(/\n+/).map(line=>line.replace(/^\s*\d+[.)]\s+/,"").trim()).filter(Boolean).join(" ");
+  return Array.from(new Intl.Segmenter("en",{granularity:"sentence"}).segment(prose),s=>s.segment.trim()).filter(Boolean);
+}
+
 export function normalizedText(text: string): string {
   return text.replace(/[’‘]/g, "'").replace(/[^\p{L}\p{N}']/gu, " ").toLowerCase().replace(/\s+/g, " ").trim();
 }

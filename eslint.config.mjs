@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "storage/**",
+    "motion/template/assets/gsap.min.js",
+    "comics/template/assets/gsap.min.js",
     ".pg-data/**",
     "next-env.d.ts",
   ]),

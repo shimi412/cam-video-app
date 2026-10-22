@@ -10,7 +10,7 @@ const Whisper = z.object({ text: z.string().min(1), chunks: z.array(Word).min(1)
 export const AlignmentSchema = z.object({
   version: z.literal(1), audioSha256: Hash, scriptSha256: Hash,
   voiceId: z.literal(CAM_VOICE.voiceId), requestId: z.string().min(1),
-  source: z.enum(["fal-whisper", "reviewed-word-timings", "simulation-fixture"]),
+  source: z.enum(["fal-whisper", "local-whisper", "reviewed-word-timings", "simulation-fixture"]),
   words: z.array(z.object({ word: z.string().min(1), start: z.number().nonnegative(), end: z.number().positive() })).min(1),
 });
 export type VoiceAlignment = z.infer<typeof AlignmentSchema>;
@@ -27,6 +27,30 @@ export function whisperAlignment(result: unknown, context: Omit<VoiceAlignment, 
   return AlignmentSchema.parse({ version: 1, ...context, words: data.chunks.map((c) => ({ word: c.text.trim(), start: c.timestamp[0], end: c.timestamp[1] })) });
 }
 
+// Explicit spelling equivalents only. Never use fuzzy matching for spoken words.
+const spokenToken = (word:string) => {
+  const token=normalizedText(word);
+  if (token === "long standing") return "longstanding";
+  if (token === "anti semitic") return "antisemitic";
+  return token === "defence" ? "defense" : token;
+};
+export class TranscriptMismatchError extends Error {}
+
+/** Join only explicit hyphen continuations, never arbitrary neighboring words.
+ * Keep the measured outer boundaries. Validate raw timestamps before joining.
+ */
+function compoundWords(words: VoiceAlignment["words"]) {
+  const joined: VoiceAlignment["words"] = [];
+  for (const word of words) {
+    const previous = joined.at(-1);
+    if (previous && /^[-‐‑]\p{L}/u.test(word.word)) {
+      previous.word += word.word.replace(/^[-‐‑]/u, "-");
+      previous.end = word.end;
+    } else joined.push({ ...word });
+  }
+  return joined;
+}
+
 /** Match every token to the exact audio hash and script. Punctuation/case can
  * differ in the transcript; captions retain the original script verbatim.
  * A transcript is timing evidence, not proof the speaker is Bram or an approval.
@@ -36,12 +60,28 @@ export function alignVoice(phrases: string[], audio: AudioAsset, value: unknown,
   if (alignment.audioSha256 !== audio.sha256 || alignment.scriptSha256 !== scriptHash(phrases)) throw new Error("Alignment belongs to a different recording or script.");
   if (mode === "live" && alignment.source === "simulation-fixture") throw new Error("Simulated timestamps cannot align a final voice.");
   const originals = phrases.flatMap((p) => p.trim().split(/\s+/));
-  if (originals.length !== alignment.words.length) throw new Error("Transcript omits or adds words. Review the reading.");
   for (const [i, word] of alignment.words.entries()) {
-    if (normalizedText(word.word) !== normalizedText(originals[i]) || !normalizedText(word.word)) throw new Error(`Transcript differs at word ${i + 1}. Review the reading.`);
-    if (word.end <= word.start || word.end > audio.duration || (i > 0 && word.start < alignment.words[i - 1].end)) throw new Error("Word timestamps overlap or exceed the audio.");
+    if (word.end < word.start || word.end > audio.duration || (i > 0 && word.start < alignment.words[i - 1].end)) throw new Error("Word timestamps overlap or exceed the audio.");
   }
-  const words = alignment.words.map((w, i) => ({ ...w, word: originals[i] }));
+  const measured = compoundWords(alignment.words);
+  if (originals.length !== measured.length) throw new TranscriptMismatchError("Transcript omits or adds words. Review the reading.");
+  for (const [i, word] of measured.entries()) {
+    if (spokenToken(word.word) !== spokenToken(originals[i]) || !normalizedText(word.word)) throw new TranscriptMismatchError(`Transcript differs at word ${i + 1}. Review the reading.`);
+  }
+  // Whisper can return an instantaneous anchor for a short interior word.
+  // Preserve that evidence verbatim; never invent a duration or drop the word.
+  let phraseOffset = 0;
+  for (const phrase of phrases) {
+    const count = phrase.trim().split(/\s+/).length;
+    const group = measured.slice(phraseOffset, phraseOffset + count);
+    for (let i = 0; i < group.length; i++) {
+      if (group[i].start !== group[i].end) continue;
+      if (!["fal-whisper", "local-whisper"].includes(alignment.source) || i === 0 || i === group.length - 1 || group[i-1].start === group[i-1].end || group[i+1].start === group[i+1].end)
+        throw new Error("An isolated word timestamp needs a surrounding spoken phrase.");
+    }
+    phraseOffset += count;
+  }
+  const words = measured.map((w, i) => ({ ...w, word: originals[i] }));
   let offset = 0;
   const timed = phrases.map((text, i) => {
     const count = text.trim().split(/\s+/).length;

@@ -1,0 +1,604 @@
+{
+ "file": "voix-dylan-respire.wav",
+ "duration": 38.67,
+ "phrases": [
+  {
+   "phrase": 1,
+   "start": 0.05,
+   "end": 1.418,
+   "text": "Jews control the media?"
+  },
+  {
+   "phrase": 2,
+   "start": 2.142,
+   "end": 2.704,
+   "text": "Really?"
+  },
+  {
+   "phrase": 3,
+   "start": 3.244,
+   "end": 6.572,
+   "text": "Then somebody needs to explain why the Jews are so terrible at PR."
+  },
+  {
+   "phrase": 4,
+   "start": 7.082,
+   "end": 11.798,
+   "text": "If Jews control the headlines, why is so much coverage of Israel relentlessly negative?"
+  },
+  {
+   "phrase": 5,
+   "start": 12.284,
+   "end": 17.974,
+   "text": "If Jews control social media, why do antisemitic conspiracy theories go viral every single day?"
+  },
+  {
+   "phrase": 6,
+   "start": 18.426,
+   "end": 23.16,
+   "text": "And if Jews control the narrative, how did \"Jews control the media\" become a viral narrative?"
+  },
+  {
+   "phrase": 7,
+   "start": 24.156,
+   "end": 25.376,
+   "text": "Make it make sense."
+  },
+  {
+   "phrase": 8,
+   "start": 26.078,
+   "end": 30.584,
+   "text": "Apparently, Jews are responsible for everything, including the propaganda against themselves."
+  },
+  {
+   "phrase": 9,
+   "start": 31.506,
+   "end": 34.344,
+   "text": "That's not a conspiracy. That's a plot hole."
+  },
+  {
+   "phrase": 10,
+   "start": 35.108,
+   "end": 38.67,
+   "text": "Maybe stop blaming the Jews and start questioning what you're being fed."
+  }
+ ],
+ "words": [
+  {
+   "start": 0.05,
+   "end": 0.354,
+   "word": "Jews"
+  },
+  {
+   "start": 0.354,
+   "end": 0.81,
+   "word": "control"
+  },
+  {
+   "start": 0.81,
+   "end": 1.063,
+   "word": "the"
+  },
+  {
+   "start": 1.063,
+   "end": 1.418,
+   "word": "media?"
+  },
+  {
+   "start": 2.142,
+   "end": 2.704,
+   "word": "Really?"
+  },
+  {
+   "start": 3.244,
+   "end": 3.497,
+   "word": "Then"
+  },
+  {
+   "start": 3.497,
+   "end": 3.918,
+   "word": "somebody"
+  },
+  {
+   "start": 3.918,
+   "end": 4.213,
+   "word": "needs"
+  },
+  {
+   "start": 4.213,
+   "end": 4.381,
+   "word": "to"
+  },
+  {
+   "start": 4.381,
+   "end": 4.76,
+   "word": "explain"
+  },
+  {
+   "start": 4.76,
+   "end": 4.971,
+   "word": "why"
+  },
+  {
+   "start": 4.971,
+   "end": 5.182,
+   "word": "the"
+  },
+  {
+   "start": 5.182,
+   "end": 5.434,
+   "word": "Jews"
+  },
+  {
+   "start": 5.434,
+   "end": 5.645,
+   "word": "are"
+  },
+  {
+   "start": 5.645,
+   "end": 5.813,
+   "word": "so"
+  },
+  {
+   "start": 5.813,
+   "end": 6.235,
+   "word": "terrible"
+  },
+  {
+   "start": 6.235,
+   "end": 6.403,
+   "word": "at"
+  },
+  {
+   "start": 6.403,
+   "end": 6.572,
+   "word": "PR."
+  },
+  {
+   "start": 7.082,
+   "end": 7.271,
+   "word": "If"
+  },
+  {
+   "start": 7.271,
+   "end": 7.554,
+   "word": "Jews"
+  },
+  {
+   "start": 7.554,
+   "end": 7.978,
+   "word": "control"
+  },
+  {
+   "start": 7.978,
+   "end": 8.214,
+   "word": "the"
+  },
+  {
+   "start": 8.214,
+   "end": 8.733,
+   "word": "headlines,"
+  },
+  {
+   "start": 8.733,
+   "end": 8.968,
+   "word": "why"
+  },
+  {
+   "start": 8.968,
+   "end": 9.157,
+   "word": "is"
+  },
+  {
+   "start": 9.157,
+   "end": 9.346,
+   "word": "so"
+  },
+  {
+   "start": 9.346,
+   "end": 9.629,
+   "word": "much"
+  },
+  {
+   "start": 9.629,
+   "end": 10.1,
+   "word": "coverage"
+  },
+  {
+   "start": 10.1,
+   "end": 10.289,
+   "word": "of"
+  },
+  {
+   "start": 10.289,
+   "end": 10.666,
+   "word": "Israel"
+  },
+  {
+   "start": 10.666,
+   "end": 11.326,
+   "word": "relentlessly"
+  },
+  {
+   "start": 11.326,
+   "end": 11.798,
+   "word": "negative?"
+  },
+  {
+   "start": 12.284,
+   "end": 12.493,
+   "word": "If"
+  },
+  {
+   "start": 12.493,
+   "end": 12.806,
+   "word": "Jews"
+  },
+  {
+   "start": 12.806,
+   "end": 13.276,
+   "word": "control"
+  },
+  {
+   "start": 13.276,
+   "end": 13.694,
+   "word": "social"
+  },
+  {
+   "start": 13.694,
+   "end": 14.059,
+   "word": "media,"
+  },
+  {
+   "start": 14.059,
+   "end": 14.32,
+   "word": "why"
+  },
+  {
+   "start": 14.32,
+   "end": 14.529,
+   "word": "do"
+  },
+  {
+   "start": 14.529,
+   "end": 15.207,
+   "word": "anti-Semitic"
+  },
+  {
+   "start": 15.207,
+   "end": 15.834,
+   "word": "conspiracy"
+  },
+  {
+   "start": 15.834,
+   "end": 16.356,
+   "word": "theories"
+  },
+  {
+   "start": 16.356,
+   "end": 16.565,
+   "word": "go"
+  },
+  {
+   "start": 16.565,
+   "end": 16.93,
+   "word": "viral"
+  },
+  {
+   "start": 16.93,
+   "end": 17.296,
+   "word": "every"
+  },
+  {
+   "start": 17.296,
+   "end": 17.713,
+   "word": "single"
+  },
+  {
+   "start": 17.713,
+   "end": 17.974,
+   "word": "day?"
+  },
+  {
+   "start": 18.426,
+   "end": 18.649,
+   "word": "And"
+  },
+  {
+   "start": 18.649,
+   "end": 18.828,
+   "word": "if"
+  },
+  {
+   "start": 18.828,
+   "end": 19.096,
+   "word": "Jews"
+  },
+  {
+   "start": 19.096,
+   "end": 19.497,
+   "word": "control"
+  },
+  {
+   "start": 19.497,
+   "end": 19.721,
+   "word": "the"
+  },
+  {
+   "start": 19.721,
+   "end": 20.212,
+   "word": "narrative,"
+  },
+  {
+   "start": 20.212,
+   "end": 20.435,
+   "word": "how"
+  },
+  {
+   "start": 20.435,
+   "end": 20.659,
+   "word": "did"
+  },
+  {
+   "start": 20.659,
+   "end": 20.927,
+   "word": "Jews"
+  },
+  {
+   "start": 20.927,
+   "end": 21.329,
+   "word": "control"
+  },
+  {
+   "start": 21.329,
+   "end": 21.552,
+   "word": "the"
+  },
+  {
+   "start": 21.552,
+   "end": 21.865,
+   "word": "media"
+  },
+  {
+   "start": 21.865,
+   "end": 22.222,
+   "word": "become"
+  },
+  {
+   "start": 22.222,
+   "end": 22.356,
+   "word": "a"
+  },
+  {
+   "start": 22.356,
+   "end": 22.668,
+   "word": "viral"
+  },
+  {
+   "start": 22.668,
+   "end": 23.16,
+   "word": "narrative?"
+  },
+  {
+   "start": 24.156,
+   "end": 24.474,
+   "word": "Make"
+  },
+  {
+   "start": 24.474,
+   "end": 24.687,
+   "word": "it"
+  },
+  {
+   "start": 24.687,
+   "end": 25.005,
+   "word": "make"
+  },
+  {
+   "start": 25.005,
+   "end": 25.376,
+   "word": "sense."
+  },
+  {
+   "start": 26.078,
+   "end": 26.608,
+   "word": "Apparently"
+  },
+  {
+   "start": 26.608,
+   "end": 26.873,
+   "word": "Jews"
+  },
+  {
+   "start": 26.873,
+   "end": 27.094,
+   "word": "are"
+  },
+  {
+   "start": 27.094,
+   "end": 27.668,
+   "word": "responsible"
+  },
+  {
+   "start": 27.668,
+   "end": 27.889,
+   "word": "for"
+  },
+  {
+   "start": 27.889,
+   "end": 28.419,
+   "word": "everything,"
+  },
+  {
+   "start": 28.419,
+   "end": 28.905,
+   "word": "including"
+  },
+  {
+   "start": 28.905,
+   "end": 29.126,
+   "word": "the"
+  },
+  {
+   "start": 29.126,
+   "end": 29.656,
+   "word": "propaganda"
+  },
+  {
+   "start": 29.656,
+   "end": 30.054,
+   "word": "against"
+  },
+  {
+   "start": 30.054,
+   "end": 30.584,
+   "word": "themselves."
+  },
+  {
+   "start": 31.506,
+   "end": 31.829,
+   "word": "That's"
+  },
+  {
+   "start": 31.829,
+   "end": 32.06,
+   "word": "not"
+  },
+  {
+   "start": 32.06,
+   "end": 32.198,
+   "word": "a"
+  },
+  {
+   "start": 32.198,
+   "end": 32.751,
+   "word": "conspiracy,"
+  },
+  {
+   "start": 33.352,
+   "end": 33.667,
+   "word": "that's"
+  },
+  {
+   "start": 33.667,
+   "end": 33.803,
+   "word": "a"
+  },
+  {
+   "start": 33.803,
+   "end": 34.073,
+   "word": "plot"
+  },
+  {
+   "start": 34.073,
+   "end": 34.344,
+   "word": "hole."
+  },
+  {
+   "start": 35.108,
+   "end": 35.408,
+   "word": "Maybe"
+  },
+  {
+   "start": 35.408,
+   "end": 35.666,
+   "word": "stop"
+  },
+  {
+   "start": 35.666,
+   "end": 36.052,
+   "word": "blaming"
+  },
+  {
+   "start": 36.052,
+   "end": 36.267,
+   "word": "the"
+  },
+  {
+   "start": 36.267,
+   "end": 36.524,
+   "word": "Jews"
+  },
+  {
+   "start": 36.524,
+   "end": 36.739,
+   "word": "and"
+  },
+  {
+   "start": 36.739,
+   "end": 37.039,
+   "word": "start"
+  },
+  {
+   "start": 37.039,
+   "end": 37.597,
+   "word": "questioning"
+  },
+  {
+   "start": 37.597,
+   "end": 37.855,
+   "word": "what"
+  },
+  {
+   "start": 37.855,
+   "end": 38.155,
+   "word": "you're"
+  },
+  {
+   "start": 38.155,
+   "end": 38.455,
+   "word": "being"
+  },
+  {
+   "start": 38.455,
+   "end": 38.67,
+   "word": "fed."
+  }
+ ],
+ "segments": [
+  [
+   0.05,
+   1.41798
+  ],
+  [
+   2.14248,
+   2.70356
+  ],
+  [
+   3.24379,
+   6.57163
+  ],
+  [
+   7.08208,
+   11.7979
+  ],
+  [
+   12.2843,
+   17.9741
+  ],
+  [
+   18.4256,
+   23.1597
+  ],
+  [
+   24.1564,
+   25.3757
+  ],
+  [
+   26.0779,
+   30.5837
+  ],
+  [
+   31.5064,
+   32.7514
+  ],
+  [
+   33.3519,
+   34.3436
+  ],
+  [
+   35.1079,
+   38.67
+  ]
+ ]
+}

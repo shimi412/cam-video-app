@@ -1,4 +1,4 @@
-import { withAccess } from "@/lib/access";
+import { actorFor, withAccess } from "@/lib/access";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -12,6 +12,19 @@ const pending=new Map<string,Promise<Buffer>>();
 export const GET=withAccess(async (_request,{params}:{params:Promise<{id:string}>})=>{
  const {id}=await params;if(!z.uuid().safeParse(id).success)return new Response(null,{status:400});
  const [job]=await db.select().from(schema.jobs).where(eq(schema.jobs.id,id));if(!job)return new Response(null,{status:404});
+ if((job.params as {filmType?:string})?.filmType==='comics'){
+  const {getComic,comicDirectory}=await import('@/lib/comics/store');
+  try{const s=await getComic(id,(await actorFor(_request))!.id),image=Object.values(s.images)[0];if(!image)return new Response(null,{status:404});
+   return new Response(new Uint8Array(await readFile(path.join(comicDirectory(id),image))),{headers:{'Content-Type':'image/png','Cache-Control':'private, no-store'}});
+  }catch{return new Response(null,{status:404});}
+ }
+ if((job.params as {filmType?:string})?.filmType==='motion'){
+  const {getMotion,motionDirectory}=await import('@/lib/motion/store');
+  try{const s=await getMotion(id,(await actorFor(_request))!.id);if(!['board','visuals','finishing','complete'].includes(s.phase))return new Response(null,{status:404});
+   const bytes=await readFile(path.join(motionDirectory(id,s.revision),`${s.film!.scenes[0].id}.jpg`));
+   return new Response(new Uint8Array(bytes),{headers:{'Content-Type':'image/jpeg','Cache-Control':'private, no-store'}});
+  }catch{return new Response(null,{status:404});}
+ }
  let bytes:Buffer;let type="image/jpeg";
  if(job.outputPath&&await storedVideoUrl(job.outputPath)){
   const file=job.outputPath,info=await stat(file),key=createHash("sha256").update(`${file}:${info.mtimeMs}:${info.size}:frame1`).digest("hex");

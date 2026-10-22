@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   // Runtime media and the embedded development database are persistent data,
   // never deployment bundle inputs.
   outputFileTracingExcludes: { "/*": ["./storage/**/*", "./.pg-data/**/*"] },
+  outputFileTracingIncludes: { "/*": ["./agent/**/*.md", "./comics/METHOD-fr.md", "./motion/METHOD-fr.md", "./MEMORY.md", "./support/AGENTS.md", "./support/MEMORY.md"] },
 };
 
 export default nextConfig;

@@ -27,7 +27,7 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
   await rm(path.join(process.cwd(), "storage/imports", jobId), { recursive: true, force: true });
 });
-const refs = [{ id: "narrator", url: "/reference.png", sha256: "a".repeat(64) }];
+const refs = [{ id: "narrator", url: "/reference.png", sha256: "a".repeat(64) , characterSheet:{status:"approved",sha256:"a".repeat(64),approvedAt:"2026-10-14"}}];
 function fixture() {
   const script = "Check the source.";
   const { params } = resolveParams(script, "auto");

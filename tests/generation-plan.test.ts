@@ -6,6 +6,7 @@ import { getRecipe } from "../src/lib/recipes";
 import { resolveParams } from "../src/lib/brain";
 import { planConcept } from "../src/lib/concept/storyboard";
 import { generationPlan, materializeRequest } from "../src/lib/concept/generation-plan";
+import { KLING_PRO, KLING_STANDARD } from "../src/lib/concept/model-selection";
 import { placeholderTiming, measuredPhraseTiming } from "../src/lib/concept/timing";
 import { DirectionSchema } from "../src/lib/concept/types";
 import { rehearseGeneration } from "../src/lib/concept/rehearsal";
@@ -16,7 +17,7 @@ import { estimateProduction } from "../src/lib/pricing";
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 const script = "Check the original source.\nThe quote needs its full context.\nFalse claims spread online.";
 const recipe = getRecipe("cam-clay")!;
-const refs = ["narrator", "monster", "effigy"].map((id) => ({ id, url: `/recipes/${id}.png`, sha256: "a".repeat(64) }));
+const refs = ["narrator", "monster", "effigy"].map((id) => ({ id, url: `/recipes/${id}.png`, sha256: "a".repeat(64) , characterSheet:{status:"approved",sha256:"a".repeat(64),approvedAt:"2026-10-14"}}));
 function fixture() {
   const { params } = resolveParams(script, "auto");
   const board = planConcept(script, recipe, params.aspectRatio);
@@ -71,14 +72,40 @@ it("invalidates dependent clips after a direction change and skips imported scen
   expect(imported.reusedScenes).toEqual([1]); expect(imported.operations.some((o) => o.scene === 1)).toBe(false);
 });
 
-it("blocks an overlong spoken scene instead of shortening its voice", () => {
+it("blocks an overlong planned action instead of truncating animation", () => {
   const { params, board } = fixture();
+  board.shots[0].clipSeconds=19;board.shots[0].actionSeconds=undefined;
   const timing = measuredPhraseTiming(board.shots.map((s) => s.narration), [18, 3, 3]);
   const plan = generationPlan(script, params, board, timing, refs);
   const clip = plan.operations.find((o) => o.id === "scene-1-clip")!;
   expect(clip.gates).toContain("split-scene");
   expect(clip.input.duration).toBe("19");
   expect(() => materializeRequest(clip, { "output:scene-1-start": "https://example.invalid/image.png" })).toThrow();
+});
+
+it("retains both approved endpoints and duration for the low-resolution Kling draft and native final", () => {
+  const { params, board, timing } = fixture();
+  board.shots = [board.shots[0]];
+  board.shots[0].actionSeconds = 4;
+  board.shots[0].endScene = "The presenter has completed a small wave.";
+  board.shots[0].endImagePrompt = "The same presenter at the end of the wave.";
+  board.shots[0].motion = "A small natural wave, fixed camera.";
+  board.shots[0].stateChange = false;
+  board.shots[0].references = ["narrator"];
+  const plan = generationPlan(script, params, board, timing, refs, undefined, { "scene-1-clip": KLING_PRO });
+  const op = plan.operations.find(o => o.id === "scene-1-clip")!;
+  expect(op).toMatchObject({ transport: "fal-queue", input: { duration: "4" } });
+  expect(plan.modelNeeds[0]).toMatchObject({ endFrame: true, complex: false, seconds: 4 });
+  const urls = { "output:scene-1-start": "https://example.invalid/start.png", "output:scene-1-end": "https://example.invalid/end.png" };
+  const final = materializeRequest(op, urls);
+  expect(final).toMatchObject({ start_image_url: urls["output:scene-1-start"], end_image_url: urls["output:scene-1-end"], prompt: board.shots[0].motionPrompt, duration: "4", generate_audio: false });
+  expect(materializeRequest({ ...op, model: KLING_STANDARD }, urls)).toEqual(final);
+  expect(() => materializeRequest(op, { "output:scene-1-start": urls["output:scene-1-start"] })).toThrow("Unresolved media");
+  board.shots[0].stateChange = true;
+  expect(generationPlan(script, params, board, timing, refs).modelNeeds[0].complex).toBe(true);
+  board.shots[0].stateChange = false;
+  board.shots[0].references = ["narrator", "monster"];
+  expect(generationPlan(script, params, board, timing, refs).modelNeeds[0].complex).toBe(true);
 });
 
 it("rehearses and resumes the full chain without a network call or a second submission", async () => {

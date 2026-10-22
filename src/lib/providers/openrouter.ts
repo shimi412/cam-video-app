@@ -3,9 +3,22 @@ import { z } from "zod";
 import { openrouterKey } from "../credentials";
 import { inspectPdf } from "../pdf-inspection";
 import { brainMode } from "./mode";
+import { AIResponseError } from "../ai-response";
 
 const ORIGIN="https://openrouter.ai/api/v1";
 export type ModelPrice={id:string;input:number;output:number;request:number;context:number;modalities:string[]};
+/** Reasoning and the visible storyboard share the output allowance. Use the
+ * largest requested allowance affordable under the existing hard spending cap. */
+export function budgetedOutputTokens(price:ModelPrice,inputTokens:number,maximumUsd:number,requested:number,minimum:number){
+  const available=maximumUsd-inputTokens*price.input-price.request;
+  const affordable=price.output===0?requested:Math.floor(available/price.output);
+  const result=Math.min(requested,affordable,Math.floor(price.context-inputTokens));
+  if(available<0||result<minimum)throw new Error(`This production analysis exceeds the $${maximumUsd.toFixed(2)} remaining request budget.`);
+  // Floating-point rounding must never move the calculated bound above the cap.
+  const safe=inputTokens*price.input+result*price.output+price.request>maximumUsd?result-1:result;
+  if(safe<minimum)throw new Error(`This production analysis exceeds the $${maximumUsd.toFixed(2)} remaining request budget.`);
+  return safe;
+}
 const catalog=new Map<string,{at:number;price:ModelPrice}>();
 export async function openrouterPrice(id:string):Promise<ModelPrice>{
   if(!/^(deepseek\/deepseek-[a-zA-Z0-9.-]+|anthropic\/claude-[a-zA-Z0-9.-]+)$/.test(id))throw new Error("Choose a supported DeepSeek or Claude model.");
@@ -45,7 +58,7 @@ export function routerMessages(messages:ModelMessage[]){
     throw new Error("Unsupported assistant content.");
   })}));
 }
-export async function openrouterObject<T>(input:{schema:z.ZodType<T>;system:string;messages:ModelMessage[];price:ModelPrice;inputTokens:number;maximumUsd:number;deep:boolean;maxOutputTokens?:number}){
+export async function openrouterObject<T>(input:{schema:z.ZodType<T>;system:string;messages:ModelMessage[];price:ModelPrice;inputTokens:number;maximumUsd:number;deep:boolean;effort?:"medium"|"high";maxOutputTokens?:number}){
   if(brainMode()!=="api"||process.env.CAM_LIVE_ENABLED!=="1")throw new Error("The connected assistant is disabled.");
   const key=await openrouterKey();if(!key)throw new Error("Connect OpenRouter in Admin → Connections.");
   const maxTokens=input.maxOutputTokens??4000;
@@ -54,18 +67,34 @@ export async function openrouterObject<T>(input:{schema:z.ZodType<T>;system:stri
   const hasPdf=input.messages.some(m=>Array.isArray(m.content)&&m.content.some(p=>p.type==="file"));
   const hasImage=input.messages.some(m=>Array.isArray(m.content)&&m.content.some(p=>p.type==="image"));
   if((hasPdf&&!input.price.modalities.includes("file"))||(hasImage&&!input.price.modalities.includes("image")))throw new Error("This model cannot read the selected references.");
-  const response=await fetch(`${ORIGIN}/chat/completions`,{method:"POST",redirect:"error",signal:AbortSignal.timeout(120000),headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json","X-OpenRouter-Title":"CAM Studio"},body:JSON.stringify({
+  // A full directed storyboard can take longer than a short chat response.
+  const response=await fetch(`${ORIGIN}/chat/completions`,{method:"POST",redirect:"error",signal:AbortSignal.timeout(input.deep&&maxTokens>8000?240000:120000),headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json","X-OpenRouter-Title":"CAM Studio"},body:JSON.stringify({
     model:input.price.id,stream:false,messages:[{role:"system",content:input.system},...routerMessages(input.messages)],max_tokens:maxTokens,
     response_format:{type:"json_schema",json_schema:{name:"cam_response",strict:true,schema:z.toJSONSchema(input.schema)}},
     provider:{require_parameters:true,data_collection:"deny",allow_fallbacks:false,max_price:{prompt:Number((input.price.input*1e6).toPrecision(12)),completion:Number((input.price.output*1e6).toPrecision(12))}},
-    reasoning:input.deep?{effort:"medium",exclude:true}:{enabled:false},
+    reasoning:input.deep?{effort:input.effort??"medium",exclude:true}:{enabled:false},
     ...(hasPdf?{plugins:[{id:"file-parser",pdf:{engine:"native"}}]}:{}),
   })});
   if(!response.ok){await response.body?.cancel();throw new Error(`OpenRouter request failed (HTTP ${response.status}). No automatic retry was made.`);}
   const reader=response.body?.getReader();if(!reader)throw new Error("Empty assistant response.");
   const parts:Uint8Array[]=[];let size=0;
   try{while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>2*1024*1024){await reader.cancel();throw new Error("Assistant response too large.");}parts.push(value);}}finally{reader.releaseLock();}
-  const value=z.object({id:z.string(),model:z.string(),choices:z.array(z.object({finish_reason:z.string(),message:z.object({content:z.string()})})).length(1),usage:z.object({prompt_tokens:z.number().int().nonnegative(),completion_tokens:z.number().int().nonnegative(),cost:z.number().finite().nonnegative()})}).parse(JSON.parse(Buffer.concat(parts).toString("utf8")));
-  if(value.choices[0].finish_reason!=="stop")throw new Error("The assistant response was incomplete. It has not been automatically retried.");
-  return {object:input.schema.parse(JSON.parse(value.choices[0].message.content)),actualUsd:value.usage.cost,usage:{inputTokens:value.usage.prompt_tokens,outputTokens:value.usage.completion_tokens,requestId:value.id},model:value.model};
+  const value=z.object({id:z.string(),model:z.string(),choices:z.array(z.object({finish_reason:z.string(),message:z.object({content:z.string().nullable()})})).length(1),usage:z.object({prompt_tokens:z.number().int().nonnegative(),completion_tokens:z.number().int().nonnegative(),cost:z.number().finite().nonnegative()})}).parse(JSON.parse(Buffer.concat(parts).toString("utf8")));
+  const receipt={actualUsd:value.usage.cost,usage:{inputTokens:value.usage.prompt_tokens,outputTokens:value.usage.completion_tokens,requestId:value.id},model:value.model};
+  const finishReason=value.choices[0].finish_reason;
+  if(finishReason!=="stop")throw new AIResponseError({kind:"ai-response-failure-v1",code:"incomplete",finishReason,receipt});
+  try { return {object:input.schema.parse(JSON.parse(value.choices[0].message.content??"")),...receipt}; }
+  catch { throw new AIResponseError({kind:"ai-response-failure-v1",code:"invalid-output",finishReason,receipt}); }
+}
+
+/** One tiny real tool call on the model (about $0.002). Pricing alone does not
+ * prove the account can use a model: on 2026-10-21 "Test Fable 2" lost its paid
+ * recording because every Fable endpoint was excluded by the account's
+ * zero-data-retention setting. Surfaces OpenRouter's own reason. */
+export async function probeWriterModel(id:string){
+  const key=await openrouterKey();if(!key)throw new Error("Connect the production agent in Admin.");
+  const response=await fetch(`${ORIGIN}/chat/completions`,{method:"POST",redirect:"error",signal:AbortSignal.timeout(60000),headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json","X-OpenRouter-Title":"CAM Studio"},body:JSON.stringify({model:id,max_tokens:40,messages:[{role:"user",content:"Call ping with ok=true."}],tools:[{type:"function",function:{name:"ping",parameters:{type:"object",properties:{ok:{type:"boolean"}},required:["ok"]}}}],tool_choice:"auto",provider:{data_collection:"deny",allow_fallbacks:false}})});
+  const body=await response.json().catch(()=>({})) as {error?:{message?:string;metadata?:{raw?:string}};choices?:{message:{tool_calls?:unknown[]}}[]};
+  if(!response.ok||body.error){const reason=String(body.error?.message??`HTTP ${response.status}`).replace(/sk-[a-zA-Z0-9_-]+/g,"[redacted]").replace(/\s+/g," ").slice(0,400);throw new Error(`The writing model ${id} is not available to this account: ${reason}`);}
+  if(!body.choices?.[0]?.message.tool_calls?.length)throw new Error(`The writing model ${id} answered without calling a tool; it cannot author films through the tool loop.`);
 }

@@ -43,7 +43,7 @@ export async function produceConcept(input: {
   await mkdir(path.dirname(outputPath), { recursive: true });
   await setStep("storyboard", "running");
   const references = await lockedAssets();
-  const board = planConcept(script, recipe, params.aspectRatio, params.sceneDirections);
+  const board = planConcept(script, recipe, params.aspectRatio, params.sceneDirections, params.sceneNarrations);
   // A file or reference can change after confirmation or between attempts.
   // Recheck approvals before rendering or exporting them as reusable assets.
   for (const shot of board.shots) {

@@ -1,17 +1,17 @@
 import type { Recipe, AspectRatio } from "../recipes";
 import { buildImagePrompt, buildMotionPrompt } from "../recipes";
 import { BoardSchema, type ConceptBoard, type SceneDirection } from "./types";
-import { suggestDirection } from "./direction";
+import { prepareStoryboardDirections } from "./direction";
 import { conceptPhrases, estimatedSpeechSeconds, normalizedText } from "./text";
 import eyal from "./eyal-phrases.json";
 import { changesState } from "./physical-direction";
-import { aspectComposition } from "../recipes";
+import { camFrameComposition } from "./frame-composition";
 import { validatePresenterText } from "./presenter-text";
 
-function clayImage(scene: string, refs: SceneDirection["references"], aspect: AspectRatio) {
+function clayImage(scene: string, refs: SceneDirection["references"], aspect: AspectRatio, graphics = false, editorial = false) {
   const characters = refs.map((ref) => ref === "narrator" ? "The exact locked adult narrator: cap, striped shirt, suspenders and brown trousers, never overalls."
     : ref === "monster" ? "The exact locked black clay fabricators." : "The locked effigy is visibly being fabricated, never shown as a real identity.").join(" ");
-  return `A single full-frame shot, not a storyboard. Reference sheets specify exact identity and materials only, never their standing pose or grey backdrop. ${characters} ${scene} Premium handcrafted plasticine stop-motion, real miniature set, matte clay with fingerprints, shallow depth of field. Photographed on a real stop-motion set, not CGI. Warm cream, deep brown and mustard; red only for misinformation and rejection. ${aspectComposition(aspect)} No text, letters, numbers or logos anywhere. No new characters, children, gore or weapons aimed at people.`;
+  return `${camFrameComposition(aspect, graphics)} A single full-frame shot, not a storyboard. Reference sheets specify exact identity, clothing and materials only, never their standing pose, flat lighting, camera angle or grey backdrop. ${characters} ${scene} Premium handcrafted plasticine stop-motion, real miniature set, matte clay with fingerprints, shallow depth of field. Photographed on a real stop-motion set, not CGI. Warm cream, deep brown and mustard; red only for misinformation and rejection. No text, letters, numbers or logos anywhere. ${editorial ? "Floating graphic layers are composed later. Physical props and national flags explicitly required by the scene direction belong inside the clay set, with sculpted thickness and coherent lighting; they identify the compared subjects without inventing numerical values." : "Local graphic symbols are composed later, not drawn by the image model."} No new characters, children, gore or weapons aimed at people.`;
 }
 
 // The October beat sheet belongs to this exact script, never to an arbitrary new script.
@@ -33,18 +33,22 @@ const EYAL_SCENES = [
 ];
 
 export function assertNarrationPreserved(script: string, narrations: string[]): void {
-  if (normalizedText(conceptPhrases(script).join(" ")) !== normalizedText(narrations.join(" "))) {
+  const joined = normalizedText(narrations.join(" "));
+  if (normalizedText(script) !== joined && normalizedText(conceptPhrases(script).join(" ")) !== joined) {
     throw new Error("Storyboard changed the script. Review is required.");
   }
 }
 
 /** Free editorial suggestions. Review is mandatory; no hidden LLM or media call. */
-export function planConcept(script: string, recipe: Recipe, aspect: AspectRatio, directions: Record<string, SceneDirection> = {}): ConceptBoard {
+export function planConcept(script: string, recipe: Recipe, aspect: AspectRatio, directions: Record<string, SceneDirection> = {}, narrations?:string[]): ConceptBoard {
   const isExample = normalizedText(script) === normalizedText(eyal.join(" "));
-  const phrases = isExample ? eyal : conceptPhrases(script);
+  const phrases = narrations ?? (isExample ? eyal : conceptPhrases(script));
+  if(!phrases.length||phrases.length>36||phrases.some(p=>!p.trim()))throw new Error("Invalid storyboard narration segments.");
+  assertNarrationPreserved(script,phrases);
+  const prepared = prepareStoryboardDirections(phrases);
   if (Object.keys(directions).some((key) => !/^[1-9]\d*$/.test(key) || Number(key) > phrases.length)) throw new Error("Unknown scene direction.");
   const board = BoardSchema.parse({ shots: phrases.map((narration, i) => ({
-    ...(directions[i + 1] ?? (!isExample ? suggestDirection(narration) : {
+    ...(directions[i + 1] ?? (!isExample ? prepared[i + 1] : {
       scene: EYAL_SCENES[i],
       motion: i === 12 ? "Continuous single take. The board slowly reshapes into an empty smartphone screen. Reach the final shape before the clip ends." : "Continuous single take. Subtle breathing and one restrained gesture towards the scene's main object. Static camera, no zoom, no cuts.",
       references: i >= 1 && i <= 7 ? (i <= 3 ? ["narrator", "monster", "effigy"] : ["narrator", "monster"]) : ["narrator"],
@@ -62,8 +66,8 @@ export function planConcept(script: string, recipe: Recipe, aspect: AspectRatio,
     requiresReview: true,
     shots: board.shots.map((shot, index) => ({
       ...shot, index: index + 1,
-      imagePrompt: recipe.slug === "cam-clay" ? clayImage(`${shot.scene}${shot.visualMode === "presenter-text" ? " Keep the presenter and all gestures below the upper 38 percent of the frame. The upper area is a quiet, uncluttered warm background reserved for typography added later; do not draw lettering or a text panel." : ""}`, shot.references, aspect) : buildImagePrompt(recipe, shot.scene, aspect),
-      endImagePrompt: shot.endScene ? (recipe.slug === "cam-clay" ? clayImage(`Preserve the start camera and lighting. Final state: ${shot.endScene}`, shot.references, aspect) : buildImagePrompt(recipe, shot.endScene, aspect)) : null,
+      imagePrompt: recipe.slug === "cam-clay" ? clayImage(shot.scene, shot.references, aspect, shot.visualMode === "presenter-text" || Boolean(shot.graphicLayers?.length), Boolean(narrations)) : buildImagePrompt(recipe, shot.scene, aspect),
+      endImagePrompt: shot.endScene ? (recipe.slug === "cam-clay" ? clayImage(`Preserve the start camera and lighting. Final state: ${shot.endScene}`, shot.references, aspect, shot.visualMode === "presenter-text" || Boolean(shot.graphicLayers?.length), Boolean(narrations)) : buildImagePrompt(recipe, shot.endScene, aspect)) : null,
       motionPrompt: recipe.slug === "cam-clay" ? `Handcrafted plasticine stop-motion animation, animated on twos with subtle clay boil. ${shot.motion} Keep the exact locked design${shot.references.includes("narrator") ? ", cap always on, striped shirt, suspenders and brown trousers" : ""}. No new objects, text, logos, cuts, dialogue or music. Continuous single take. Complete the action with a readable final hold.` : buildMotionPrompt(recipe, shot.motion),
       clipSeconds: Math.max(changesState(shot) ? 4 : 3, Math.ceil(shot.actionSeconds ?? Math.max(5, estimatedSpeechSeconds(shot.narration) + .35))),
     })),

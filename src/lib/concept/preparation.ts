@@ -16,7 +16,7 @@ import { narrationView, selectedNarration } from "./narration";
 
 /** A reviewable, free preparation, never an approval to generate media. */
 export async function prepareConcept(script: string, params: ProductionParams, recipe: Recipe, jobId?: string, measuredTiming?: ConceptTiming) {
-  const board = planConcept(script, recipe, params.aspectRatio, params.sceneDirections);
+  const board = planConcept(script, recipe, params.aspectRatio, params.sceneDirections, params.sceneNarrations);
   const phrases = board.shots.map((shot) => shot.narration);
   const narration = jobId ? await narrationView(jobId, phrases, params) : null;
   const selected = jobId && narration?.selected && narration.canUse ? await selectedNarration(jobId, phrases, params) : null;

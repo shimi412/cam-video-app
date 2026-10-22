@@ -29,6 +29,8 @@ async function handleGET(
   }
   try {
     const resolved = await realpath(filePath);
+    // Motion source, receipts and unapproved films use their owner-scoped route.
+    if (resolved.startsWith(path.join(await realpath(STORAGE), "motion") + path.sep)) return new Response("Forbidden", {status:403});
     if (!resolved.startsWith(await realpath(STORAGE) + path.sep)) return new Response("Forbidden", { status: 403 });
     const info = await stat(resolved);
     if (!info.isFile()) return new Response("Not found", { status: 404 });

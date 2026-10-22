@@ -34,7 +34,7 @@ it("preserves intentional presenter typography through finishing and keeps an un
 });
 it("invalidates the production budget when the treatment changes without adding a paid typography operation",()=>{
  const original=board(), timing=measuredPhraseTiming([phrase],[2.4]), params=resolveParams(phrase,"auto").params;
- const refs=[{id:"narrator",url:"/locked.png",sha256:"a".repeat(64)}];
+ const refs=[{id:"narrator",url:"/locked.png",sha256:"a".repeat(64), characterSheet:{status:"approved",sha256:"a".repeat(64),approvedAt:"2026-10-14"}}];
  const a=generationPlan(phrase,params,original,timing,refs);
  const changed=structuredClone(original);changed.shots[0].visualMode="metaphor";
  const b=generationPlan(phrase,params,changed,timing,refs);

@@ -205,7 +205,10 @@ it("requires approval of the exact recording and alignment and invalidates clips
   const before = generationPlan(script, params, board, placeholderTiming(phrases), references);
   const after = alignedGenerationPlan({ script, params, board, references, audio, alignment: a, approval, mode: "simulation" });
   expect(after.plan.timingBasis).toBe("simulation-alignment"); expect(after.plan.canExecute).toBe(false);
-  expect(after.plan.operations.find((op) => op.id === "scene-2-clip")!.input.duration).toBe("5");
+  // The visible action stays four seconds. The 8s recording's trailing pause
+  // is held locally, rather than purchasing another second of animation.
+  expect(after.plan.operations.find((op) => op.id === "scene-2-clip")!.input.duration).toBe("4");
+  expect(after.plan.operations.find((op) => op.id === "scene-2-clip")!.input.duration).toBe(before.operations.find((op) => op.id === "scene-2-clip")!.input.duration);
   expect(after.plan.operations.find((op) => op.id === "scene-1-clip")!.fingerprint).not.toBe(before.operations.find((op) => op.id === "scene-1-clip")!.fingerprint);
   expect(after.plan.operations.find((op) => op.id === "scene-1-start")!.fingerprint).toBe(before.operations.find((op) => op.id === "scene-1-start")!.fingerprint);
 });

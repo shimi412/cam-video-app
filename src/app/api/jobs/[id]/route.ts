@@ -1,5 +1,5 @@
-import { withAccess } from "@/lib/access";
-import { eq } from "drizzle-orm";
+import { actorFor, withAccess } from "@/lib/access";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getBalanceUsd } from "@/lib/credits";
 import { z } from "zod";
@@ -15,13 +15,24 @@ async function handleGET(
   const { id } = await params;
   if (!z.uuid().safeParse(id).success) return Response.json({ error: "Invalid production ID." }, { status: 400 });
   const [job] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, id));
-  if (!job) return Response.json({ error: "Job not found" }, { status: 404 });
+  if (!job || job.deletedAt) return Response.json({ error: "Job not found" }, { status: 404 });
 
   const jobParams = job.params as Record<string, unknown>;
+  if(jobParams.filmType==='comics'){
+    const {getComic}=await import('@/lib/comics/store');const {publicComic}=await import('@/lib/comics/model');
+    try{return Response.json(publicComic(await getComic(id,(await actorFor(_request))!.id)));}catch{return Response.json({error:'Video not found.'},{status:404});}
+  }
+  if(jobParams.filmType==='motion'){
+    const {getMotion}=await import('@/lib/motion/store');
+    const {publicMotion}=await import('@/lib/motion/state');
+    try{return Response.json(publicMotion(id,await getMotion(id,(await actorFor(_request))!.id)));}
+    catch{return Response.json({error:'Video not found.'},{status:404});}
+  }
   const current = await currentDraft(job);
   const canResume = recoveryAllowed(job) && !recentlyQueued(job) && !(await jobWorkerActive(id));
   return Response.json({
     id: job.id,
+    savedToLibrary: job.savedToLibrary,
     live: jobParams.live === true,
     conversationId: job.conversationId,
     draft: job.status === "estimated" && current.draft ? { ...current.draft, jobId: job.id, preparation: current.preparation } : null,
@@ -51,8 +62,16 @@ export const GET = withAccess(handleGET);
 
 export const PATCH = withAccess(async (request, {params}: {params: Promise<{id:string}>}) => {
  const {id}=await params;
- const body=z.object({title:z.string().trim().min(1).max(80)}).strict().safeParse(await request.json().catch(()=>null));
- if(!z.uuid().safeParse(id).success || !body.success) return Response.json({error:"Use a title of 1 to 80 characters."},{status:400});
- const changed=await db.update(schema.jobs).set({title:body.data.title}).where(eq(schema.jobs.id,id)).returning({id:schema.jobs.id,title:schema.jobs.title});
+ const body=z.object({title:z.string().trim().min(1).max(80).optional(),savedToLibrary:z.boolean().optional()}).strict().refine(value=>value.title!==undefined||value.savedToLibrary!==undefined).safeParse(await request.json().catch(()=>null));
+ if(!z.uuid().safeParse(id).success || !body.success) return Response.json({error:"Invalid video update."},{status:400});
+ const [existing]=await db.select({params:schema.jobs.params}).from(schema.jobs).where(eq(schema.jobs.id,id));
+ if((existing?.params as {filmType?:string})?.filmType==='comics'){
+  try{const {getComic}=await import('@/lib/comics/store');await getComic(id,(await actorFor(request))!.id);if(body.data.title){const {pool}=await import('@/db');await pool.query("UPDATE comics_runs SET state=jsonb_set(state,'{title}',to_jsonb($2::text)) WHERE job_id=$1",[id,body.data.title]);}}catch{return Response.json({error:'Video not found.'},{status:404});}
+ }
+ if((existing?.params as {filmType?:string})?.filmType==='motion'){
+  try{const {getMotion}=await import('@/lib/motion/store');await getMotion(id,(await actorFor(request))!.id);if(body.data.title){const {pool}=await import('@/db');await pool.query("UPDATE motion_runs SET state=jsonb_set(state,'{title}',to_jsonb($2::text)) WHERE job_id=$1",[id,body.data.title]);}}
+  catch{return Response.json({error:'Video not found.'},{status:404});}
+ }
+ const changed=await db.update(schema.jobs).set(body.data).where(and(eq(schema.jobs.id,id),isNull(schema.jobs.deletedAt))).returning({id:schema.jobs.id,title:schema.jobs.title,savedToLibrary:schema.jobs.savedToLibrary});
  return changed.length?Response.json(changed[0]):Response.json({error:"Video not found."},{status:404});
 });

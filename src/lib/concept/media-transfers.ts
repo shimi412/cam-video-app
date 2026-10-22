@@ -8,6 +8,8 @@ import { assertTransportMode, providerOutputUrl, type TransportMode } from "./pr
 import { Hash, sha256, readCheckpoint, saveCheckpoint } from "./checkpoints";
 import { importSceneMedia, verifiedSceneMedia, MAX_MEDIA_BYTES } from "./imported-media";
 import { SceneMediaSchema } from "./preview-inputs";
+import { inspectImageQuality } from "./image-quality";
+import type { ImageAspectRatio } from "./image-quality-types";
 
 export type AssetTransport = {
   mode: TransportMode;
@@ -20,7 +22,7 @@ const Upload = Context.extend({ sha256: Hash, state: z.enum(["uploading", "not-s
  * failure can be resumed; lost responses and interrupted PUTs remain ambiguous. */
 export class UploadNotStartedError extends Error {}
 const Audio = z.object({ kind: z.literal("audio"), file: z.literal("narration.wav"), sha256: Hash, sourceSha256: Hash, duration: z.number().positive() });
-const Download = Context.extend({ jobId: z.uuid(), kind: z.enum(["image", "video", "audio"]), provider: z.enum(["fal", "higgsfield"]), sourceSha256: Hash, media: SceneMediaSchema.optional(), audio: Audio.optional() });
+const Download = Context.extend({ jobId: z.uuid(), kind: z.enum(["image", "video", "audio"]), provider: z.enum(["fal", "higgsfield"]), sourceSha256: Hash, sourceFile: z.literal("source-image").optional(), media: SceneMediaSchema.optional(), audio: Audio.optional() });
 export type AudioAsset = z.infer<typeof Audio>;
 type TransferContext = { directory: string; transport: AssetTransport; assertOwned: () => Promise<void> };
 
@@ -103,13 +105,21 @@ export async function normalizeAudio(bytes: Buffer, directory: string): Promise<
  * The caller supplies an acknowledged output URL and holds the job lock.
  * Downloads may be retried; they never re-submit generation requests.
  */
-export async function downloadResult(input: TransferContext & { jobId: string; fingerprint: string; kind: "image" | "video" | "audio"; provider: "fal" | "higgsfield"; url: string }) {
+export async function downloadResult(input: TransferContext & { jobId: string; fingerprint: string; kind: "image" | "video" | "audio"; provider: "fal" | "higgsfield"; url: string; expectedAspectRatio?: ImageAspectRatio }) {
   assertTransportMode(input.transport.mode); z.uuid().parse(input.jobId); Hash.parse(input.fingerprint);
   const directory = path.join(input.directory, "downloads", input.fingerprint), receiptFile = path.join(directory, "receipt.json");
   const old = await readCheckpoint(receiptFile, Download);
   if (old) {
     if (old.mode !== input.transport.mode || old.jobId !== input.jobId || old.fingerprint !== input.fingerprint || old.kind !== input.kind || old.provider !== input.provider) throw new Error("Media receipt mismatch.");
-    if (old.media) await verifiedSceneMedia(input.jobId, old.media);
+    if (old.media) {
+      const verified = await verifiedSceneMedia(input.jobId, old.media);
+      const original = old.sourceFile ? await readFile(path.join(directory, old.sourceFile)) : undefined;
+      if (original && sha256(original) !== old.sourceSha256) throw new Error("Original downloaded image changed. Restore the original file.");
+      if (old.media.kind === "image" && (!old.media.quality || old.media.quality.expectedAspectRatio !== input.expectedAspectRatio)) {
+        old.media.quality = await inspectImageQuality(original ?? verified.bytes, input.expectedAspectRatio);
+        await saveCheckpoint(receiptFile, old, input.assertOwned);
+      }
+    }
     else if (old.audio) {
       if (sha256(await readFile(path.join(directory, "narration.wav"))) !== old.audio.sha256) throw new Error("Downloaded voice changed. Restore the original file.");
     } else throw new Error("Incomplete media receipt.");
@@ -119,9 +129,12 @@ export async function downloadResult(input: TransferContext & { jobId: string; f
   await input.assertOwned();
   const bytes = await boundedMedia(await input.transport.download(url, input.provider), input.kind === "audio" ? 64 * 1024 * 1024 : MAX_MEDIA_BYTES);
   await input.assertOwned(); await mkdir(directory, { recursive: true });
-  const result = input.kind === "audio" ? { audio: await normalizeAudio(bytes, directory) } : { media: await importSceneMedia(input.jobId, bytes) };
+  // Retain the provider's exact image as evidence alongside the normalized
+  // display asset. Quality warnings never repair or crop its composition.
+  if (input.kind === "image") await writeFile(path.join(directory, "source-image"), bytes);
+  const result = input.kind === "audio" ? { audio: await normalizeAudio(bytes, directory) } : { media: await importSceneMedia(input.jobId, bytes, { expectedAspectRatio: input.expectedAspectRatio }) };
   if (result.media && result.media.kind !== input.kind) throw new Error("Provider returned the wrong media type.");
-  const receipt = Download.parse({ mode: input.transport.mode, jobId: input.jobId, fingerprint: input.fingerprint, kind: input.kind, provider: input.provider, sourceSha256: sha256(bytes), ...result });
+  const receipt = Download.parse({ mode: input.transport.mode, jobId: input.jobId, fingerprint: input.fingerprint, kind: input.kind, provider: input.provider, sourceSha256: sha256(bytes), ...(input.kind === "image" ? { sourceFile: "source-image" } : {}), ...result });
   await saveCheckpoint(receiptFile, receipt, input.assertOwned);
   return { ...receipt, directory, reused: false };
 }

@@ -1,0 +1,655 @@
+{
+"id": "57a06953-84c2-4820-b806-2cdcfec55d3f",
+"note": "Real Claude writer answer of 2026-10-20 (contract 4), rejected on its VIS/MARKS data lines. Fixture for executor regression; the composition is the model's, not a reference.",
+"film": {
+"scenes": [
+{
+"id": "sA",
+"phrase": 1,
+"meaning": "L'accusation initiale, posee mot par mot comme une affirmation qu'on va questionner",
+"movement": "Quatre mots (JEWS/CONTROL/MEDIA) atterrissent un a un avec ressort puis le ? corail arrive en rotation"
+},
+{
+"id": "sB",
+"phrase": 2,
+"meaning": "Le doute immediat, sec et seul sur fond creme",
+"movement": "REALLY? apparait en flou de mouvement lettre par lettre puis un trait corail se trace sous le mot"
+},
+{
+"id": "sC",
+"phrase": 3,
+"meaning": "Le mot joue ce qu'il dit : TERRIBLE s'ecrase litteralement",
+"movement": "Trois lignes de liaison entrent puis TERRIBLE prend du gras et s'ecrase sur lui-meme, puis tombe avec AT PR., la camera suit la chute"
+},
+{
+"id": "sD",
+"phrase": 4,
+"meaning": "Les manchettes biaisees, l'objet journal illustre la phrase",
+"movement": "Journal avec bandeau et manchettes qui glissent puis virent au corail, HEADLINES entre en gras progressif, NEGATIVE? arrive en dernier"
+},
+{
+"id": "sE",
+"phrase": 5,
+"meaning": "La viralite montree par un compteur qui grimpe et un fil qui ne s'arrete jamais",
+"movement": "Fil social qui defile en continu derriere les mots, compteur qui monte en grand jusqu'a un chiffre viral, EVERY SINGLE DAY? se pose mot par mot"
+},
+{
+"id": "sF",
+"phrase": 6,
+"meaning": "La citation qui boucle sur elle-meme devient le recit viral",
+"movement": "Carte citee en 3D qui se depose, anneau corail qui se referme autour en suivant la voix, echos pulses, VIRAL NARRATIVE? conclut"
+},
+{
+"id": "sG",
+"phrase": 7,
+"meaning": "Seul moment calme du film, la question pivot",
+"movement": "Passage sobre, fond noir, typo fine qui apparait lentement avec un leger zoom"
+},
+{
+"id": "sH",
+"phrase": 8,
+"meaning": "La fleche qui se retourne illustre la propagande qui se retourne contre soi-meme",
+"movement": "EVERYTHING entre en gras montant, puis une fleche se trace vers la droite et fait un demi-tour complet pour revenir"
+},
+{
+"id": "sI",
+"phrase": 9,
+"meaning": "Le mot barre, rejet explicite de la conspiration",
+"movement": "CONSPIRACY. entre puis se fait barrer d'un trait corail qui se trace avec une secousse"
+},
+{
+"id": "sJ",
+"phrase": 10,
+"meaning": "Le trou du O est litteralement l'element du raccord suivant",
+"movement": "PLOT HOLE. se pose en deux temps, le O devient visuellement un trou vers lequel la camera plonge"
+},
+{
+"id": "sK1",
+"phrase": 11,
+"meaning": "Plus aucune trace de blame ; le fil qui nous nourrit et le ? final avant la signature CAM",
+"movement": "Ligne de liaison sort, remplacee par START QUESTIONING, THE JEWS disparait completement (opacite 0), fil qui nourrit defile, un dernier ? grandit et recouvre tout le cadre"
+}
+],
+"source": "DUR = 39.6\n# ============================================================ A\n# ------------------------------------------------------------ typo, logo (reprise machinerie) --------------------------------------------------------------\nids = iter(range(1, 100000))\nnodes, moves = [], []\nSC = {}\nEV = []\nTR = []\ncur = [None]\n\n\ndef scene(sid, bg):\n    SC[sid] = [None, None, bg, []]\n    cur[0] = sid\n\n\ndef put(html_):\n    SC[cur[0]][3].append(html_)\n\n\ndef ev(t0, t1, what=\"\"):\n    EV.append((cur[0], t0, t1, what))\n\n\ndef L(sel, t, frm=\"y:120,scale:1.25\", dur=.55, ease=\"back.out(1.6)\"):\n    land(sel, t, frm, dur, ease); ev(t, t + dur, sel)\n\n\ndef SWG(sel, t, dx=-300, dur=.55):\n    swing(sel, t, dx, dur); ev(t, t + dur, sel)\n\n\ndef MO(sel, t, a, b, dur=.5, ease=\"back.out(1.5)\"):\n    morph(sel, t, a, b, dur, ease); ev(t, t + dur, sel)\n\n\ndef DR(sel, t, dur=.32):\n    draw(sel, t, dur); ev(t, t + dur, sel)\n\n\ndef FA(sel, t, dur=.6, to=1):\n    fade(sel, t, dur, to); ev(t, t + dur, sel)\n\n\ndef M(js, t0, t1, what=\"\"):\n    mv(js); ev(t0, t1, what)\n\n\ndef show(sid, t):\n    SC[sid][0] = t\n\n\ndef hide(sid, t):\n    SC[sid][1] = t\n\n\nLEAD = .1\n\n\ndef ws(i):\n    return max(0.0, WD[i][\"start\"] - LEAD)\n\n\ndef we(i):\n    return WD[i][\"end\"]\n\n\n# ============================================================ A navy: Jews control the media? mot a mot, le ? corail\nscene(\"sA\", NAVY)\nshow(\"sA\", 0)\nfsA = fit([\"CONTROL\"], SW, 900, 125, 205)\nYA = 320\nrows = [(\"a1\", \"JEWS\", 0), (\"a2\", \"CONTROL\", 1), (\"a3\", \"THE\", 2), (\"a4\", \"MEDIA\", 3)]\nfor k, (cid, word, wi) in enumerate(rows):\n    put(txt(cid, YA + k * (fsA + 10), word, fsA, 900, 125, CR, \"opacity:0\"))\nQY = YA + 4 * (fsA + 10)\nfsQ = 230\nput(txt(\"aq\", QY, \"?\", fsQ, 900, 125, CO, \"opacity:0\"))\nL(\"#a1\", ws(0), \"y:140,scale:1.3\", .5)\nSWG(\"#a2\", ws(1), -360, .5)\nL(\"#a3\", ws(2), \"scale:.4\", .4, \"back.out(2)\")\nL(\"#a4\", ws(3), \"y:160,scale:1.3\", .5)\nMO(\"#a4\", ws(3) + .05, (300, 100), (900, 125), .5)\nTQ = ws(4)\nL(\"#aq\", TQ, \"scale:3.2,rotation:-18\", .38, \"back.out(2.2)\")\nT_A = max(TQ + .38 + .6, 2.35)\nqx, qy = CX, QY + fsQ * .78\n\n# ============================================================ B crème: REALLY? flou de mouvement\nscene(\"sB\", CR)\niris(\"sA\", \"sB\", T_A, .5, qx, qy, \"iris depuis le point du ?\")\nfsB = fit([\"REALLY?\"], SW, 900, 125, 300)\nYB = 900 - fsB // 2\nput(f'<div id=\"b1\" style=\"position:absolute;left:{SL}px;top:{YB}px;width:{SW}px;text-align:center;{arc(900, 125)};font-size:{fsB}px;line-height:1;color:{NAVY}\">'\n    + \"\".join(f'<span style=\"display:inline-block;overflow:hidden;vertical-align:top;height:{fsB}px\"><span class=\"bl\" style=\"display:inline-block\">{c}</span></span>' for c in \"REALLY?\")\n    + '</div>'\n    + bar(\"bk\", SL, YB + fsB + 24, SW, 10, CO))\nTB0 = max(ws(4) + .1, T_A + .08)\nBLUR(\"#sB .bl\", TB0, .4, .03); ev(TB0, TB0 + .4 + .18, \"REALLY?\")\nMO(\"#sB .bl\", TB0 + .1, (400, 100), (900, 125), .45)\nDR(\"#bk\", we(5) - .2, .25)\nT_B = max(we(5) - .2 + .25 + .6, 4.3)\nbk_y = YB + fsB + 24\n\n# ============================================================ C bleu clair: TERRIBLE AT PR, le mot s'ecrase puis tombe\nscene(\"sC\", LIGHT)\nband(\"sB\", \"sC\", T_B, .5, bk_y, \"le trait corail sous REALLY? s'ouvre en aplat bleu\")\nfsC1 = fit([\"THEN SOMEBODY NEEDS\", \"TO EXPLAIN WHY\", \"THE JEWS ARE SO\"], SW, 600, 100, 92)\nfsC2 = fit([\"TERRIBLE\"], SW * .90, 900, 125, 240)\nfsC3 = fit([\"AT PR.\"], SW, 900, 125, 160)\nput(txt(\"c1\", 300, \"THEN SOMEBODY NEEDS\", fsC1, 600, 100, NAVY, \"opacity:0\")\n    + txt(\"c2\", 300 + fsC1 + 12, \"TO EXPLAIN WHY\", fsC1, 600, 100, NAVY, \"opacity:0\")\n    + txt(\"c3\", 300 + 2 * (fsC1 + 12), \"THE JEWS ARE SO\", fsC1, 600, 100, NAVY, \"opacity:0\")\n    + f'<div id=\"c4\" style=\"position:absolute;left:{SL}px;top:640px;width:{SW}px;text-align:center;{arc(900, 125)};font-size:{fsC2}px;line-height:1;color:{CR};opacity:0\">{letters(\"TERRIBLE\", \"tc\")}</div>'\n    + txt(\"c5\", 640 + fsC2 + 30, \"AT PR.\", fsC3, 900, 125, NAVY, \"opacity:0\"))\nTC0 = max(ws(6), T_B + .08)\nL(\"#c1\", TC0, \"x:-200,scale:1\", .45)\nL(\"#c2\", ws(9), \"x:-200,scale:1\", .45)\nL(\"#c3\", ws(12), \"x:-200,scale:1\", .45)\nTT = ws(15)\nM(f'tl.set(\"#c4\",{{opacity:1}},{TT:.3f});tl.fromTo(\"#sC .tc\",{{y:-260,scale:1.5,opacity:0}},{{y:0,scale:1,opacity:1,duration:.42,ease:\"back.out(1.5)\",stagger:.03}},{TT:.3f});', TT, TT + .42 + .24, \"TERRIBLE\")\nM(f'tl.to(\"#sC .tc\",{{y:(i)=>Math.abs(i-3.5)*-9+14,rotation:(i)=>(i-3.5)*3,scaleY:.9,duration:.3,ease:\"back.out(3)\"}},{TT + .55:.3f});', TT + .55, TT + .85, \"ecrasement\")\nL(\"#c5\", ws(17), \"y:120,scale:1.6\", .32, \"back.out(1.8)\")\nT_C = max(ws(17) + .32 + .6, 7.2)\nmv(f'tl.to(\"#sC .tc\",{{y:1400,rotation:(i)=>(i%2?1:-1)*(20+i*6),duration:.6,ease:\"power2.in\",stagger:.02}},{T_C:.3f});')\nmv(f'tl.to(\"#c5\",{{y:1500,rotation:8,duration:.55,ease:\"power2.in\"}},{T_C + .05:.3f});')\n\n# ============================================================ D crème: journal HEADLINES, manchettes corail, NEGATIVE?\nscene(\"sD\", CR)\npan(\"sC\", \"sD\", T_C, .65, \"TERRIBLE tombe, la camera suit la chute jusqu'au journal\")\nfsD1 = fit([\"IF JEWS CONTROL THE\"], SW, 600, 100, 80)\nfsD2 = fit([\"HEADLINES\"], SW, 900, 125, 190)\nfsD3 = fit([\"RELENTLESSLY\", \"NEGATIVE?\"], SW, 900, 125, 120)\nHY = 262 + 20 + fsD1 + 16\nRY0 = HY + fsD2 + 50\nwidths = [SW, SW * .78, SW * .9, SW * .62, SW * .84, SW * .7]\nrowsD = \"\".join(f'<div class=\"hr\" style=\"position:absolute;left:{SL}px;top:{RY0 + i * 66}px;width:{w:.0f}px;height:38px;background:{NAVY};opacity:0\"></div>' for i, w in enumerate(widths))\nput(bar(\"dm\", SL, 262, SW, 12, NAVY, \"opacity:0\")\n    + txt(\"d1\", 262 + 26, \"IF JEWS CONTROL THE\", fsD1, 600, 100, NAVY, \"opacity:0\")\n    + txt(\"d2\", HY, \"HEADLINES\", fsD2, 900, 125, NAVY, \"opacity:0\")\n    + rowsD\n    + txt(\"d3\", RY0 + 6 * 66 + 30, \"RELENTLESSLY\", fsD3, 900, 125, NAVY, \"opacity:0\")\n    + txt(\"d4\", RY0 + 6 * 66 + 30 + fsD3 + 8, \"NEGATIVE?\", fsD3, 900, 125, CO, \"opacity:0\"))\nTD0 = T_C + .1\nDR(\"#dm\", TD0, .3); mv(f'tl.set(\"#dm\",{{opacity:1}},{TD0:.3f});')\nL(\"#d1\", max(ws(19), TD0 + .05), \"y:-60,scale:1\", .4)\nL(\"#d2\", ws(22), \"x:-400,scale:1.1\", .5)\nMO(\"#d2\", ws(22) + .05, (400, 100), (900, 125), .5)\nTR0 = ws(25)\nM(f'tl.fromTo(\"#sD .hr\",{{x:600,opacity:0}},{{x:0,opacity:1,duration:.38,ease:\"back.out(1.3)\",stagger:.07}},{TR0:.3f});', TR0, TR0 + .38 + .42, \"manchettes\")\nL(\"#d3\", ws(30), \"y:80,scale:1.2\", .45)\nM(f'tl.to(\"#sD .hr\",{{backgroundColor:\"{CO}\",x:(i)=>(i%2?10:-10),duration:.22,ease:\"power2.out\",stagger:.05}},{ws(30) + .1:.3f});', ws(30) + .1, ws(30) + .1 + .22 + .3, \"manchettes corail\")\nL(\"#d4\", ws(31), \"scale:1.6,rotation:-4\", .4, \"back.out(1.8)\")\nT_D = max(ws(31) + .4 + .6, 11.0)\nnegx = CX + em(\"NEGATIVE?\", 900, 125) * fsD3 / 2 - em(\"?\", 900, 125) * fsD3 / 2\nnegy = RY0 + 6 * 66 + 30 + fsD3 + 8 + fsD3 * .78\n\n# ============================================================ E noir: fil social, compteur viral, EVERY SINGLE DAY\nscene(\"sE\", K)\niris(\"sD\", \"sE\", T_D, .55, negx, negy, \"iris depuis le point du ? de NEGATIVE?\")\nfsE1 = fit([\"IF JEWS CONTROL\"], SW, 600, 100, 80)\nfsE2 = fit([\"SOCIAL MEDIA\"], SW, 900, 125, 150)\nFY0, FY1 = 262 + 20 + fsE1 + 16 + fsE2 + 40, 1110\ncards = \"\"\nfor i in range(7):\n    top = i * 230\n    badge = f'<div style=\"position:absolute;left:28px;top:150px;padding:6px 14px;border-radius:8px;background:{CO};font:800 24px/1 Mont;color:{CR};letter-spacing:.04em\">CONSPIRACY</div>' if i % 2 else \"\"\n    cards += (f'<div class=\"fc\" style=\"position:absolute;left:0;top:{top}px;width:{SW}px;height:206px;border-radius:22px;background:#1C1C24\">'\n              f'<div style=\"position:absolute;left:28px;top:26px;width:52px;height:52px;border-radius:26px;background:#3A3A48\"></div>'\n              f'<div style=\"position:absolute;left:98px;top:32px;width:220px;height:14px;border-radius:7px;background:#3A3A48\"></div>'\n              f'<div style=\"position:absolute;left:98px;top:58px;width:140px;height:11px;border-radius:6px;background:#2C2C36\"></div>'\n              f'<div style=\"position:absolute;left:28px;top:100px;width:{SW - 56 - (i * 37) % 200}px;height:16px;border-radius:8px;background:#50506A\"></div>'\n              f'<div style=\"position:absolute;left:28px;top:126px;width:{SW - 56 - (i * 91) % 300}px;height:16px;border-radius:8px;background:#50506A\"></div>{badge}</div>')\nput(txt(\"e1\", 262 + 20, \"IF JEWS CONTROL\", fsE1, 600, 100, CR, \"opacity:0\")\n    + txt(\"e2\", 262 + 20 + fsE1 + 16, \"SOCIAL MEDIA\", fsE2, 900, 125, LIGHT, \"opacity:0\")\n    + f'<div id=\"feed\" style=\"position:absolute;left:{SL}px;top:{FY0}px;width:{SW}px;height:{FY1 - FY0}px;overflow:hidden;opacity:0\"><div id=\"feedin\" style=\"position:absolute;left:0;top:0;width:{SW}px\">{cards}</div></div>'\n    + f'<div id=\"cntw\" style=\"position:absolute;left:{SL}px;top:{(FY0 + FY1) // 2 - 90}px;width:{SW}px;text-align:center;opacity:0\">'\n    f'<div style=\"display:inline-block;padding:18px 44px;border-radius:90px;background:{CR};color:{NAVY};{arc(900, 110)};font-size:90px;line-height:1\"><span style=\"color:{CO}\">\\u2191</span> <span id=\"cnt\">0</span></div></div>'\n    )\nfsE3 = fit([\"EVERY SINGLE DAY?\"], SW, 900, 100, 98)\nwE = [em(s, 900, 100) * fsE3 for s in (\"EVERY\", \"SINGLE\", \"DAY?\")]\ngap = (SW - sum(wE)) / 2\nxE = [SL, SL + wE[0] + gap, SL + wE[0] + gap + wE[1] + gap]\nput(\"\".join(f'<div id=\"ew{k}\" style=\"position:absolute;left:{xE[k]:.0f}px;top:1150px;{arc(900, 100)};font-size:{fsE3}px;line-height:1;color:{CR};opacity:0\">{s}</div>' for k, s in enumerate((\"EVERY\", \"SINGLE\", \"DAY?\"))))\nTE0 = T_D + .1\nL(\"#e1\", max(ws(33), TE0), \"y:-60,scale:1\", .4)\nL(\"#e2\", ws(35), \"x:360,scale:1.1\", .5)\nMO(\"#e2\", ws(35) + .05, (400, 100), (900, 125), .5)\nTF0 = ws(38)\nM(f'tl.fromTo(\"#feed\",{{y:300,opacity:0}},{{y:0,opacity:1,duration:.5,ease:\"power3.out\"}},{TF0:.3f});', TF0, TF0 + .5, \"fil\")\ndrift(\"#feedin\", TF0 + .3, 17.6, y=-900)\nTCNT = ws(44)\nM(f'tl.fromTo(\"#cntw\",{{scale:.4,opacity:0}},{{scale:1,opacity:1,duration:.4,ease:\"back.out(1.8)\"}},{TCNT:.3f});', TCNT, TCNT + .4, \"compteur\")\nmv(f'const cE={{v:0}};tl.to(cE,{{v:2418906,duration:1.0,ease:\"power3.out\",onUpdate:()=>{{document.getElementById(\"cnt\").textContent=Math.round(cE.v).toLocaleString(\"en-US\")}}}},{TCNT + .05:.3f});')\nev(TCNT, TCNT + 1.05, \"compteur monte\")\nfor k, wi in enumerate((45, 46, 47)):\n    L(f\"#ew{k}\", ws(wi), \"y:90,scale:1.4\", .3, \"back.out(1.8)\")\nT_E = max(we(47) + .6, 17.7)\ncnt_c = (CX, (FY0 + FY1) // 2 - 90 + 60)\n\n# ============================================================ F bleu moyen: carte citee, anneau qui se referme, VIRAL NARRATIVE?\nscene(\"sF\", MID)\niris(\"sE\", \"sF\", T_E, .5, cnt_c[0], cnt_c[1], \"iris depuis le compteur viral\")\nfsF1 = fit([\"AND IF JEWS CONTROL\"], SW, 600, 100, 80)\nfsF2 = fit([\"THE NARRATIVE\"], SW, 900, 125, 140)\nCW, CH = 700, 380\nCXl, CYt = CX - CW // 2, 262 + 20 + fsF1 + 16 + fsF2 + 70\nfsFq = fit([\"\\u201cJEWS CONTROL\", \"THE MEDIA\\u201d\"], CW - 80, 900, 100, 92)\nRR = 430\nring = (f'<svg id=\"ring\" style=\"position:absolute;left:{CX - RR - 10}px;top:{CYt + CH // 2 - RR - 10}px;opacity:0\" width=\"{2 * RR + 20}\" height=\"{2 * RR + 20}\" viewBox=\"0 0 {2 * RR + 20} {2 * RR + 20}\">'\n        f'<circle cx=\"{RR + 10}\" cy=\"{RR + 10}\" r=\"{RR}\" fill=\"none\" stroke=\"{CO}\" stroke-width=\"14\" stroke-linecap=\"round\" '\n        f'stroke-dasharray=\"{2 * math.pi * RR:.0f}\" stroke-dashoffset=\"{2 * math.pi * RR:.0f}\" transform=\"rotate(-90 {RR + 10} {RR + 10})\"/></svg>')\necho = \"\".join(f'<div class=\"ecf\" style=\"position:absolute;left:{CXl - i * 28}px;top:{CYt - i * 28}px;width:{CW + i * 56}px;height:{CH + i * 56}px;border:3px solid {CR};border-radius:{30 + i * 20}px;opacity:0\"></div>' for i in range(1, 4))\nfsF3 = fit([\"BECOME A VIRAL\", \"NARRATIVE?\"], SW, 900, 125, 92)\nput(txt(\"f1\", 262 + 20, \"AND IF JEWS CONTROL\", fsF1, 600, 100, CR, \"opacity:0\")\n    + txt(\"f2\", 262 + 20 + fsF1 + 16, \"THE NARRATIVE\", fsF2, 900, 125, CR, \"opacity:0\")\n    + ring + echo\n    + f'<div id=\"card\" style=\"position:absolute;left:{CXl}px;top:{CYt}px;width:{CW}px;height:{CH}px;border-radius:30px;background:#FFFFFF;box-shadow:0 26px 50px rgba(15,15,17,.25);opacity:0\">'\n    f'<div style=\"position:absolute;left:36px;top:32px;width:54px;height:54px;border-radius:27px;background:#DCD6CA\"></div>'\n    f'<div style=\"position:absolute;left:106px;top:40px;width:200px;height:14px;border-radius:7px;background:#DCD6CA\"></div>'\n    f'<div style=\"position:absolute;left:106px;top:64px;width:120px;height:11px;border-radius:6px;background:#E7E2D8\"></div>'\n    f'<div style=\"position:absolute;left:40px;top:120px;width:{CW - 80}px;text-align:center;{arc(900, 100)};font-size:{fsFq}px;line-height:1.05;color:{NAVY}\">\\u201cJEWS CONTROL<br>THE MEDIA\\u201d</div>'\n    f'<div id=\"vb\" style=\"position:absolute;right:30px;bottom:26px;padding:10px 18px;border-radius:12px;background:{CO};color:{CR};font:800 30px/1 Mont;letter-spacing:.05em;opacity:0\">\\u2191 VIRAL</div></div>'\n    + txt(\"f3\", 1130, \"BECOME A VIRAL\", fsF3, 900, 125, CR, \"opacity:0\")\n    + txt(\"f4\", 1130 + fsF3 + 8, \"NARRATIVE?\", fsF3, 900, 125, CO, \"opacity:0\"))\nL(\"#f1\", max(ws(48), T_E + .08), \"y:-60,scale:1\", .4)\nL(\"#f2\", ws(51), \"x:-360,scale:1.1\", .5)\nMO(\"#f2\", ws(51) + .05, (400, 100), (900, 125), .5)\nTCD = ws(54)\nM(f'tl.fromTo(\"#card\",{{y:300,rotationX:55,opacity:0,transformPerspective:1200}},{{y:0,rotationX:0,opacity:1,duration:.6,ease:\"back.out(1.4)\"}},{TCD:.3f});', TCD, TCD + .6, \"carte\")\nmv(f'tl.set(\"#ring\",{{opacity:1}},{TCD + .3:.3f});')\nM(f'tl.to(\"#ring circle\",{{strokeDashoffset:0,duration:{ws(61) - TCD - .3:.2f},ease:\"power2.inOut\"}},{TCD + .3:.3f});', TCD + .3, ws(61), \"anneau\")\nT_F = max(ws(61) + .4 + .6, 22.0)\nfor i, t in enumerate(beats(ws(58), T_F - .6 - BEAT * 1.5)):\n    M(f'tl.fromTo(\"#sF .ecf:nth-of-type({i % 3 + 1})\",{{opacity:.8,scale:.96}},{{opacity:0,scale:1.06,duration:{BEAT * 1.5:.2f},ease:\"power2.out\",immediateRender:false}},{t:.3f});', t, t + BEAT * 1.5, \"echo\")\nL(\"#f3\", ws(58), \"y:80,scale:1.2\", .45)\nL(\"#vb\", ws(60), \"scale:2,rotation:-8\", .35, \"back.out(2)\")\nL(\"#f4\", ws(61), \"scale:1.6,rotation:-4\", .4, \"back.out(1.8)\")\nT_F = max(ws(61) + .4 + .6, 22.0)\n\n# ============================================================ G noir: passage sobre MAKE IT MAKE SENSE.\nscene(\"sG\", K)\nrecede_black(\"sF\", \"sG\", T_F, .8, \"la camera recule et tout s'eteint ; passage sobre\")\nfsG = fit([\"MAKE IT MAKE SENSE.\"], SW * .82, 250, 62, 150)\nGY = 960 - fsG // 2\nput(txt(\"g1\", GY, \"MAKE IT MAKE SENSE.\", fsG, 250, 62, CR, \"opacity:0;letter-spacing:.04em\")\n    + bar(\"gl\", SL + 60, GY + fsG + 50, SW - 120, 2, CR, \"opacity:0\"))\nTG = max(ws(62), SC[\"sG\"][0] + .05)\nFA(\"#g1\", TG, .6)\nmv(f'tl.fromTo(\"#g1\",{{scale:1}},{{scale:1.05,duration:2.0,ease:\"sine.out\"}},{TG:.3f});')\nmv(f'tl.set(\"#gl\",{{opacity:.7}},{we(65):.3f});')\nDR(\"#gl\", we(65), .6)\nT_G = max(we(65) + .6 + .6, 25.3)\ngl_y = GY + fsG + 50\n\n# ============================================================ H corail: EVERYTHING, fleche demi-tour (against themselves)\nscene(\"sH\", CO)\nband(\"sG\", \"sH\", T_G, .6, gl_y, \"le trait sous MAKE IT MAKE SENSE s'ouvre en aplat corail\")\nfsH1 = fit([\"APPARENTLY,\"], SW, 900, 125, 120)\nfsH2 = fit([\"JEWS ARE RESPONSIBLE FOR\"], SW, 600, 100, 80)\nfsH3 = fit([\"EVERYTHING\"], SW, 900, 125, 190)\nfsH4 = fit([\"INCLUDING THE PROPAGANDA\"], SW, 600, 100, 72)\nfsH5 = fit([\"AGAINST THEMSELVES.\"], SW, 900, 125, 104)\nY1 = 262 + 20\nY2 = Y1 + fsH1 + 24\nY3 = Y2 + fsH2 + 16\nY4 = Y3 + fsH3 + 40\nY5 = Y4 + fsH4 + 14\nAY = Y5 + fsH5 + 50\nAH = min(1480 - AY - 10, 170)\nax0, ax1 = SL + 40, SR - 120\npath = f\"M {ax0} {AY + 20} H {ax1} A {AH / 2:.0f} {AH / 2:.0f} 0 0 1 {ax1} {AY + 20 + AH} H {ax0 + 60}\"\nplen = (ax1 - ax0) + math.pi * AH / 2 + (ax1 - ax0 - 60)\narrow = (f'<svg id=\"arr\" style=\"position:absolute;left:0;top:0;opacity:0\" width=\"1080\" height=\"1920\" viewBox=\"0 0 1080 1920\">'\n         f'<path d=\"{path}\" fill=\"none\" stroke=\"{NAVY}\" stroke-width=\"16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-dasharray=\"{plen:.0f}\" stroke-dashoffset=\"{plen:.0f}\"/>'\n         f'<polygon id=\"arh\" points=\"{ax0 + 60},{AY + 20 + AH - 34} {ax0 + 60},{AY + 20 + AH + 34} {ax0 - 10},{AY + 20 + AH}\" fill=\"{NAVY}\" opacity=\"0\"/></svg>')\nput(txt(\"h1\", Y1, \"APPARENTLY,\", fsH1, 900, 125, CR, \"opacity:0\")\n    + txt(\"h2\", Y2, \"JEWS ARE RESPONSIBLE FOR\", fsH2, 600, 100, NAVY, \"opacity:0\")\n    + f'<div id=\"h3\" style=\"position:absolute;left:{SL}px;top:{Y3}px;width:{SW}px;text-align:center;{arc(900, 125)};font-size:{fsH3}px;line-height:1;color:{NAVY};opacity:0\">{letters(\"EVERYTHING\", \"th\")}</div>'\n    + txt(\"h4\", Y4, \"INCLUDING THE PROPAGANDA\", fsH4, 600, 100, NAVY, \"opacity:0\")\n    + txt(\"h5\", Y5, \"AGAINST THEMSELVES.\", fsH5, 900, 125, CR, \"opacity:0\")\n    + arrow)\nL(\"#h1\", max(ws(67), T_G + .05), \"y:-80,scale:1.2\", .45)\nL(\"#h2\", ws(69), \"x:-200,scale:1\", .4)\nTEV = ws(72)\nM(f'tl.set(\"#h3\",{{opacity:1}},{TEV:.3f});tl.fromTo(\"#sH .th\",{{y:120,scale:1.4,opacity:0}},{{y:0,scale:1,opacity:1,duration:.4,ease:\"back.out(1.6)\",stagger:.03}},{TEV:.3f});', TEV, TEV + .4 + .3, \"EVERYTHING\")\nMO(\"#sH .th\", TEV + .1, (500, 100), (900, 125), .5)\nL(\"#h4\", ws(74), \"x:-200,scale:1\", .4)\nL(\"#h5\", ws(76), \"y:80,scale:1.2\", .45)\nTAR = we(76) + .1\nmv(f'tl.set(\"#arr\",{{opacity:1}},{TAR:.3f});')\nM(f'tl.to(\"#arr path\",{{strokeDashoffset:0,duration:.75,ease:\"power2.inOut\"}},{TAR:.3f});', TAR, TAR + .75, \"fleche demi-tour\")\nM(f'tl.fromTo(\"#arh\",{{opacity:0,scale:0,transformOrigin:\"{ax0 + 60}px {AY + 20 + AH}px\"}},{{opacity:1,scale:1,duration:.2,ease:\"back.out(2)\"}},{TAR + .7:.3f});', TAR + .7, TAR + .9, \"pointe\")\nT_H = max(TAR + .9 + .6, 29.6)\narr_c = (ax0 + 10, AY + 20 + AH)\n\n# ============================================================ I navy: CONSPIRACY barre, PLOT HOLE, le O devient le trou\nscene(\"sI\", NAVY)\niris(\"sH\", \"sI\", T_H, .55, arr_c[0], arr_c[1], \"iris depuis la pointe de la fleche\")\nfsI1 = fit([\"THAT'S NOT A\"], SW, 600, 100, 90)\nfsI2 = fit([\"CONSPIRACY.\"], SW, 900, 125, 165)\nfsI3 = fit([\"THAT'S A\"], SW, 600, 100, 90)\nfsI4 = fit([\"PLOT HOLE.\"], SW, 900, 125, 215)\nZ1 = 430\nZ2 = Z1 + fsI1 + 18\nZ3 = Z2 + fsI2 + 110\nZ4 = Z3 + fsI3 + 18\ncw = em(\"CONSPIRACY.\", 900, 125) * fsI2\nput(txt(\"i1\", Z1, \"THAT'S NOT A\", fsI1, 600, 100, CR, \"opacity:0\")\n    + txt(\"i2\", Z2, \"CONSPIRACY.\", fsI2, 900, 125, LIGHT, \"opacity:0\")\n    + bar(\"ik\", CX - cw / 2 - 10, Z2 + fsI2 * .46, cw + 20, 18, CO)\n    + txt(\"i3\", Z3, \"THAT'S A\", fsI3, 600, 100, CR, \"opacity:0\")\n    + f'<div id=\"i4\" style=\"position:absolute;left:{SL}px;top:{Z4}px;width:{SW}px;text-align:center;{arc(900, 125)};font-size:{fsI4}px;line-height:1;color:{CR};opacity:0\">'\n    f'<span id=\"i4a\" style=\"display:inline-block\">PLOT</span>&nbsp;<span id=\"i4b\" style=\"display:inline-block;opacity:0\">H<span id=\"io\" style=\"display:inline-block;position:relative\">O</span>LE.</span></div>')\nmv(f'tl.set(\"#ik\",{{scaleX:0}},0);')\nL(\"#i1\", max(ws(78), T_H + .05), \"y:-60,scale:1\", .4)\nL(\"#i2\", ws(81), \"x:-400,scale:1.1\", .5)\nMO(\"#i2\", ws(81) + .05, (400, 100), (900, 125), .5)\nTK = we(81) + .15\nDR(\"#ik\", TK, .25)\nM(f'tl.fromTo(\"#i2\",{{x:-12}},{{x:0,duration:.3,ease:\"back.out(3)\",immediateRender:false}},{TK + .1:.3f});', TK + .1, TK + .4, \"secousse\")\nL(\"#i3\", ws(82), \"y:-60,scale:1\", .4)\nmv(f'tl.set(\"#i4\",{{opacity:1}},{ws(84):.3f});')\nL(\"#i4a\", ws(84), \"y:120,scale:1.5\", .4, \"back.out(1.8)\")\nL(\"#i4b\", ws(85), \"y:120,scale:1.5\", .4, \"back.out(1.8)\")\nT_I = max(we(85) + .6, 33.0)\nfull = em(\"PLOT HOLE.\", 900, 125) * fsI4\nox2 = CX - full / 2 + em(\"PLOT H\", 900, 125) * fsI4 + em(\"O\", 900, 125) * fsI4 / 2\noy2 = Z4 + fsI4 * .52\n\n# ============================================================ J crème: STOP BLAMING -> START QUESTIONING, le fil qui nourrit, le ?\nscene(\"sJ\", CR)\niris(\"sI\", \"sJ\", T_I, .55, ox2, oy2, \"iris depuis le O de HOLE : on entre dans le trou\")\nfsJ1 = fit([\"MAYBE STOP BLAMING\", \"THE JEWS AND\"], SW, 600, 100, 84)\nfsJ2 = fit([\"START QUESTIONING\"], SW, 900, 100, 135)\nfsJ3 = fit([\"WHAT YOU'RE\"], SW, 900, 125, 110)\nfsJ4 = fit([\"BEING FED.\"], SW, 900, 125, 130)\nJ1 = 262 + 30\nJ2 = J1 + fsJ1 + 16\nJ3 = J2 + fsJ2 + 50\nJ4 = J3 + fsJ3 + 10\nFJ0 = J4 + fsJ4 + 40\nFJ1 = 1300\ncardsJ = \"\"\nfor i in range(6):\n    top = i * 150\n    cardsJ += (f'<div style=\"position:absolute;left:0;top:{top}px;width:{SW}px;height:130px;border-radius:18px;background:#FFFFFF;box-shadow:0 10px 24px rgba(15,15,17,.12)\">'\n               f'<div style=\"position:absolute;left:22px;top:20px;width:44px;height:44px;border-radius:22px;background:#DCD6CA\"></div>'\n               f'<div style=\"position:absolute;left:84px;top:24px;width:{200 + (i * 53) % 300}px;height:14px;border-radius:7px;background:#DCD6CA\"></div>'\n               f'<div style=\"position:absolute;left:84px;top:50px;width:{260 + (i * 97) % 400}px;height:12px;border-radius:6px;background:#E7E2D8\"></div>'\n               f'<div style=\"position:absolute;left:84px;top:74px;width:{180 + (i * 31) % 350}px;height:12px;border-radius:6px;background:#E7E2D8\"></div></div>')\nput(txt(\"j1\", J1, \"MAYBE STOP BLAMING\", fsJ1, 600, 100, NAVY, \"opacity:0\")\n    + txt(\"j1b\", J1, \"THE JEWS AND\", fsJ1, 600, 100, NAVY, \"opacity:0\")\n    + txt(\"j2\", J2, \"START QUESTIONING\", fsJ2, 900, 100, NAVY, \"opacity:0\")\n    + txt(\"j3\", J3, \"WHAT YOU'RE\", fsJ3, 900, 125, NAVY, \"opacity:0\")\n    + txt(\"j4\", J4, \"BEING FED.\", fsJ4, 900, 125, CO, \"opacity:0\")\n    + f'<div id=\"feedJ\" style=\"position:absolute;left:{SL}px;top:{FJ0}px;width:{SW}px;height:{FJ1 - FJ0}px;overflow:hidden;opacity:0\"><div id=\"feedJin\" style=\"position:absolute;left:0;top:0;width:{SW}px\">{cardsJ}</div></div>'\n    + txt(\"jq\", FJ0 + 20, \"?\", 280, 900, 125, CO, \"opacity:0\"))\nL(\"#j1\", max(ws(86), T_I + .08), \"y:-60,scale:1\", .4)\nTS = ws(89)\nM(f'tl.to(\"#j1\",{{y:-90,opacity:0,duration:.3,ease:\"back.in(1.6)\"}},{TS:.3f});', TS, TS + .3, \"sortie\")\nL(\"#j1b\", TS + .12, \"y:90,scale:1\", .4)\nL(\"#j2\", ws(90), \"x:-360,scale:1.1\", .45)\nL(\"#j3\", ws(92), \"y:80,scale:1.2\", .4)\nL(\"#j4\", ws(94), \"scale:1.6,rotation:-4\", .4, \"back.out(1.8)\")\nTFJ = we(95) + .05\nM(f'tl.fromTo(\"#feedJ\",{{y:400,opacity:0}},{{y:0,opacity:1,duration:.55,ease:\"power3.out\"}},{TFJ:.3f});', TFJ, TFJ + .55, \"fil\")\ndrift(\"#feedJin\", TFJ + .3, TFJ + 3.0, y=-480)\nTQJ = TFJ + .45\nL(\"#jq\", TQJ, \"scale:3.5,rotation:-20\", .45, \"back.out(2.2)\")\nT_J = TQJ + .45 + .7\nDOTR = 24\ndqx, dqy = CX, FJ0 + 20 + 280 * .74\nput(f'<div id=\"dotJ\" style=\"position:absolute;left:{dqx - DOTR:.0f}px;top:{dqy - DOTR:.0f}px;width:{2 * DOTR}px;height:{2 * DOTR}px;border-radius:50%;background:{CO};opacity:0\"></div>')\n\n# ============================================================ K signature CAM (reprise exacte) : recouvrement puis logo\nscene(\"sK1\", CO)\nmv(f'tl.set(\"#dotJ\",{{opacity:1}},{T_J:.3f});tl.to(\"#dotJ\",{{scale:{2400 / DOTR:.0f},duration:.6,ease:\"power3.in\"}},{T_J:.3f});')\nshow(\"sK1\", T_J + .6); hide(\"sJ\", T_J + .65)\nTR.append((T_J, .6, \"le point du ? final grandit et recouvre le cadre en corail\", \"sJ\", \"sK1\"))\nscene(\"sO\", CR)\nT_K = T_J + .6 + .15\niris(\"sK1\", \"sO\", T_K, .5, CX, 960, \"iris creme depuis le centre : entree de la signature CAM\")\nTL = T_K + .5\nLS = .74\nsw17 = VB[2] * LS\noxL = 540 - (1157 - 42) * LS / 2\noyL = 880 - (534 - 94) * LS / 2\nSCX, SCY = oxL + sw17 / 2, oyL + VB[3] * LS / 2\nst17, sh17 = brand_star(\"bs17\", SCX, SCY, sw17, TL, seed=11, nparts=22)\nlines17 = \"\"\nfor k, (y0, y1) in enumerate([(0, 76), (95, 174), (193, 271)]):\n    lines17 += (f'<div id=\"lt{k}\" style=\"position:absolute;left:{oxL + (536 - 42) * LS:.0f}px;top:{oyL + (198 - 94 + y0) * LS:.0f}px;width:{622 * LS:.0f}px;height:{(y1 - y0) * LS:.0f}px;overflow:hidden\">'\n                f'<img src=\"assets/logo-cam-texte.png\" style=\"position:absolute;left:0;top:{-y0 * LS:.0f}px;width:{622 * LS:.0f}px;height:{271 * LS:.0f}px\"></div>')\nring17 = f'<div id=\"rg17\" style=\"position:absolute;left:{SCX - 60:.0f}px;top:{SCY - 60:.0f}px;width:120px;height:120px;border-radius:50%;border:5px solid {LIGHT};opacity:0\"></div>'\nput(f'<div id=\"lg17\" style=\"position:absolute;inset:0\">{ring17}{st17}{lines17}'\n    + bar(\"rl17\", oxL, oyL + VB[3] * LS + 70, (1157 - 42) * LS, 3, NAVY) + '</div>')\nLAND = TL + .45 + .2 + .75\nmv(f'tl.fromTo(\"#rg17\",{{scale:.3,opacity:1}},{{scale:14,opacity:0,duration:1.1,ease:\"power2.out\"}},{LAND - .25:.3f});')\nfor k in range(3):\n    mv(f'tl.fromTo(\"#lt{k}\",{{clipPath:\"inset(0% 100% 0% 0%)\",y:24}},{{clipPath:\"inset(0% 0% 0% 0%)\",y:0,duration:.55,ease:\"power3.out\"}},{TL + 1.2 + k * .14:.3f});')\nmv(f'tl.fromTo(\"#rl17\",{{scaleX:0}},{{scaleX:1,duration:.6,ease:\"power3.inOut\"}},{TL + 1.45:.3f});')\nLOGO_NET = TL + 1.45 + .6\nmv(f'tl.fromTo(\"#lg17\",{{scale:1}},{{scale:1.03,duration:{DUR - TL - .8:.2f},ease:\"sine.out\"}},{TL + .8:.3f});')\nSC[\"sO\"][1] = None\n\n# ------------------------------------------------------------ assemblage scenes/visibilite\nscenes_html = \"\"\nfor sid, (t_in, t_out, bg, content) in SC.items():\n    scenes_html += f'<div id=\"{sid}\" class=\"scene\" style=\"position:absolute;inset:0;background:{bg};overflow:hidden;opacity:0\">{\"\".join(content)}</div>'\n    mv(f'tl.set(\"#{sid}\",{{opacity:1}},{t_in:.3f});')\n    if t_out is not None:\n        mv(f'tl.set(\"#{sid}\",{{opacity:0}},{t_out + .02:.3f});')\nBODY_HTML = scenes_html + \"\".join(nodes)\nBODY_JS = \"\".join(moves)\nPH = {p[\"phrase\"]: p[\"start\"] for p in T[\"phrases\"]}\nVIS = {}\nVIS[1] = ws(0)\nVIS[2] = TB0\nVIS[3] = TC0\nVIS[4] = max(ws(19), TD0 + .05)\nVIS[5] = max(ws(33), TE0)\nVIS[6] = max(ws(48), T_E + .08)\nVIS[7] = TG\nVIS[8] = max(ws(67), T_G + .05)\nVIS[9] = max(ws(78), T_H + .05)\nVIS[10] = max(ws(82), T_I + .05)\nVIS[11] = max(ws(86), T_I + .08)\nfor _k in list(PH.keys()):\n    if _k not in VIS:\n        VIS[_k] = PH[_k]\n# ------------------------------------------------------------ sous-titres\nSUBS = [[\"Jews control the media?\",1340],[\"Really?\",1340],[\"Then somebody needs to explain why the Jews are so terrible at PR.\",1340],[\"If Jews control the headlines, why is so much coverage of Israel relentlessly negative?\",1340],[\"If Jews control social media, why do antisemitic conspiracy theories go viral every single day?\",1340],[\"And if Jews control the narrative, how did “Jews control the media” become a viral narrative?\",1340],[\"Make it make sense.\",1340],[\"Apparently, Jews are responsible for everything, including the propaganda against themselves.\",1340],[\"That's not a conspiracy.\",1340],[\"That's a plot hole.\",1340],[\"Maybe stop blaming the Jews and start questioning what you're being fed.\",1340]]\nVIS = {'sA':0.0,'sB':'T_A','sC':'T_B','sD':'T_C','sE':'T_D','sF':'T_E','sG':'T_F','sH':'T_G','sI':'T_H','sJ':'T_I','sK1':'T_J','sO':'T_K'}\nMARKS = {'transitions':['iris','iris','band','pan','iris','iris','recede_black','band','iris','iris','recouvrement','iris'],'sober':['T_F','T_G'],'plot':'ws(84)','q_final':'TQJ','logo_impact':'LAND','logo_net':'LOGO_NET','strike':'TK','counter':'TCNT','terrible':'TT','dur':'DUR'}\n",
+"removedWords": [
+{
+"at": 33.07,
+"selector": "#j2"
+}
+],
+"referenceChoice": "Reprise de la grammaire Plot Hole V4 du 5 octobre : un seul grand plan, un fond different par scene, cinq raccords tires d'un element de la scene precedente (iris du ?, bande sous REALLY?, panoramique sur la chute de TERRIBLE, recul au noir pour le passage sobre, recouvrement par le point du dernier ? avant la signature CAM). Dix scenes pour les dix phrases de cette narration, objets distincts (mots isoles+?; REALLY? flou; TERRIBLE qui s'ecrase et tombe; journal/manchettes; fil social+compteur viral; carte citee+anneau; passage sobre; EVERYTHING+fleche demi-tour; CONSPIRACY barre/PLOT HOLE trou du O; fil qui nourrit+? final), typographie Archivo variable avec morph de graisse, grille 96 BPM, sous-titres Montserrat en bas, signature CAM finale identique au film valide."
+},
+"timing": {
+"words": [
+{
+"end": 0.6,
+"word": "Jews",
+"start": 0.3
+},
+{
+"end": 1.17,
+"word": "control",
+"start": 0.6
+},
+{
+"end": 1.37,
+"word": "the",
+"start": 1.17
+},
+{
+"end": 2.19,
+"word": "media?",
+"start": 1.37
+},
+{
+"end": 2.9,
+"word": "Really?",
+"start": 2.19
+},
+{
+"end": 3.18,
+"word": "Then",
+"start": 2.9
+},
+{
+"end": 3.76,
+"word": "somebody",
+"start": 3.18
+},
+{
+"end": 4.1,
+"word": "needs",
+"start": 3.76
+},
+{
+"end": 4.24,
+"word": "to",
+"start": 4.1
+},
+{
+"end": 4.79,
+"word": "explain",
+"start": 4.24
+},
+{
+"end": 4.95,
+"word": "why",
+"start": 4.79
+},
+{
+"end": 5.16,
+"word": "the",
+"start": 4.95
+},
+{
+"end": 5.62,
+"word": "Jews",
+"start": 5.16
+},
+{
+"end": 5.65,
+"word": "are",
+"start": 5.62
+},
+{
+"end": 5.79,
+"word": "so",
+"start": 5.65
+},
+{
+"end": 6.4,
+"word": "terrible",
+"start": 5.79
+},
+{
+"end": 6.5,
+"word": "at",
+"start": 6.4
+},
+{
+"end": 6.7,
+"word": "PR.",
+"start": 6.5
+},
+{
+"end": 6.81,
+"word": "If",
+"start": 6.7
+},
+{
+"end": 7.04,
+"word": "Jews",
+"start": 6.81
+},
+{
+"end": 7.45,
+"word": "control",
+"start": 7.04
+},
+{
+"end": 7.62,
+"word": "the",
+"start": 7.45
+},
+{
+"end": 8.26,
+"word": "headlines,",
+"start": 7.62
+},
+{
+"end": 8.58,
+"word": "why",
+"start": 8.26
+},
+{
+"end": 8.61,
+"word": "is",
+"start": 8.58
+},
+{
+"end": 8.73,
+"word": "so",
+"start": 8.61
+},
+{
+"end": 8.98,
+"word": "much",
+"start": 8.73
+},
+{
+"end": 9.49,
+"word": "coverage",
+"start": 8.98
+},
+{
+"end": 9.61,
+"word": "of",
+"start": 9.49
+},
+{
+"end": 9.99,
+"word": "Israel",
+"start": 9.61
+},
+{
+"end": 10.75,
+"word": "relentlessly",
+"start": 9.99
+},
+{
+"end": 11.5,
+"word": "negative?",
+"start": 10.75
+},
+{
+"end": 11.64,
+"word": "If",
+"start": 11.5
+},
+{
+"end": 11.93,
+"word": "Jews",
+"start": 11.64
+},
+{
+"end": 12.44,
+"word": "control",
+"start": 11.93
+},
+{
+"end": 12.87,
+"word": "social",
+"start": 12.44
+},
+{
+"end": 13.4,
+"word": "media,",
+"start": 12.87
+},
+{
+"end": 13.61,
+"word": "why",
+"start": 13.4
+},
+{
+"end": 13.75,
+"word": "do",
+"start": 13.61
+},
+{
+"end": 14.6,
+"word": "antisemitic",
+"start": 13.75
+},
+{
+"end": 15.33,
+"word": "conspiracy",
+"start": 14.6
+},
+{
+"end": 15.91,
+"word": "theories",
+"start": 15.33
+},
+{
+"end": 16.06,
+"word": "go",
+"start": 15.91
+},
+{
+"end": 16.44,
+"word": "viral",
+"start": 16.06
+},
+{
+"end": 16.77,
+"word": "every",
+"start": 16.44
+},
+{
+"end": 17.3,
+"word": "single",
+"start": 16.77
+},
+{
+"end": 17.7,
+"word": "day?",
+"start": 17.3
+},
+{
+"end": 17.88,
+"word": "And",
+"start": 17.7
+},
+{
+"end": 18,
+"word": "if",
+"start": 17.88
+},
+{
+"end": 18.24,
+"word": "Jews",
+"start": 18
+},
+{
+"end": 18.66,
+"word": "control",
+"start": 18.24
+},
+{
+"end": 18.84,
+"word": "the",
+"start": 18.66
+},
+{
+"end": 19.58,
+"word": "narrative,",
+"start": 18.84
+},
+{
+"end": 19.68,
+"word": "how",
+"start": 19.58
+},
+{
+"end": 19.86,
+"word": "did",
+"start": 19.68
+},
+{
+"end": 20.1,
+"word": "“Jews",
+"start": 19.86
+},
+{
+"end": 20.57,
+"word": "control",
+"start": 20.1
+},
+{
+"end": 20.7,
+"word": "the",
+"start": 20.57
+},
+{
+"end": 21,
+"word": "media”",
+"start": 20.7
+},
+{
+"end": 21.36,
+"word": "become",
+"start": 21
+},
+{
+"end": 21.49,
+"word": "a",
+"start": 21.36
+},
+{
+"end": 21.72,
+"word": "viral",
+"start": 21.49
+},
+{
+"end": 22.5,
+"word": "narrative?",
+"start": 21.72
+},
+{
+"end": 22.83,
+"word": "Make",
+"start": 22.5
+},
+{
+"end": 22.99,
+"word": "it",
+"start": 22.83
+},
+{
+"end": 23.32,
+"word": "make",
+"start": 22.99
+},
+{
+"end": 24,
+"word": "sense.",
+"start": 23.32
+},
+{
+"end": 24.68,
+"word": "Apparently,",
+"start": 24
+},
+{
+"end": 24.91,
+"word": "Jews",
+"start": 24.68
+},
+{
+"end": 25.08,
+"word": "are",
+"start": 24.91
+},
+{
+"end": 25.88,
+"word": "responsible",
+"start": 25.08
+},
+{
+"end": 25.89,
+"word": "for",
+"start": 25.88
+},
+{
+"end": 26.72,
+"word": "everything,",
+"start": 25.89
+},
+{
+"end": 27.09,
+"word": "including",
+"start": 26.72
+},
+{
+"end": 27.25,
+"word": "the",
+"start": 27.09
+},
+{
+"end": 27.79,
+"word": "propaganda",
+"start": 27.25
+},
+{
+"end": 28.21,
+"word": "against",
+"start": 27.79
+},
+{
+"end": 28.9,
+"word": "themselves.",
+"start": 28.21
+},
+{
+"end": 29.33,
+"word": "That's",
+"start": 28.9
+},
+{
+"end": 29.58,
+"word": "not",
+"start": 29.33
+},
+{
+"end": 29.59,
+"word": "a",
+"start": 29.58
+},
+{
+"end": 30.41,
+"word": "conspiracy.",
+"start": 29.59
+},
+{
+"end": 30.82,
+"word": "That's",
+"start": 30.41
+},
+{
+"end": 30.89,
+"word": "a",
+"start": 30.82
+},
+{
+"end": 31.17,
+"word": "plot",
+"start": 30.89
+},
+{
+"end": 31.7,
+"word": "hole.",
+"start": 31.17
+},
+{
+"end": 31.96,
+"word": "Maybe",
+"start": 31.7
+},
+{
+"end": 32.17,
+"word": "stop",
+"start": 31.96
+},
+{
+"end": 32.59,
+"word": "blaming",
+"start": 32.17
+},
+{
+"end": 32.7,
+"word": "the",
+"start": 32.59
+},
+{
+"end": 32.93,
+"word": "Jews",
+"start": 32.7
+},
+{
+"end": 33.07,
+"word": "and",
+"start": 32.93
+},
+{
+"end": 33.59,
+"word": "start",
+"start": 33.07
+},
+{
+"end": 33.92,
+"word": "questioning",
+"start": 33.59
+},
+{
+"end": 34.13,
+"word": "what",
+"start": 33.92
+},
+{
+"end": 34.45,
+"word": "you're",
+"start": 34.13
+},
+{
+"end": 34.71,
+"word": "being",
+"start": 34.45
+},
+{
+"end": 35.1,
+"word": "fed.",
+"start": 34.71
+}
+],
+"phrases": [
+{
+"end": 2.19,
+"text": "Jews control the media?",
+"start": 0.3,
+"phrase": 1
+},
+{
+"end": 2.9,
+"text": "Really?",
+"start": 2.19,
+"phrase": 2
+},
+{
+"end": 6.7,
+"text": "Then somebody needs to explain why the Jews are so terrible at PR.",
+"start": 2.9,
+"phrase": 3
+},
+{
+"end": 11.5,
+"text": "If Jews control the headlines, why is so much coverage of Israel relentlessly negative?",
+"start": 6.7,
+"phrase": 4
+},
+{
+"end": 17.7,
+"text": "If Jews control social media, why do antisemitic conspiracy theories go viral every single day?",
+"start": 11.5,
+"phrase": 5
+},
+{
+"end": 22.5,
+"text": "And if Jews control the narrative, how did “Jews control the media” become a viral narrative?",
+"start": 17.7,
+"phrase": 6
+},
+{
+"end": 24,
+"text": "Make it make sense.",
+"start": 22.5,
+"phrase": 7
+},
+{
+"end": 28.9,
+"text": "Apparently, Jews are responsible for everything, including the propaganda against themselves.",
+"start": 24,
+"phrase": 8
+},
+{
+"end": 30.41,
+"text": "That's not a conspiracy.",
+"start": 28.9,
+"phrase": 9
+},
+{
+"end": 31.7,
+"text": "That's a plot hole.",
+"start": 30.41,
+"phrase": 10
+},
+{
+"end": 35.1,
+"text": "Maybe stop blaming the Jews and start questioning what you're being fed.",
+"start": 31.7,
+"phrase": 11
+}
+],
+"duration": 35.18
+},
+"script": "Jews control the media?\nReally? Then somebody needs to explain why the Jews are so terrible at PR.\nIf Jews control the headlines, why is so much coverage of Israel relentlessly negative?\nIf Jews control social media, why do antisemitic conspiracy theories go viral every single day?\nAnd if Jews control the narrative, how did “Jews control the media” become a viral narrative?\nMake it make sense.\nApparently, Jews are responsible for everything, including the propaganda against themselves.\nThat's not a conspiracy. That's a plot hole.\nMaybe stop blaming the Jews and start questioning what you're being fed.",
+"legacyRepairPatch": {
+"baseSha256": "b9f82e22becd540d69834e590275ebcaf39efcebcc6e540c761706f98786f885",
+"edits": [
+{
+"before": "VIS = {}\nVIS[1] = ws(0)\nVIS[2] = TB0\nVIS[3] = TC0\nVIS[4] = max(ws(19), TD0 + .05)\nVIS[5] = max(ws(33), TE0)\nVIS[6] = max(ws(48), T_E + .08)\nVIS[7] = TG\nVIS[8] = max(ws(67), T_G + .05)\nVIS[9] = max(ws(78), T_H + .05)\nVIS[10] = max(ws(82), T_I + .05)\nVIS[11] = max(ws(86), T_I + .08)\nfor _k in list(PH.keys()):\n    if _k not in VIS:\n        VIS[_k] = PH[_k]\n# ------------------------------------------------------------ sous-titres\nSUBS = [[\"Jews control the media?\",1340],[\"Really?\",1340],[\"Then somebody needs to explain why the Jews are so terrible at PR.\",1340],[\"If Jews control the headlines, why is so much coverage of Israel relentlessly negative?\",1340],[\"If Jews control social media, why do antisemitic conspiracy theories go viral every single day?\",1340],[\"And if Jews control the narrative, how did “Jews control the media” become a viral narrative?\",1340],[\"Make it make sense.\",1340],[\"Apparently, Jews are responsible for everything, including the propaganda against themselves.\",1340],[\"That's not a conspiracy.\",1340],[\"That's a plot hole.\",1340],[\"Maybe stop blaming the Jews and start questioning what you're being fed.\",1340]]\nVIS = {'sA':0.0,'sB':'T_A','sC':'T_B','sD':'T_C','sE':'T_D','sF':'T_E','sG':'T_F','sH':'T_G','sI':'T_H','sJ':'T_I','sK1':'T_J','sO':'T_K'}\nMARKS = {'transitions':['iris','iris','band','pan','iris','iris','recede_black','band','iris','iris','recouvrement','iris'],'sober':['T_F','T_G'],'plot':'ws(84)','q_final':'TQJ','logo_impact':'LAND','logo_net':'LOGO_NET','strike':'TK','counter':'TCNT','terrible':'TT','dur':'DUR'}",
+"after": "VIS = {}\nVIS[1] = ws(0)\nVIS[2] = TB0\nVIS[3] = TC0\nVIS[4] = max(ws(19), TD0 + .05)\nVIS[5] = max(ws(33), TE0)\nVIS[6] = max(ws(48), T_E + .08)\nVIS[7] = TG\nVIS[8] = max(ws(67), T_G + .05)\nVIS[9] = max(ws(78), T_H + .05)\nVIS[10] = max(ws(82), T_I + .05)\nVIS[11] = max(ws(86), T_I + .08)\nfor _k in list(PH.keys()):\n    if _k not in VIS:\n        VIS[_k] = PH[_k]\nprint(\"phrase : attaque voix / arrivee du visuel / ecart\")\nfor k in sorted(PH):\n    flag = \"  ⚠ > 0,2 s\" if VIS[k] - PH[k] > .2 else \"\"\n    print(f\"  {k:2d} : {PH[k]:6.2f} / {VIS[k]:6.2f} / {VIS[k] - PH[k]:+.2f}{flag}\")\nprint(\"transitions :\")\nfor (t, d, label, a, b) in sorted(TR):\n    print(f\"  {t:6.2f} +{d:.2f}  {a}->{b}  {label}\")\nnb = check_holds()\nprint(\"violations de tenue :\", nb)\n# ------------------------------------------------------------ sous-titres\nSUBS = [[\"Jews control the media?\",1340],[\"Really?\",1340],[\"Then somebody needs to explain why the Jews are so terrible at PR.\",1340],[\"If Jews control the headlines, why is so much coverage of Israel relentlessly negative?\",1340],[\"If Jews control social media, why do antisemitic conspiracy theories go viral every single day?\",1340],[\"And if Jews control the narrative, how did “Jews control the media” become a viral narrative?\",1340],[\"Make it make sense.\",1340],[\"Apparently, Jews are responsible for everything, including the propaganda against themselves.\",1340],[\"That's not a conspiracy.\",1340],[\"That's a plot hole.\",1340],[\"Maybe stop blaming the Jews and start questioning what you're being fed.\",1340]]\nSCENE_T = {'sA':0.0,'sB':T_A,'sC':T_B,'sD':T_C,'sE':T_D,'sF':T_E,'sG':T_F,'sH':T_G,'sI':T_H,'sJ':T_I,'sK1':T_J,'sO':T_K}\nMARKS = {'transitions':['iris','iris','band','pan','iris','iris','recede_black','band','iris','iris','recouvrement','iris'],'sober':[T_F,T_G],'plot':ws(84),'q_final':TQJ,'logo_impact':LAND,'logo_net':LOGO_NET,'strike':TK,'counter':TCNT,'terrible':TT,'dur':DUR}\njson.dump({\"transitions\": [{\"t\": round(t, 3), \"d\": d, \"technique\": l, \"de\": a, \"vers\": b} for (t, d, l, a, b) in sorted(TR)],\n           \"sober\": [T_F, T_G], \"plot\": ws(84), \"q_final\": TQJ, \"logo_impact\": LAND, \"logo_net\": LOGO_NET, \"strike\": TK, \"counter\": TCNT, \"terrible\": TT, \"dur\": DUR},\n          open(P / \"marks.json\", \"w\"), indent=1, ensure_ascii=False)"
+}
+]
+}
+}

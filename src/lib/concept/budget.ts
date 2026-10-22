@@ -1,3 +1,4 @@
+import { SubmissionNotSentError } from "../providers/network";
 import { z } from "zod";
 import { Hash, sha256 } from "./checkpoints";
 import { assertTransportMode, type QueueRequest, type TransportMode } from "./provider-transports";
@@ -81,6 +82,14 @@ export function createBudget(store: BudgetStore, accountCaps: BudgetCaps) {
         entry.state = "attempted"; // Keep the full reservation after an unknown outcome or provider failure.
       });
     },
+    async restoreUnsent(approvalId:string, operation:string, proof:SubmissionNotSentError) {
+      if(!(proof instanceof SubmissionNotSentError))throw new Error("No proof that submission was not sent.");
+      return transact(book=>{
+        const entry=book.reservations[approvalId]?.entries.find(e=>e.operation===operation);
+        if(!entry||entry.state!=="attempted")throw new Error("No attempted reservation to restore.");
+        entry.state="reserved"; // Keep the same maximum reserved; no additional spend authorized.
+      });
+    },
     async settle(approvalId: string, operation: string, cost: { unit: "usd" | "higgsfield-credit"; actual: number; evidence: string }) {
       Amount.parse(cost.actual); z.string().min(1).parse(cost.evidence);
       return transact((book) => {
@@ -106,5 +115,5 @@ export function createBudget(store: BudgetStore, accountCaps: BudgetCaps) {
 }
 
 export function budgetedQueue(queue: QueueRequest, budget: ReturnType<typeof createBudget>, approvalId: string, operation: string): QueueRequest {
-  return { ...queue, async submit() { await budget.attempt(approvalId, operation); return queue.submit(); } };
+  return { ...queue, async submit() { await budget.attempt(approvalId, operation); try{return await queue.submit();}catch(error){if(error instanceof SubmissionNotSentError)await budget.restoreUnsent(approvalId,operation,error);throw error;} } };
 }

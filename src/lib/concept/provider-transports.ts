@@ -1,13 +1,15 @@
+import { VIDEO_MODELS, HF_SEEDANCE, SEEDANCE_COMPLETE } from "./model-selection";
 import { z } from "zod";
-import { BramRequestSchema, ImageRequestSchema, VideoRequestSchema, IMAGE_ENDPOINT, VIDEO_ENDPOINT, type GenerationOperation } from "./generation-plan";
+import { BramRequestSchema, ImageRequestSchema, parseVideoRequest, IMAGE_ENDPOINT, type GenerationOperation } from "./generation-plan";
 import { isSimulation } from "../providers/mode";
 import { assertAuthorizedExecution } from "../providers/live-policy";
 
 export type TransportMode = "simulation" | "live";
 export type QueueRequest = {
   mode: TransportMode;
+  prepare?: () => Promise<void>; // Free preflight, before a paid submission is journalled.
   submit: () => Promise<{ requestId: string }>;
-  poll: (requestId: string) => Promise<{ state: "pending" | "complete" | "failed"; output?: string }>;
+  poll: (requestId: string) => Promise<{ state: "pending" | "complete" | "failed"; output?: string; draftId?: string; failureReason?: string }>;
 };
 export type JsonRequest = (url: string, init: { method: "GET" | "POST"; body?: string }) => Promise<unknown>;
 export type McpCall = (name: string, args: Record<string, unknown>) => Promise<unknown>;
@@ -45,8 +47,8 @@ export function providerOutputUrl(value: unknown, provider: "fal" | "higgsfield"
  * Transport functions are injected: offline rehearsals use in-memory fixtures.
  */
 export function falQueue(operation: GenerationOperation, input: Record<string, unknown>, mode: TransportMode, request: JsonRequest): QueueRequest {
-  if ((operation.kind === "image" && operation.model !== IMAGE_ENDPOINT) || (operation.kind === "video" && operation.model !== VIDEO_ENDPOINT) || !["image", "video"].includes(operation.kind) || operation.transport !== "fal-queue") throw new Error("Unsupported CAM scene model.");
-  const payload = operation.kind === "image" ? ImageRequestSchema.parse(input) : VideoRequestSchema.parse(input);
+  if ((operation.kind === "image" && operation.model !== IMAGE_ENDPOINT) || (operation.kind === "video" && operation.model !== SEEDANCE_COMPLETE && !VIDEO_MODELS.some(model => model === operation.model)) || !["image", "video"].includes(operation.kind) || operation.transport !== "fal-queue") throw new Error("Unsupported CAM scene model.");
+  const payload = operation.kind === "image" ? ImageRequestSchema.parse(input) : parseVideoRequest(operation.model, input);
   // Queue retrieval uses the owner/alias, without the endpoint's subpath.
   const base = `https://queue.fal.run/${operation.model.split("/").slice(0, 2).join("/")}`;
   const call: JsonRequest = async (url, init) => { assertTransportMode(mode); return request(url, init); };
@@ -64,12 +66,12 @@ export function falQueue(operation: GenerationOperation, input: Record<string, u
       if (status.status !== "COMPLETED") return { state: "pending" };
       if (status.error) return { state: "failed" };
       const result = object.parse(await call(`${base}/requests/${requestId}`, { method: "GET" }));
-      if (result.error || result.detail) return { state: "failed" };
+      if (result.error || result.detail) return { state: "failed", failureReason:result.error==="content_policy_violation"?"content_policy_violation":"result_rejected" };
       if (Array.isArray(result.has_nsfw_concepts) && result.has_nsfw_concepts.some(Boolean)) return { state: "failed" };
       const output = operation.kind === "image"
         ? z.object({ images: z.array(z.object({ url: z.string() })).length(1) }).parse(result).images[0].url
         : z.object({ video: z.object({ url: z.string() }) }).parse(result).video.url;
-      return { state: "complete", output: providerOutputUrl(output, "fal", mode) };
+      return { state: "complete", output: providerOutputUrl(output, "fal", mode), ...(payload && "draft" in payload && payload.draft === true ? {draftId:z.string().min(1).parse(result.draft_id)} : {}) };
     },
   };
 }
@@ -111,4 +113,63 @@ export function bramQueue(input: Record<string, unknown>, mode: TransportMode, c
       throw new Error("Cannot determine Higgsfield job status. Resume polling the saved request ID.");
     },
   };
+}
+
+/** Importing image references is free; a completed import cache is reused on
+ * resume. No generation POST is retried and no free-trial choice is activated. */
+export function higgsfieldVideoQueue(operation: GenerationOperation, input: Record<string, unknown>, mode: TransportMode, callTool: McpCall, maximumCredits: number, imports: {read:(url:string)=>Promise<string|null>;save:(url:string,id:string)=>Promise<void>}): QueueRequest {
+  const payload = parseVideoRequest(operation.model,input) as Record<string,unknown>;
+  const call = async (name:string,args:Record<string,unknown>) => {assertTransportMode(mode);return mcpData(await callTool(name,args));};
+  let prepared:Record<string,unknown>|undefined;
+  return {mode, async prepare() {
+    const params:Record<string,unknown> = {...payload,use_unlim:false};
+    const medias:{role:string;value:string}[]=[];
+    for (const role of ["start_image","end_image"]) {
+      const key=`${role}_url`, url=params[key];
+      if(typeof url!=="string") continue;
+      let id=await imports.read(url);
+      if(!id){const imported=z.object({media_id:z.string().min(1),error:z.unknown().optional()}).parse(await call("media_import_url",{url,type:"image"}));if(imported.error)throw new Error("Higgsfield image import failed.");id=imported.media_id;await imports.save(url,id);}
+      medias.push({role,value:id});delete params[key];
+    }
+    if(medias.length)params.medias=medias;
+    // Reprice exact finalization inputs before sending its single paid POST.
+    let quoted=await call("generate_video",{params:{...params,get_cost:true}});
+    // A keyword match can return a preset offer instead of a price. The human
+    // approved this literal storyboard, never a provider's unrelated effect.
+    // Accept only the documented decline identifier, not arbitrary retry data.
+    const recommendation=z.object({notice:z.object({type:z.literal("preset_recommendation"),data:z.object({
+      preset:z.object({id:z.uuid()}),retry_literal_with:z.object({declined_preset_id:z.uuid()}).strict(),
+    })})}).safeParse(quoted);
+    if(recommendation.success){
+      const notice=recommendation.data.notice.data;
+      if(notice.preset.id!==notice.retry_literal_with.declined_preset_id)throw new Error("Animation pricing returned a conflicting suggestion. No animation was submitted.");
+      params.declined_preset_id=notice.preset.id;
+      quoted=await call("generate_video",{params:{...params,get_cost:true}});
+    }
+    const parsed=z.object({adjustments:z.record(z.string(),z.unknown()).optional(),cost:z.object({credits:z.number().finite().nonnegative(),credits_exact:z.number().finite().nonnegative().optional()})}).safeParse(quoted);
+    if(!parsed.success)throw new Error("Animation pricing could not confirm the approved scene. No animation was submitted. Your completed scenes are saved.");
+    const estimate=parsed.data;
+    if(Object.keys(estimate.adjustments??{}).length)throw new Error("Higgsfield changed the requested settings during estimation. No animation was submitted.");
+    if((estimate.cost.credits_exact??estimate.cost.credits)>maximumCredits)throw new Error("The exact Higgsfield quote exceeds the approved reservation. No animation was submitted.");
+    prepared=params;
+  }, async submit() {
+    if(!prepared)throw new Error("Prepare the exact Higgsfield request before submission.");
+    const result=z.object({adjustments:z.record(z.string(),z.unknown()).optional(),results:z.array(z.object({id:requestIdSchema,model:z.string(),type:z.literal("video")})).length(1)}).parse(await call("generate_video",{params:prepared}));
+    if(result.results[0].model!==operation.model || Object.keys(result.adjustments??{}).length)throw new Error("Higgsfield changed the requested model or settings. Reconcile this submission before continuing.");
+    return {requestId:result.results[0].id};
+  }, async poll(id) {
+    const requestId=requestIdSchema.parse(id);
+    const result=z.object({jobs:z.array(z.object({job_id:requestIdSchema,index:z.number(),status:z.string(),type:z.string().optional(),model:z.string().optional(),result_url:z.string().optional()})).length(1)}).parse(await call("jobs_wait",{jobs:[{index:0,job_id:requestId}],timeout_seconds:0}));
+    const job=result.jobs[0];
+    if(job.job_id!==requestId || job.index!==0 || job.model&&job.model!==operation.model)throw new Error("Higgsfield returned a different video job.");
+    // Seedance can label pending/failed video jobs as images. Identity and model
+    // remain mandatory; only a completed result must identify itself as video.
+    if(job.status==="completed"){
+      if(job.type&&job.type!=="video")throw new Error("Higgsfield completed job did not identify a video result.");
+      return {state:"complete",output:providerOutputUrl(job.result_url,"higgsfield",mode),...(operation.model===HF_SEEDANCE&&payload.draft===true?{draftId:requestId}:{})};
+    }
+    if(["canceled","failed","nsfw","ip_detected"].includes(job.status))return {state:"failed",failureReason:job.status};
+    if(["pending","waiting","queued","dna","script","visuals","vision","flow","in_progress","ip_detect"].includes(job.status))return {state:"pending"};
+    throw new Error("Cannot determine Higgsfield video status. Resume the saved job ID.");
+  }};
 }

@@ -55,3 +55,12 @@ storage/
 /tsconfig.connected.json
 /.backups/
 /release/
+
+/tsconfig.journey-qa.json
+/.next-journey-qa/
+/.venv-motion/
+/tsconfig.motion-qa.json
+/.venv-motion-runtime/
+
+/.next-comics-qa/
+/tsconfig.comics-qa.json

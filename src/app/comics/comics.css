@@ -1,0 +1,2 @@
+@font-face { font-family: 'CamComicTitle'; src: url('/comics/bangers.ttf') format('truetype'); font-display: swap; }
+.comic-title { font-family: 'CamComicTitle', sans-serif; }

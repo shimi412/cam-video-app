@@ -7,13 +7,15 @@ import sharp from "sharp";
 import { SceneMediaSchema, mediaFile, type SceneMedia } from "./preview-inputs";
 import { ClipEditSchema, type ClipEdit } from "./finishing";
 import type { MontageMedia } from "./montage";
+import { inspectImageQuality } from "./image-quality";
+import type { ImageAspectRatio, ImageQuality } from "./image-quality-types";
 
 const exec = promisify(execFile);
 export const MAX_MEDIA_BYTES = 32 * 1024 * 1024;
 const importsRoot = () => path.join(process.cwd(), "storage/imports");
 
 /** Decode untrusted bytes, strip metadata/audio and persist a normalized local asset. */
-export async function importSceneMedia(jobId: string, bytes: Buffer): Promise<SceneMedia> {
+export async function importSceneMedia(jobId: string, bytes: Buffer, options: { expectedAspectRatio?: ImageAspectRatio } = {}): Promise<SceneMedia> {
   if (!bytes.length || bytes.length > MAX_MEDIA_BYTES) throw new Error("Choose an image or MP4 smaller than 32 MB.");
   const id = randomUUID(), dir = path.join(importsRoot(), jobId);
   await mkdir(dir, { recursive: true });
@@ -26,10 +28,12 @@ export async function importSceneMedia(jobId: string, bytes: Buffer): Promise<Sc
   const output = path.join(dir, `${id}.${isMp4 ? "mp4" : "png"}`), input = path.join(dir, `${id}.upload`);
   try {
     let width: number, height: number, duration: number | undefined;
+    let quality: ImageQuality | undefined;
     if (!isMp4) {
       const source = sharp(bytes, { limitInputPixels: 24_000_000 });
       const meta = await source.metadata();
       if (!["png", "jpeg", "webp"].includes(meta.format ?? "") || (meta.pages ?? 1) > 1) throw new Error("Use a still PNG, JPEG or WebP image, or an MP4 clip.");
+      quality = await inspectImageQuality(bytes, options.expectedAspectRatio);
       const result = await source.rotate().resize({ width: 1920, height: 1920, fit: "inside", withoutEnlargement: true }).png().toFile(output);
       width = result.width; height = result.height;
     } else {
@@ -44,7 +48,7 @@ export async function importSceneMedia(jobId: string, bytes: Buffer): Promise<Sc
       const info = JSON.parse(normalized).streams[0];
       width = info.width; height = info.height; duration = Number(info.duration);
     }
-    return SceneMediaSchema.parse({ id, kind, width, height, duration, sha256: createHash("sha256").update(await readFile(output)).digest("hex") });
+    return SceneMediaSchema.parse({ id, kind, width, height, duration, ...(quality ? { quality } : {}), sha256: createHash("sha256").update(await readFile(output)).digest("hex") });
   } catch (error) {
     await rm(output, { force: true });
     throw error;

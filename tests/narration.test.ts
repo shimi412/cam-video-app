@@ -63,7 +63,7 @@ it("changes an animation's approval dependency when the selected recording chang
 });
 it("invalidates the quote when a voice approval is renewed, even with unchanged recording bytes", () => {
   const script = phrases.join(" "), { params } = resolveParams(script, "auto"), recipe = getRecipe(params.templateSlug)!;
-  const board = planConcept(script, recipe, params.aspectRatio), references = [{ id: "narrator", sha256: "b".repeat(64), url: "/narrator.png" }];
+  const board = planConcept(script, recipe, params.aspectRatio), references = [{ id: "narrator", sha256: "b".repeat(64), url: "/narrator.png" , characterSheet:{status:"approved",sha256:"b".repeat(64),approvedAt:"2026-10-14"}}];
   params.narration = approved(withWordTimings(fixture(), phrases, timing)); params.useImportedNarration = true;
   const audio = params.narration.audio, alignment = params.narration.alignment!;
   const plan = () => generationPlan(script, params, board, alignVoice(phrases, audio, alignment, "simulation"), references, { audioSha256: audio.sha256, alignmentSha256: alignmentHash(alignment), source: "reviewed" });

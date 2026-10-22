@@ -1,3 +1,4 @@
+import {supervisedStep,RecoveryStepError} from './agent/recovery-step';
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { cp, mkdir, readFile, rename, writeFile, copyFile } from "node:fs/promises";
@@ -5,13 +6,15 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { acquireJobLock, jobWorkerActive } from "./job-lock";
 import { storedVideoUrl } from "./stored-media";
 import { compositionHash, checkpointedRender } from "./concept/render-checkpoint";
 import { conceptCanvas, writeMontage, type MontageOptions, type MontageMedia } from "./concept/montage";
 import { checkEditorialAudio } from "./concept/editorial-audio";
+import { FinishingReviewSchema } from "./concept/finishing-review";
+import { readCheckpoint } from "./concept/checkpoints";
 import { controls, validateTiming } from "./concept/controls";
 import { renderConcept } from "./concept/render";
 import { subtitleFile } from "./concept/existing-run";
@@ -24,6 +27,7 @@ type Job = typeof schema.jobs.$inferSelect;
 type ExportFile = { aspect: AspectRatio; url: string; sha256: string; layout: "original" | "adapted" | "fit" };
 export type FormatExports = {
   status: "queued" | "running" | "complete" | "failed";
+  backgroundManaged?: boolean;
   requestedAt: string; completedAt?: string; error?: string;
   sourceHash?: string; files: ExportFile[];
 };
@@ -41,7 +45,9 @@ async function sourceFor(job: Job) {
     !["mock", "dryrun"].includes(String(params.executionMode)))) || !(await storedVideoUrl(job.outputPath))) {
     throw new Error("Complete a CAM Clay production before preparing its download formats.");
   }
-  const root = live ? path.join(process.cwd(),"storage/concepts",job.id,"live/montage") : path.join(process.cwd(), "storage/concepts", job.id, "attempts", attempt!);
+  const finishing = live ? await readCheckpoint(path.join(process.cwd(),"storage/concepts",job.id,"live/finishing.json"), FinishingReviewSchema) : null;
+  if (finishing && (!finishing.approvedAt || finishing.pending || finishing.sha256 !== await digest(job.outputPath!))) throw new Error("Approve the final finishing version before exporting.");
+  const root = finishing ? path.dirname(finishing.file) : live ? path.join(process.cwd(),"storage/concepts",job.id,"live/montage") : path.join(process.cwd(), "storage/concepts", job.id, "attempts", attempt!);
   const fingerprint = createHash("sha256").update("cam-formats-v1").update(await compositionHash(root)).update(await digest(job.outputPath!));
   for (const name of ["storyboard.json", "timing.json", "cues.json"]) fingerprint.update(await digest(path.join(root, name)));
   fingerprint.update(JSON.stringify([params.aspectRatio, params.previewSource, params.finalDurationSeconds]));
@@ -68,6 +74,7 @@ export async function exportView(job: Job) {
       return { state, canStart: false };
     } catch { return { state: { ...state, status: "failed" as const, files: [], error: "A source or exported file changed. Prepare the formats again." }, canStart: !active }; }
   }
+  if (state.backgroundManaged && ["queued", "running"].includes(state.status)) return { state, canStart: false };
   if (!active && !recentlyQueued && state.status !== "failed") return { state: { ...state, status: "failed" as const, files: [], error: "Export was interrupted. Continue to reuse completed formats." }, canStart: true };
   return { state, canStart: !active && !recentlyQueued };
 }
@@ -81,7 +88,7 @@ export async function queueExports(id: string) {
     const source = await sourceFor(job), current = parameters(job).formatExports;
     if (current?.status === "queued" && Date.now() - Date.parse(current.requestedAt) < 15_000) return false;
     // Completion is verified by the worker; cached renders never call a provider.
-    const state: FormatExports = { status: "queued", requestedAt: new Date().toISOString(), sourceHash: source.hash, files: [] };
+    const state: FormatExports = { status: "queued", backgroundManaged: process.env.CAM_LIVE_ENABLED === "1" && process.env.PROVIDER_MODE === "fal", requestedAt: new Date().toISOString(), sourceHash: source.hash, files: [] };
     await lock.db.update(schema.jobs).set({ params: { ...job.params as object, formatExports: state } }).where(eq(schema.jobs.id, id));
     return true;
   } finally { await lock.release(); }
@@ -93,7 +100,7 @@ export async function runExports(id: string) {
   if (!lock) return;
   try {
     const [job] = await lock.db.select().from(schema.jobs).where(eq(schema.jobs.id, id));
-    if (!job || parameters(job).formatExports?.status !== "queued") return;
+    if (!job || job.deletedAt || !exportCanResume(parameters(job).formatExports)) return;
     const params = parameters(job);
     const state: FormatExports = { ...params.formatExports!, status: "running", files: [] };
     const publish = async () => {
@@ -101,6 +108,8 @@ export async function runExports(id: string) {
       await lock.db.update(schema.jobs).set({ params: { ...params, formatExports: state } }).where(eq(schema.jobs.id, id));
     };
     try {
+      await supervisedStep({jobId:id,category:'clay',stage:'exports',inputs:{sourceHash:state.sourceHash},directory:path.resolve('storage/exports',id),assertOwned:lock.assertOwned,execute:async()=>{
+      state.files=[];
       const source = await sourceFor(job);
       if (source.hash !== state.sourceHash) throw new Error("Source changed.");
       await publish();
@@ -138,6 +147,9 @@ export async function runExports(id: string) {
           }
           const duration = Number(params.finalDurationSeconds ?? timing.duration);
           if (cues.montageOptions?.audio) {
+            // Original-format copies still need the reference mix for audio checks.
+            await mkdir(path.join(directory, "assets"), { recursive: true });
+            await copyFile(path.join(source.root, "assets/mix-reference.wav"), path.join(directory, "assets/mix-reference.wav"));
             await copyFile(path.join(source.root, "audio-finishing.json"), path.join(directory, "audio-finishing.json"));
             await checkEditorialAudio(temporary, directory, timing, [cues.montageOptions.audio.logoStart]);
           }
@@ -153,8 +165,10 @@ export async function runExports(id: string) {
       }
       if ((await sourceFor(job)).hash !== source.hash) throw new Error("Source changed during export.");
       state.status = "complete"; state.completedAt = new Date().toISOString(); await publish();
-    } catch {
-      state.status = "failed"; state.error = "The formats could not be completed. Check the source files and continue to reuse completed exports.";
+      }});
+    } catch (error) {
+      console.error("CAM format export failed", { jobId: id, message: error instanceof Error ? error.message : "Unknown export failure" });
+      state.status = "failed"; state.error = error instanceof RecoveryStepError?error.message:"The formats could not be completed. Check the source files and continue to reuse completed exports.";
       await publish();
     }
   } finally { await lock.release(); }
@@ -162,4 +176,13 @@ export async function runExports(id: string) {
 
 export async function getExportJob(id: string) {
   return (await db.select().from(schema.jobs).where(eq(schema.jobs.id, id)))[0];
+}
+
+/** Running means an interrupted local render if its advisory lock is now free. */
+export function exportCanResume(state: FormatExports | undefined) {
+  return state?.status === "queued" || state?.status === "running" && state.backgroundManaged === true;
+}
+export async function runQueuedExports() {
+  const jobs = await db.select({id: schema.jobs.id}).from(schema.jobs).where(sql`${schema.jobs.deletedAt} IS NULL AND ${schema.jobs.params}->'formatExports'->>'backgroundManaged' = 'true' AND ${schema.jobs.params}->'formatExports'->>'status' IN ('queued', 'running')`);
+  for (const job of jobs) await runExports(job.id);
 }

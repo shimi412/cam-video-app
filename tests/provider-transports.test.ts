@@ -16,7 +16,7 @@ import { CAM_VOICE } from "../src/lib/concept/cam-voice";
 const script = "Check the original source. Read the surrounding context before sharing a claim.";
 const { params } = resolveParams(script, "auto");
 const board = planConcept(script, getRecipe("cam-clay")!, params.aspectRatio);
-const plan = generationPlan(script, params, board, placeholderTiming(board.shots.map((s) => s.narration)), [{ id: "narrator", sha256: "a".repeat(64), url: "/narrator.png" }]);
+const plan = generationPlan(script, params, board, placeholderTiming(board.shots.map((s) => s.narration)), [{ id: "narrator", sha256: "a".repeat(64), url: "/narrator.png" , characterSheet:{status:"approved",sha256:"a".repeat(64),approvedAt:"2026-10-14"}}]);
 const voice = plan.operations[0];
 const image = plan.operations.find((op) => op.kind === "image")!;
 const video = plan.operations.find((op) => op.kind === "video")!;

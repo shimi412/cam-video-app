@@ -19,7 +19,7 @@ async function handleGET(_request: Request, context: { params: Promise<{ id: str
   const recipe = getActiveRecipe(params.templateSlug);
   if (!recipe?.concept || params.previewSource === "existing") return Response.json({ error: "This export is for a new CAM Clay script." }, { status: 409 });
   try {
-    const board = planConcept(job.script, recipe, params.aspectRatio, params.sceneDirections);
+    const board = planConcept(job.script, recipe, params.aspectRatio, params.sceneDirections, params.sceneNarrations);
     const phrases = board.shots.map((s) => s.narration), voice = await selectedNarration(id, phrases, params);
     const plan = generationPlan(job.script, params, board, voice?.timing ?? placeholderTiming(phrases), await lockedAssets(), voice?.evidence);
     return Response.json(plan, { headers: { "Cache-Control": "no-store", "Content-Disposition": 'attachment; filename="cam-generation-plan.json"' } });

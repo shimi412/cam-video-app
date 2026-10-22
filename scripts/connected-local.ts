@@ -1,5 +1,6 @@
-/** Authenticated local CAM. Starting it never submits an AI or media request. */
-import { spawn, execFileSync } from "node:child_process";
+import {supervise} from "./runtime-supervisor";
+/** Authenticated local CAM. Startup resumes only explicitly authorized durable work; legacy paused jobs stay paused. */
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -40,17 +41,18 @@ async function main() {
   tsconfig.include = ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next-connected/types/**/*.ts", ".next-connected/dev/types/**/*.ts"];
   tsconfig.exclude = ["node_modules", ".next", ".next-demo", ".next-access-test"];
   await writeFile(path.join(root, "tsconfig.connected.json"), JSON.stringify(tsconfig, null, 2));
-  const server = spawn(process.execPath, [path.join(root, "node_modules/next/dist/bin/next"), "dev", "--hostname", "127.0.0.1", "--port", "3108"], { cwd: root, env, stdio: "inherit" });
-  const stop = () => { if (server.exitCode === null) server.kill("SIGTERM"); };
-  process.once("SIGINT", stop); process.once("SIGTERM", stop); process.once("SIGHUP", stop);
+  const runtime=supervise([
+    {name:"CAM web",command:process.execPath,args:[path.join(root,"node_modules/next/dist/bin/next"),"dev","--hostname","127.0.0.1","--port","3108"]},
+    {name:"CAM production worker",command:process.execPath,args:["--import","tsx",path.join(root,"scripts/production-worker.ts")]}
+  ],{cwd:root,env});
+  process.once("SIGINT",runtime.stop);process.once("SIGTERM",runtime.stop);process.once("SIGHUP",runtime.stop);
   console.log(`Connected CAM: ${origin}. Sign-in required. Generation starts only through the app's explicit actions.`);
   if(process.argv.includes("--open")){
     for(let attempt=0;attempt<90;attempt++){
-      if(server.exitCode!==null)throw new Error("CAM stopped while starting.");
       try{const response=await fetch(`${origin}/login`,{signal:AbortSignal.timeout(1000)});if(response.ok){execFileSync("open",[origin]);break;}}catch{/* The listener may still be starting. */}
       await new Promise(resolve=>setTimeout(resolve,500));
     }
   }
-  process.exitCode = await new Promise<number>((resolve, reject) => { server.once("error", reject); server.once("exit", code => resolve(code ?? 0)); });
+  await runtime.done;
 }
 main().catch(error => { console.error(error instanceof Error ? error.message : "CAM could not start."); process.exitCode = 1; });

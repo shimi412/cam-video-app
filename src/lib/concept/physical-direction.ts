@@ -2,8 +2,10 @@ import type { SceneDirection } from "./types";
 
 /** Conservative preflight, not a substitute for viewing the two keyframes. */
 export function changesState(shot: SceneDirection) {
-  const motion = shot.motion.replace(/\b(?:no|without)\s+(?:\w+\s+)?(?:transformations?|new objects)\b/gi, "");
-  return Boolean(shot.stateChange || shot.endScene || /\b(unroll\w*|unfold\w*|reshap\w*|transform\w*|becom\w*|fill\w*|assembl\w*|build\w*)\b/i.test(motion)
+  // Opening folded hands/arms is a gesture, not an object transformation.
+  // Remove only that verb-object phrase; later object changes still need endpoints.
+  const motion = shot.motion.replace(/\b(?:of|the|these|those|miniature|government)\s+buildings?\s+(?:models?|miniatures?|facades?|facilities)\b/gi, "architectural props").replace(/\b(?:government|clay|miniature)\s+buildings?\b/gi, "architecture").replace(/\bunfold\w*\s+(?:(?:the|his|her|their|both|its|own)\s+)*(?:hands|arms)\b/gi, "gestures").replace(/\b(?:no|without)\s+(?:\w+\s+)?(?:transformations?|new objects)\b/gi, "");
+  return Boolean(shot.stateChange || shot.endScene || /\b(unroll\w*|unfold\w*|reshap\w*|transform\w*|becom\w*|fill\w*|assembl\w*|build(?:s|ing)?|built)\b/i.test(motion)
     || /\bopens?\s+(?:(?:the|a|an|clay|archive|box)\s+)*(?:lid|book|box|scroll)\b/i.test(motion));
 }
 

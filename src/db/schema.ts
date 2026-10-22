@@ -54,6 +54,7 @@ export const conversations = pgTable("conversations", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title"),
   mode: conversationMode("mode").notNull().default("auto"),
+  executionMode: text("execution_mode"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -82,6 +83,8 @@ export const jobs = pgTable(
     status: jobStatus("status").notNull().default("draft"),
     script: text("script").notNull(),
     title: text("title"),
+    deletedAt: timestamp("deleted_at"),
+    savedToLibrary: boolean("saved_to_library").notNull().default(false),
     // Resolved production parameters: tone, duration, voice, tier, subtitles...
     params: jsonb("params").notNull().default({}),
     estimateUsd: numeric("estimate_usd", { precision: 10, scale: 2 }),

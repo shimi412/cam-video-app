@@ -1,0 +1,2 @@
+import {pool} from '../src/db';import {actMotion} from '../src/lib/motion/service';
+async function main(){const id='a249184c-b0c7-414d-9f1f-ae9a51a3b7dc';const r=(await pool.query('SELECT actor_id,state FROM motion_runs WHERE job_id=$1',[id])).rows[0];if(r.state.phase!=='blocked'||r.state.operations['writing-0-repair-2']?.state!=='complete')throw Error('No completed saved source');console.log((await actMotion(id,r.actor_id,{type:'resume',revision:r.state.revision}))?.phase);}main().finally(()=>pool.end());

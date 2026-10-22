@@ -8,7 +8,7 @@ import type {SceneDirection} from '../src/lib/concept/types';
 async function main(){
  const id='2b0df353-688e-4d7c-b5aa-6a31cd4b2f21',base=path.join(process.cwd(),'storage/concepts',id,'live/repairs/bram-method-20261014');
  const packet=JSON.parse(await readFile(path.join(base,'../../state.json'),'utf8')).render;
- const refs=(await lockedAssets()).filter(a=>a.id==='narrator').map(({id,url,sha256})=>({id,url,sha256}));
+ const refs=(await lockedAssets()).filter(a=>a.id==='narrator').map(({id,url,sha256,characterSheet})=>({id,url,sha256,characterSheet}));
  const common={references:['narrator'] as ['narrator'],overlay:null,strike:false,stateChange:true,actionSeconds:5,breathBefore:.6};
  const directions:Record<string,{scene:number;direction:SceneDirection}>={
   'scroll-v2':{scene:2,direction:{...common,

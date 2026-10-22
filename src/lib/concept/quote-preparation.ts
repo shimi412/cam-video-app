@@ -36,7 +36,7 @@ export function prepareQuote(jobId: string, plan: ReturnType<typeof generationPl
       unit, quantity: reuse ? 0 : op.kind === "video" ? Number(op.input.duration) : 1,
       quantityUnit: op.kind === "video" ? "seconds" : op.kind === "voice" ? "reading" : op.kind === "alignment" ? "transcription" : "image",
       reuse: Boolean(reuse), provisionalDuration: op.kind === "video" && plan.timingBasis !== "reviewed-voice-alignment",
-      blocked: op.gates.includes("split-scene"), requires: op.gates, bindings: op.bindings, input: op.input };
+      blocked: op.gates.includes("split-scene") || op.gates.includes("approved-character-sheet"), requires: op.gates, bindings: op.bindings, input: op.input };
   });
   const basis = sha256(JSON.stringify({ version: 1, jobId, plan: plan.fingerprint, voice: plan.voice,
     rows, workflows, importedMedia: params.sceneMedia ?? {}, importedReviews: params.sceneReviews ?? {} }));
@@ -57,7 +57,7 @@ export function prepareQuote(jobId: string, plan: ReturnType<typeof generationPl
     lines, totals, importedScenes: plan.reusedScenes,
     missingPrices: lines.filter((line) => line.amount === null).length,
     downloadUrl: `/api/jobs/${jobId}/quote` as string,
-    blockers: ["Provider quotes and evidence still required", "Paid generation disabled", plan.reusedVoice ? "Imported speaker identity is declared, not independently verified" : "A new Bram reading and final synchronization still require review",
+    blockers: [...plan.blockers.filter(b=>b.includes("character sheet")), "Provider quotes and evidence still required", "Paid generation disabled", plan.reusedVoice ? "Imported speaker identity is declared, not independently verified" : "A new Bram reading and final synchronization still require review",
       ...(rows.some((r) => r.provisionalDuration) ? ["Animation durations are provisional until Bram is recorded and aligned"] : []),
       ...(totals.some((t) => t.overCap) ? ["Entered estimates exceed a planning ceiling"] : [])],
   } as const;

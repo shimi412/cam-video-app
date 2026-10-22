@@ -33,3 +33,8 @@ export function renderConcept(project: string, output: string): Promise<void> {
 export async function silentVoice(output: string, seconds: number) {
   await exec("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", String(seconds), "-c:a", "pcm_s16le", output]);
 }
+
+/** Local, low-resolution copy of the complete edited film. No provider access. */
+export async function downscalePreview(source:string,output:string){
+  await exec("ffmpeg",["-y","-loglevel","error","-i",source,"-vf","scale=if(gte(iw\\,ih)\\,-2\\,480):if(gte(iw\\,ih)\\,480\\,-2)","-c:v","libx264","-preset","fast","-crf","23","-c:a","copy","-movflags","+faststart",output]);
+}

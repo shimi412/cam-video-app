@@ -1,0 +1,25 @@
+[
+  {
+    "id": "narrator",
+    "path": "public/recipes/cam-clay/narrator-sheet.png",
+    "sha256": "2b4d73ed026911bc13698882fcde786b0bdbefb72d58d2d70db88850a7cbe921",
+    "status": "approved",
+    "approvedAt": "2026-10-14",
+    "approvalEvidence": "Human approval in CAM session on 2026-10-14; integration requested 2026-10-15."
+  },
+  {
+    "id": "effigy",
+    "path": "public/recipes/cam-clay/effigy-sheet.png",
+    "sha256": "8e40e2dd264617423903f433bbd4f0bc9fb262889aa938c63a5b6c57dca4fca0",
+    "status": "approved",
+    "approvedAt": "2026-10-14",
+    "approvalEvidence": "Human approval in CAM session on 2026-10-14; integration requested 2026-10-15."
+  },
+  {
+    "id": "monster",
+    "status": "pending",
+    "path": null,
+    "sha256": null,
+    "approvalEvidence": "No recorded human approval."
+  }
+]

@@ -1,0 +1,93 @@
+{
+ "transitions": [
+  {
+   "t": 2.12,
+   "d": 0.5,
+   "technique": "iris depuis le point du « ? »",
+   "de": "sA",
+   "vers": "sB"
+  },
+  {
+   "t": 3.4,
+   "d": 0.5,
+   "technique": "le trait corail sous REALLY? s'ouvre en aplat bleu",
+   "de": "sB",
+   "vers": "sC"
+  },
+  {
+   "t": 7.223,
+   "d": 0.65,
+   "technique": "TERRIBLE tombe, la caméra suit la chute jusqu'au journal",
+   "de": "sC",
+   "vers": "sD"
+  },
+  {
+   "t": 12.28,
+   "d": 0.55,
+   "technique": "iris depuis le point du « ? » de NEGATIVE?",
+   "de": "sD",
+   "vers": "sE"
+  },
+  {
+   "t": 18.513,
+   "d": 0.5,
+   "technique": "iris depuis le compteur viral",
+   "de": "sE",
+   "vers": "sF"
+  },
+  {
+   "t": 23.568,
+   "d": 0.8,
+   "technique": "la caméra recule et tout s'éteint ; passage sobre",
+   "de": "sF",
+   "vers": "sG"
+  },
+  {
+   "t": 25.95,
+   "d": 0.6,
+   "technique": "le trait sous MAKE IT MAKE SENSE s'ouvre en aplat corail",
+   "de": "sG",
+   "vers": "sH"
+  },
+  {
+   "t": 31.156,
+   "d": 0.55,
+   "technique": "iris depuis la pointe de la flèche",
+   "de": "sH",
+   "vers": "sI"
+  },
+  {
+   "t": 35.0,
+   "d": 0.55,
+   "technique": "iris depuis le O de HOLE : on entre dans le trou",
+   "de": "sI",
+   "vers": "sJ"
+  },
+  {
+   "t": 40.52,
+   "d": 0.6,
+   "technique": "le point du « ? » final grandit et recouvre le cadre en corail",
+   "de": "sJ",
+   "vers": "sK1"
+  },
+  {
+   "t": 41.27,
+   "d": 0.5,
+   "technique": "iris crème depuis le centre : entrée de la signature CAM",
+   "de": "sK1",
+   "vers": "sO"
+  }
+ ],
+ "sober": [
+  23.567999999999998,
+  25.95
+ ],
+ "plot": 33.702999999999996,
+ "q_final": 39.17,
+ "logo_impact": 43.17000000000001,
+ "logo_net": 43.82000000000001,
+ "strike": 32.900999999999996,
+ "counter": 16.465,
+ "terrible": 5.713,
+ "dur": 46.2
+}

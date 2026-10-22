@@ -73,7 +73,7 @@ async function update(request: Request, context: { params: Promise<{ id: string 
       return Response.json({ error: "Only an unconfirmed planning preview can be edited." }, { status: 409 });
     }
     const preparation = await prepareConcept(job.script, params, recipe, id);
-    const board = planConcept(job.script, recipe, params.aspectRatio, params.sceneDirections);
+    const board = planConcept(job.script, recipe, params.aspectRatio, params.sceneDirections, params.sceneNarrations);
     const stageContext = (scene: number) => {
       const shot = board.shots.find((s) => s.index === scene);
       if (!shot) throw new Error("Unknown scene.");

@@ -1,3 +1,4 @@
+import type { CharacterReference } from "./character-sheet-policy";
 import type { RenderPacket } from "./production-flow";
 import type { SceneDirection } from "./types";
 import type { Recipe } from "../recipes";
@@ -10,7 +11,7 @@ import type { SceneMedia } from "./preview-inputs";
 
 /** A separate, quoteable repair proposal. It cannot reuse an old budget approval
  * or mutate the original production's provider journal. No provider calls. */
-export function sceneRepairPlan(packet: RenderPacket, scene: number, direction: SceneDirection, recipe: Recipe, references: { id: string; url: string; sha256: string }[]) {
+export function sceneRepairPlan(packet: RenderPacket, scene: number, direction: SceneDirection, recipe: Recipe, references: CharacterReference[]) {
   if (sha256(JSON.stringify(Object.fromEntries(Object.entries(packet).filter(([key]) => key !== "fingerprint")))) !== packet.fingerprint) throw new Error("Original production packet changed.");
   if (!packet.board.shots.some((shot) => shot.index === scene)) throw new Error("Unknown scene to repair.");
   const issues = physicalDirectionIssues(direction); if (issues.length) throw new Error(issues.join(" "));
@@ -19,7 +20,7 @@ export function sceneRepairPlan(packet: RenderPacket, scene: number, direction: 
     visualMode: shot.visualMode, metaphor: shot.metaphor, stateChange: shot.stateChange, actionSeconds: shot.actionSeconds, breathBefore: shot.breathBefore,
   }]));
   const script = packet.board.shots.map(s => s.narration).join(" ");
-  const board = planConcept(script, recipe, packet.aspectRatio, directions);
+  const board = planConcept(script, recipe, packet.aspectRatio, directions, packet.board.shots.map(s=>s.narration));
   const sceneMedia = Object.fromEntries(Object.entries(packet.media).filter(([key]) => Number(key) !== scene));
   const plan = generationPlan(script, { aspectRatio: packet.aspectRatio, sceneMedia } as ProductionParams, board, packet.timing, references,
     { source: "reviewed", audioSha256: packet.audioSha256, alignmentSha256: packet.alignmentSha256 });
@@ -58,7 +59,7 @@ export function applyReviewedSceneRepairs(source: RenderPacket, repairs: Reviewe
       const decisionId = `${target.slice(0,8)}-${target.slice(8,12)}-4${target.slice(13,16)}-8${target.slice(17,20)}-${target.slice(20,32)}`;
       reviews.push({id:decisionId,mode:source.mode,decision:"approved",target});
     }
-    const replacement = planConcept(source.board.shots.map(s=>s.narration).join(" "), recipe, source.aspectRatio, { [scene]:repair.plan.repair.direction }).shots.find(s=>s.index===scene);
+    const replacement = planConcept(source.board.shots.map(s=>s.narration).join(" "), recipe, source.aspectRatio, { [scene]:repair.plan.repair.direction }, source.board.shots.map(s=>s.narration)).shots.find(s=>s.index===scene);
     if (!replacement || replacement.narration !== source.board.shots.find(s=>s.index===scene)?.narration) throw new Error("Repair changed narration.");
     board.shots = board.shots.map(s=>s.index===scene?replacement:s);
     media[scene] = repair.media[`scene-${scene}-clip`];

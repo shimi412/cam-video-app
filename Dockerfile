@@ -6,6 +6,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY src ./src
 COPY support ./support
+COPY agent ./agent
+COPY motion/METHOD-fr.md ./motion/METHOD-fr.md
+COPY comics/METHOD-fr.md ./comics/METHOD-fr.md
+COPY MEMORY.md ./MEMORY.md
 COPY public ./public
 COPY next.config.ts tsconfig.json postcss.config.mjs ./
 RUN PROVIDER_MODE=dryrun BRAIN_MODE=mock pnpm build
@@ -24,6 +28,10 @@ COPY --from=build --chown=node:node /app/public ./public
 COPY --chown=node:node package.json tsconfig.json next.config.ts ./
 COPY --chown=node:node src ./src
 COPY --chown=node:node support ./support
+COPY --chown=node:node agent ./agent
+COPY --chown=node:node motion ./motion
+COPY --chown=node:node comics ./comics
+COPY --chown=node:node MEMORY.md ./MEMORY.md
 COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node migrations ./migrations
 COPY --chown=node:node deploy/start.sh ./deploy/start.sh

@@ -5,4 +5,4 @@ node --import tsx -e 'import("./src/lib/release-policy.ts").then(m => { const e 
 node --import tsx scripts/migrate.ts
 node --import tsx scripts/seed.ts
 node --import tsx scripts/check-installation.ts
-exec node node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port 3000
+exec node --import tsx scripts/serve.ts

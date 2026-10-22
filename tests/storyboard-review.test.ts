@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { validateStoryboardAction, requireApprovedStoryboardPanel, StoryboardSheetSchema } from "../src/lib/concept/storyboard-review";
+import { validateStoryboardAction, requireApprovedStoryboardPanel, StoryboardSheetSchema, storyboardReviewContent, type StoryboardPanel } from "../src/lib/concept/storyboard-review";
+import { GRAPHIC_STYLE_VERSION } from "../src/lib/concept/graphic-layers";
 import { flowReviewTarget } from "../src/lib/concept/production-flow";
 
 it("requires a separate explicit storyboard confirmation, not a budget or per-image approval",()=>{
@@ -27,6 +28,21 @@ it("blocks repair scripts from borrowing an approval for different images or ret
  expect(()=>requireApprovedStoryboardPanel(sheet,decision,{...expected,startSha256:"c".repeat(64)})).toThrow(/exact scene images/);
  expect(()=>requireApprovedStoryboardPanel(sheet,decision,{...expected,motion:"Another action"})).toThrow();
  expect(()=>requireApprovedStoryboardPanel(sheet,decision,{...expected,visualMode:"presenter-text",overlay:"Context changes meaning"})).toThrow();
+ expect(()=>requireApprovedStoryboardPanel({...sheet,panels:[{...sheet.panels[0],graphicLayers:[{kind:"symbol",symbol:"cross",position:"top-center"}]}]},decision,expected)).toThrow();
  expect(()=>requireApprovedStoryboardPanel({...sheet,retrospective:true},decision,expected)).toThrow();
  expect(()=>requireApprovedStoryboardPanel(sheet,{...decision,decision:"rejected"},expected)).toThrow();
+});
+
+it("requires fresh storyboard approval when graphic materials change, preserving unillustrated boards",()=>{
+ const panel:StoryboardPanel={scene:1,narration:"Read the passage",meaning:"Read the original source",startScene:"Presenter holds a book",endScene:null,motion:"Open the book",actionSeconds:5};
+ const job=randomUUID(),hash=(value:unknown)=>flowReviewTarget("simulation",job,"storyboard",value);
+ const plain=storyboardReviewContent([panel],"9:16");
+ expect(plain).not.toHaveProperty("graphicStyle");
+ expect(hash(plain)).toBe(hash({version:3,panels:[panel],format:"9:16"}));
+ const illustrated=storyboardReviewContent([{...panel,graphicLayers:[{kind:"symbol",symbol:"book",position:"top-center"}]}],"9:16");
+ expect(illustrated.graphicStyle).toBe(GRAPHIC_STYLE_VERSION);
+ const legacy={version:3,panels:illustrated.panels,format:"9:16"};
+ expect(hash(illustrated)).not.toBe(hash(legacy));
+ expect(hash(illustrated)).not.toBe(hash({...illustrated,graphicStyle:"next-clay-material"}));
+ expect(()=>validateStoryboardAction(hash(legacy),hash(illustrated),"approved",true)).toThrow(/changed/);
 });

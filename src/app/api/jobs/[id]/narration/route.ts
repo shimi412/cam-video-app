@@ -31,7 +31,7 @@ async function handle(request: Request, context: { params: Promise<{ id: string 
     if (!job) return Response.json({ error: "Production not found." }, { status: 404 });
     const params = job.params as ProductionParams & { executionMode: string }, recipe = getActiveRecipe(params.templateSlug);
     if (job.status !== "estimated" || params.executionMode !== providerMode() || !recipe?.concept || params.previewSource === "existing") return Response.json({ error: "Only an unconfirmed local draft can change its recording." }, { status: 409 });
-    const phrases = planConcept(job.script, recipe, params.aspectRatio, params.sceneDirections).shots.map((s) => s.narration);
+    const phrases = planConcept(job.script, recipe, params.aspectRatio, params.sceneDirections, params.sceneNarrations).shots.map((s) => s.narration);
     if (request.method === "POST") {
       const body = await boundedMedia(new Response(request.body, { headers: request.headers }), 64 * 1024 * 1024 + 65536);
       const form = await new Response(body, { headers: { "Content-Type": request.headers.get("content-type") ?? "" } }).formData();

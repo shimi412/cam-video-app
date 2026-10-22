@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ImageQualitySchema } from "./image-quality-types";
 
 // Shared with the browser. A preview voice never resolves to a paid provider.
 export const PreviewVoiceSchema = z.enum(["silent", "local-en", "local-fr", "local-he"]);
@@ -13,6 +14,7 @@ export const SceneMediaSchema = z.object({
   id: z.uuid(), kind: z.enum(["image", "video"]), sha256: z.string().regex(/^[a-f0-9]{64}$/),
   width: z.number().int().positive(), height: z.number().int().positive(),
   duration: z.number().positive().optional(),
+  quality: ImageQualitySchema.optional(),
 });
 export type SceneMedia = z.infer<typeof SceneMediaSchema>;
 export const mediaFile = (media: SceneMedia) => `${media.id}.${media.kind === "image" ? "png" : "mp4"}`;

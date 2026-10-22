@@ -1,0 +1,11 @@
+import {RecoveryStepError} from '@/lib/agent/recovery-step';
+import {withAccess,actorFor} from '@/lib/access';
+import {smallJson} from '@/lib/http';
+import {getComic} from '@/lib/comics/store';
+import {publicComic} from '@/lib/comics/model';
+import {actComic} from '@/lib/comics/service';
+import {ComicStop} from '@/lib/comics/errors';
+export const runtime='nodejs';
+type Context={params:Promise<{id:string}>};
+export const GET=withAccess(async(request:Request,context:Context)=>{try{return Response.json(publicComic(await getComic((await context.params).id,(await actorFor(request))!.id)),{headers:{'Cache-Control':'no-store'}});}catch{return Response.json({error:'Video not found.'},{status:404});}});
+export const POST=withAccess(async(request:Request,context:Context)=>{try{return Response.json(await actComic((await context.params).id,(await actorFor(request))!.id,await smallJson(request)));}catch(e){const m=e instanceof Error?e.message:'';const safe=/^(Final review:|Review|Approve|Watch|Wait|Lock|Choose|Add a new|Your|Not enough|The requested|The saved|Feedback|Finishing|There is no)/.test(m);return Response.json({error:e instanceof ComicStop?e.clientMessage:safe||e instanceof RecoveryStepError?m:'This change could not be completed. Your notes and media are saved.'},{status:409});}});

@@ -1,10 +1,12 @@
+import { listConversations } from "@/lib/conversation-list";
+import { providerMode } from "@/lib/providers/mode";
 import { z } from "zod";
-import { desc, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { withAccess } from "@/lib/access";
 import { smallJson } from "@/lib/http";
 export const GET = withAccess(async () => {
-  const items = await db.select().from(schema.conversations).orderBy(desc(schema.conversations.createdAt), desc(schema.conversations.id)).limit(100);
+  const items = await listConversations(providerMode());
   return Response.json({ items }, { headers: { "Cache-Control": "no-store" } });
 });
 export const POST = withAccess(async (request) => {
@@ -14,7 +16,7 @@ export const POST = withAccess(async (request) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.data.id}, 0))`);
     const [existing] = await tx.select().from(schema.conversations).where(eq(schema.conversations.id, input.data.id));
     if (existing && existing.title !== input.data.title) return Response.json({ error: "This identifier was already used. Reload to create a new conversation." }, { status: 409 });
-    const item = existing ?? (await tx.insert(schema.conversations).values(input.data).returning())[0];
+    const item = existing ?? (await tx.insert(schema.conversations).values({...input.data,executionMode:providerMode()}).returning())[0];
     return Response.json(item);
   });
 });

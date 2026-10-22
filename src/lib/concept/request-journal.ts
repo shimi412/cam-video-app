@@ -1,3 +1,4 @@
+import {SubmissionNotSentError, RetryableReadError, SubmissionRejectedError} from "../providers/network";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -10,13 +11,20 @@ export const RequestBinding = z.object({
 }).strict();
 export type RequestBinding = z.infer<typeof RequestBinding>;
 const RequestId = z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/);
+/** 10 retries with 2 s … 5 min backoff: about half an hour of provider or network outage before a human is asked. */
+const READ_RECOVERY_LIMIT=10;
 export const Receipt = z.object({
   mode: z.enum(["simulation", "live"]).default("simulation"),
-  fingerprint: Hash, state: z.enum(["submitting", "submitted", "complete", "failed"]),
-  requestId: RequestId.optional(), output: z.string().optional(), binding: RequestBinding.optional(),
+  fingerprint: Hash, state: z.enum(["not-sent", "submitting", "submitted", "complete", "failed"]),
+  submittedAt:z.number().optional(), draftId:z.string().min(1).optional(),
+  failureReason: z.string().optional(), requestId: RequestId.optional(), output: z.string().optional(), binding: RequestBinding.optional(),
+  readRecovery: z.object({ failures:z.number().int().min(1).max(READ_RECOVERY_LIMIT), nextAt:z.number().nonnegative() }).optional(),
   reconciliation: z.object({ requestId: RequestId, evidenceSha256: Hash, at: z.iso.datetime() }).optional(),
 });
 type Receipt = z.infer<typeof Receipt>;
+export class DefinitiveRequestFailure extends Error {
+  constructor(readonly fingerprint:string){super("The original request failed. An explicit new attempt is required.");}
+}
 export type SimulatedQueue = QueueRequest & { mode: "simulation" };
 
 /** Rehearse queue recovery without a live provider. The caller owns the job lock.
@@ -40,27 +48,48 @@ export async function advanceRequest(input: {
     receipt = value;
   };
   if (receipt?.state === "submitting") throw new Error("Submission outcome unknown. Reconcile the original request before retrying.");
-  if (receipt?.state === "failed") throw new Error("The original request failed. An explicit new attempt is required.");
+  if (receipt?.state === "failed") throw new DefinitiveRequestFailure(input.fingerprint);
   if (receipt?.state === "complete") {
     if (!receipt.requestId || !receipt.output) throw new Error("Incomplete request journal.");
     return { ...receipt, reused: true };
   }
-  if (!receipt) {
-    await save({ mode: input.queue.mode, fingerprint: input.fingerprint, binding, state: "submitting" });
+  if (!receipt || receipt.state === "not-sent") {
+    await input.queue.prepare?.();
     await input.assertOwned();
-    const submitted = await input.queue.submit();
+    const submittedAt=Date.now();
+    await save({ mode: input.queue.mode, fingerprint: input.fingerprint, binding, submittedAt, state: "submitting" });
+    await input.assertOwned();
+    let submitted;
+    try { submitted = await input.queue.submit(); }
+    catch(error) {
+      if(error instanceof SubmissionNotSentError)await save({mode:input.queue.mode,fingerprint:input.fingerprint,binding,submittedAt,state:"not-sent"});
+      if(error instanceof SubmissionRejectedError){await save({mode:input.queue.mode,fingerprint:input.fingerprint,binding,submittedAt,state:"failed",failureReason:error.message.slice(0,500)});throw new DefinitiveRequestFailure(input.fingerprint);}
+      throw error;
+    }
     if (!RequestId.safeParse(submitted.requestId).success) throw new Error("Submission returned no request ID. Reconciliation required.");
-    await save({ mode: input.queue.mode, fingerprint: input.fingerprint, binding, state: "submitted", requestId: submitted.requestId });
+    await save({ mode: input.queue.mode, fingerprint: input.fingerprint, binding, submittedAt, state: "submitted", requestId: submitted.requestId });
   }
   if (!receipt?.requestId) throw new Error("Submitted request has no ID. Reconciliation required.");
+  // Read outages are waited out with a bounded backoff (about 30 minutes in total), not three strikes in 14 seconds (2026-10-21).
+  if(receipt.readRecovery&&receipt.readRecovery.failures>=READ_RECOVERY_LIMIT)throw new Error("Saved result recovery exhausted. Support must check the accepted request; no new generation was sent.");
+  if(receipt.readRecovery&&receipt.readRecovery.nextAt>Date.now())return {...receipt,reused:true};
   await input.assertOwned();
-  const result = await input.queue.poll(receipt.requestId);
+  let result:Awaited<ReturnType<QueueRequest["poll"]>>;
+  try { result = await input.queue.poll(receipt.requestId); }
+  catch(error){
+    if(!(error instanceof RetryableReadError))throw error;
+    const failures=(receipt.readRecovery?.failures??0)+1;
+    await save({...receipt,readRecovery:{failures,nextAt:Date.now()+Math.min(300_000,1000*2**failures)}});
+    if(failures>=READ_RECOVERY_LIMIT)throw new Error("Saved result recovery exhausted. Support must check the accepted request; no new generation was sent.");
+    throw error;
+  }
+  if(receipt.readRecovery)await save({...receipt,readRecovery:undefined});
   if (result.state === "complete") {
     if (!result.output) throw new Error("Queue result has no output.");
-    await save({ ...receipt, state: "complete", output: result.output });
+    await save({ ...receipt, state: "complete", output: result.output, draftId:result.draftId });
   } else if (result.state === "failed") {
-    await save({ ...receipt, state: "failed" });
-    throw new Error("The original request failed. An explicit new attempt is required.");
+    await save({ ...receipt, state: "failed", failureReason:result.failureReason });
+    throw new DefinitiveRequestFailure(input.fingerprint);
   }
   return { ...receipt, reused: false };
 }

@@ -15,7 +15,7 @@ export const POST = withAccess(async (_request: Request, context: Context) => {
   if (!z.uuid().safeParse(id).success) return Response.json({ error: "Invalid production ID." }, { status: 400 });
   try {
     const started = await queueExports(id);
-    if (started) after(() => runExports(id));
+    if (started && !(process.env.CAM_LIVE_ENABLED === "1" && process.env.PROVIDER_MODE === "fal")) after(() => runExports(id));
     return Response.json({ started }, { status: 202 });
   } catch { return Response.json({ error: "Complete a CAM Clay preview with its original files before exporting." }, { status: 409 }); }
 });

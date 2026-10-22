@@ -2,6 +2,26 @@
 
 Integrated on 2026-10-14 from the October 5 production sources and Shimi's Claude handoff. Rendering a valid MP4 is not editorial acceptance.
 
+## Current corrections, 2026-10-15
+
+The current operational contract is the marked section of root `MEMORY.md`, read afresh by the director for each new preparation. The chronological records below describe earlier states where noted. Current production prepares the image storyboard before narration and animation; the initial preparation amount is disclosed on Start, the video quote follows human storyboard approval.
+
+One starting image is planned per scene. A final image is included only for an actual planned change of state. New connected Starts give the director the entire script, without preassigned scenes or a fixed word count. The director chooses meaning boundaries and compositions together, records each beat’s idea, cut reason and continuity, and preserves the original narration exactly. The signed provisional allowance caps images and money, not the editorial partition. If the actual semantic plan exceeds it, the analyzed plan is saved and its real image price requires approval before generation. Existing paid plans keep their original partitions and manifests. Directions choose meaningful settings, objects/actions, camera scale and light for each passage. A presenter and a small hand gesture repeated across the whole script is a detected planning fault, not the intended CAM treatment. The approved sheets fix character identity, not pose or setting.
+
+Each storyboard case now supports persisted comments. Supported local title/symbol corrections appear in the composed preview and the same montage. Framing, setting and lighting changes can be quoted and regenerated for the selected scene, preserving unaffected images. A changed comment invalidates its previous revision proposal. New characters require approved sheets; new physical actions or timing changes require a revised action plan and cannot silently pass through an image-only correction. Any changed composition requires human review again.
+
+Images preserve their original source bytes. Aspect-ratio and conservative padded-band checks can warn on an affected case; they do not certify narrative meaning or artistic quality. No automatic paid retry follows a warning. The interrupted test's first image already contained the visible bands before import. Same-operation legacy image requests whose fingerprints change are blocked before resubmission; only an explicit quoted revision has a new attempt identifier.
+
+These changes are checked with local unit tests, real controller logic using injected provider fixtures, and a temporary UI fixture. No new generated image or real supplier video was produced during this repair, so live visual quality remains for the next human test.
+
+## Character sheets: required correction, 2026-10-14
+
+Shimi requires genuine multi-view character sheets, visible on hover and click in Library and actually supplied to scene generation. Enlarging a single portrait does not satisfy this requirement.
+
+Historical gap on 2026-10-14: the three pinned character PNGs were single-view references. This was subsequently corrected for narrator and effigy; see the current registry and “Required character sheets and video library” below. Monster remains pending. Do not infer approval from a portrait or a file's presence alone.
+
+Required workflow: preserve each approved canonical character; prepare a consistent multi-view sheet on flat neutral grey; have a human review identity, proportions, clothing and material across views; register the approved file and its content hash; use that same approved sheet as the character reference in scene generation and in Library. A changed sheet must invalidate dependent generation plans and storyboard approval. Only characters present in a scene should be attached. Keep historical assets for existing productions. Show a cost estimate before generating new sheets; do not automatically regenerate existing films.
+
 ## Human storyboard approval before animation
 
 User correction, 2026-10-14: physical plausibility is not narrative meaning. The V4 cupboard/dove reveal was rejected because it did not explain how context changes interpretation.
@@ -64,3 +84,26 @@ Selected replacements: a fragment restored to its original book, a scroll unroll
 `applyReviewedSceneRepairs` builds a new packet only from approved start/end/clip hashes matching the original source, voice and alignment. The original packet and eight provider receipts remain immutable. `scripts/finish-bram-repair.ts` renders locally with fetch forbidden, verifies those originals, and publishes both signatures under `live/finishing/claude-method-v4/`. It invalidates old format downloads so CAM rebuilds them from the revised cues.
 
 The final preview is **14.133 seconds**: the added action holds preserve all spoken samples; the logo starts at 11.53 seconds. Both MP4s pass final AAC checks at **−14.2 LUFS / −1.2 dBTP**, with no unexplained level steps or premature digital silence. The original voice tail still requires human listening; no claim is made to reconstruct potentially missing phonemes. Contact sheets, waveforms, the listening reel, selection and provenance accompany the render. Friendly output: `storage/outputs/cam-bram-corrige-v4.mp4`.
+
+## Cost and model preflight (2026-10-15)
+
+Before a new paid production quote, apply the scene capability/current-price comparison described in `model-selection.md`. Preserve references, state-change endpoints, narration, local typography and human storyboard approval. The cheapest eligible connected engine is chosen under the requested source resolution; 720p is an explicit opt-in. The quote saves model choices; resumed runs cannot substitute a cheaper model. No blind sampling or automatic retries. The optional quoted draft-first path pauses for human review before completion. This comparison is rule-based and carries no invented visual-success percentage. New model families require adapter and CAM quality qualification before use.
+
+
+## Public editing references reviewed 2026-10-15
+
+Three Dan Kieft tutorials were read in full through their YouTube automatic transcripts: AgUATWAOaKY (editing), FJfMTvZvX7w (performance reference), 8gQ6qUmKjHg (animation). They are workflow demonstrations, including sponsored material, not comparative quality benchmarks. Exact community prompt packs were not obtained and were not copied into the product.
+
+Implemented for new direction requests: a versioned CAM editorial policy prioritizes meaning, initial pose/action/final hold, expression, physical direction, setting/light continuity, ordered reference roles and local typography. Existing approved scene prompts and assets remain unchanged. Rendering emits `editorial-timeline.json` at 30 fps, from actual paced voice timings: shot/word/logo markers, actions, identity references and human inspection points. The administrator's decision-trail endpoint shows quote/model reasons, human review stage, request events and this timeline. It does not expose hidden LLM reasoning.
+
+Not adopted automatically: always generating two takes; replacing the chosen narration using a video model; forcing multiple camera angles; applying camera Log LUTs to generated clay; regenerating the picture to obtain sound; merging many shots without checking billing and editability. Motion transfer, expression sheets, location images and new sound effects require the relevant assets, adapters, quote and human approvals. They are not implied by these textual rules. Reuse approved assets and repair a rejected shot in a new version before requesting an entire new film.
+
+## Required character sheets and video library (2026-10-15)
+
+Every character used in a new generated scene needs a human-approved multi-view sheet. `character-sheets.json` records the exact SHA-256, approval date and evidence. `lockedAssets()` verifies those bytes and supplies the approved sheet URL and file instead of the portrait. Narrator and effigy were approved on 2026-10-14 and integrated on 2026-10-15. Monster remains pending and blocks any new generation involving it; there is no automatic paid sheet generation.
+
+The plan exposes a character-sheet blocker, quote requests refuse it before contacting providers, the controller refuses it before narration, and request materialization also refuses it. Missing, revoked or changed sheet evidence fails closed. All cast members' sheets bind to the start image and to the end image together with the approved start. Image-to-video engines receive those reviewed scene frames, which carry the character design; sheets are not inserted into unsupported video fields. Existing imported finished clips can still be viewed without being retrospectively described as sheet-based generations. Changed reference hashes invalidate dependent production approvals.
+
+The Library groups characters by video and saved scene numbers instead of presenting a global equal-priority cast. Saved render storyboards take precedence over draft metadata. Hover/click displays the current approved sheet; older films are explicitly allowed to have used earlier references. No new use is inferred when a saved cast is missing. The monstre remains marked awaiting approval.
+
+Verification covers exact local sheet hashes, all cast bindings, downstream video frames, pending/missing/changed sheets, no provider calls for blocked quotes, and per-video grouping. The isolated controller additionally checks that the exact approved narrator-sheet bytes reach its simulated upload adapter. No paid generation is performed.

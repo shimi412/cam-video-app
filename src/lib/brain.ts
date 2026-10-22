@@ -13,7 +13,7 @@ import {
   type Family,
   type Tone,
 } from "./recipes";
-import { conceptPhrases, estimatedSpeechSeconds } from "./concept/text";
+import { editorialPhrases, estimatedSpeechSeconds } from "./concept/text";
 import type { PreviewVoice, SceneMedia } from "./concept/preview-inputs";
 import type { SceneDirection } from "./concept/types";
 import type { VisualDecision } from "./concept/visual-review";
@@ -22,6 +22,7 @@ import type { QuoteDraft } from "./concept/quote-preparation";
 import type { Narration } from "./concept/narration";
 
 export type ProductionParams = {
+  productionMethod?: "whimsical-v1";
   templateSlug: string;
   family: Family;
   tone: Tone;
@@ -42,6 +43,9 @@ export type ProductionParams = {
   previewVoice?: PreviewVoice;
   sceneMedia?: Record<string, SceneMedia>;
   sceneDirections?: Record<string, SceneDirection>;
+  /** Immutable segmentation chosen at creation; absent on legacy productions. */
+  sceneNarrations?: string[];
+  editorialPlan?: {version:"semantic-ideas-v1";beats:import("./concept/semantic-plan").SemanticBeat[]};
   sceneReviews?: Record<string, VisualDecision[]>;
   sceneWorkflow?: Record<string, SceneWorkflow>;
   sceneMediaWorkflow?: Record<string, string>;
@@ -110,8 +114,8 @@ export function resolveParams(
   if (!recipe) throw new RecipeUnavailableError();
   const templateSlug = recipe.slug;
 
-  const phrases = recipe.concept ? conceptPhrases(script) : [];
-  if (phrases.length > 36 || phrases.some((p) => p.split(/\s+/).some((w) => w.length > 40))) throw new Error("Please use a shorter script with ordinary words (maximum 36 shots).");
+  const phrases = recipe.concept ? editorialPhrases(script) : [];
+  if (phrases.some((p) => p.split(/\s+/).some((w) => w.length > 40))) throw new Error("Please use ordinary script text.");
   const shotCount = recipe.concept ? phrases.length : Math.min(24, Math.max(3, Math.ceil(analysis.wordCount / WORDS_PER_SHOT)));
   const concept = recipe.concept ? {
     videoSeconds: phrases.reduce((sum, p) => sum + Math.max(5, Math.ceil(estimatedSpeechSeconds(p) + .35)), 0),
@@ -134,7 +138,7 @@ export function resolveParams(
       shotSeconds: SHOT_SECONDS,
       wordCount: analysis.wordCount,
       characterCount: script.length,
-      ...(concept ? { concept } : {}),
+      ...(concept ? { concept, sceneNarrations:phrases } : {}),
     },
   };
 }

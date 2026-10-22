@@ -6,6 +6,9 @@
 !next.config.ts
 !tsconfig.json
 !postcss.config.mjs
+!MEMORY.md
+!support/
+!support/**
 !src/
 !src/**
 !public/

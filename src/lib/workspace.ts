@@ -1,3 +1,4 @@
+import { providerMode } from "./providers/mode";
 import { z } from "zod";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -62,7 +63,7 @@ export async function openBrief(campaignId: string, briefId: string) {
     const [brief] = await tx.select().from(schema.campaignBriefs).where(and(eq(schema.campaignBriefs.id, briefId), eq(schema.campaignBriefs.campaignId, campaignId)));
     if (!brief) throw new Error("Brief not found.");
     if (brief.conversationId) return brief.conversationId;
-    const [conversation] = await tx.insert(schema.conversations).values({ title: brief.title }).returning();
+    const [conversation] = await tx.insert(schema.conversations).values({ title: brief.title,executionMode:providerMode() }).returning();
     await tx.insert(schema.messages).values({ conversationId: conversation.id, role: "user", content: { type: "brief", text: `${brief.angle}${brief.script ? `\n\nNarration draft:\n${brief.script}` : ""}`, script: brief.script, campaignId, briefId } });
     await tx.update(schema.campaignBriefs).set({ conversationId: conversation.id, updatedAt: new Date() }).where(eq(schema.campaignBriefs.id, brief.id));
     return conversation.id;

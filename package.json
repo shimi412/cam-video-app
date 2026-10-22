@@ -8,7 +8,7 @@
     "demo": "tsx scripts/local-demo.ts",
     "demo:prepare": "tsx scripts/local-demo.ts --prepare-only",
     "build": "next build",
-    "start": "next start",
+    "start": "tsx scripts/serve.ts",
     "lint": "eslint",
     "db:start": "tsx scripts/db.ts start",
     "db:stop": "tsx scripts/db.ts stop",
@@ -24,6 +24,7 @@
     "test:local-media": "tsx --env-file-if-exists=.env scripts/check-local-media.ts",
     "test:review-recovery": "tsx --env-file-if-exists=.env scripts/check-review-recovery.ts",
     "test:scene-workflow": "tsx --env-file-if-exists=.env scripts/check-scene-workflow.ts",
+    "test:full-film-preview": "tsx scripts/check-full-film-preview.ts",
     "test:production-flow": "tsx --env-file-if-exists=.env scripts/check-production-flow.ts",
     "test:narration": "tsx --env-file-if-exists=.env scripts/check-narration.ts",
     "test:production-history": "tsx --env-file-if-exists=.env scripts/check-production-history.ts",
@@ -39,7 +40,15 @@
     "release:package": "tsx scripts/package-release.ts",
     "test:assistant": "tsx --env-file-if-exists=.env scripts/check-assistant.ts",
     "test:connected-production": "tsx --env-file-if-exists=.env scripts/check-connected-production.ts",
-    "test:client-audit": "tsx --env-file-if-exists=.env scripts/check-client-audit.ts"
+    "test:client-audit": "tsx --env-file-if-exists=.env scripts/check-client-audit.ts",
+    "test:model-selection-flow": "tsx scripts/check-model-selection.ts",
+    "test:client-journey": "tsx scripts/check-client-journey.ts",
+    "test:motion-journey": "tsx scripts/check-motion-journey.ts",
+    "worker": "tsx --env-file-if-exists=.env scripts/production-worker.ts",
+    "test:worker-restart": "tsx scripts/check-worker-restart.ts",
+    "test:comics-journey": "tsx scripts/check-comics-journey.ts",
+    "test:agent-memory": "tsx scripts/check-agent-memory.ts",
+    "test:motion-restart": "tsx scripts/check-motion-worker-restart.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.39",
@@ -58,7 +67,9 @@
     "react-dom": "19.2.8",
     "sharp": "^0.35.3",
     "stripe": "^23.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "typescript": "^5",
+    "puppeteer-core": "25.13.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -70,9 +81,9 @@
     "embedded-postgres": "18.4.0-beta.17",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
+    "happy-dom": "^21.0.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
-    "typescript": "^5",
     "vitest": "^5.0.3"
   },
   "packageManager": "pnpm@11.17.0"

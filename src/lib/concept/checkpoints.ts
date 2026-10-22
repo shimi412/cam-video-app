@@ -4,6 +4,11 @@ import path from "node:path";
 import { z } from "zod";
 
 export const sha256 = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+/** JSON with object keys sorted at every depth: a zod parse or a PostgreSQL JSONB round trip reorders keys without changing meaning (live Clay revision refused on 2026-10-22). */
+export function canonicalJson(value: unknown): string {
+  const sort = (v: unknown): unknown => Array.isArray(v) ? v.map(sort) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v as Record<string, unknown>).sort().map(k => [k, sort((v as Record<string, unknown>)[k])])) : v;
+  return JSON.stringify(sort(value));
+}
 export const Hash = z.string().regex(/^[a-f0-9]{64}$/);
 export async function readCheckpoint<T>(file: string, schema: z.ZodType<T>): Promise<T | null> {
   try { return schema.parse(JSON.parse(await readFile(file, "utf8"))); }
