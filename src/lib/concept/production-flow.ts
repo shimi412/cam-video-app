@@ -109,17 +109,28 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
     return decision;
   };
   const transfer = { directory: path.join(directory, "transfers"), transport: services.assets, assertOwned };
+  // Hosted URLs expire and get refreshed; request identity must follow the reviewed file, not its URL (live Clay 2026-10-23).
+  const urlHashes = new Map<string, string>();
   const upload = async (file: string, hash: string, kind: "image/png" | "audio/wav") => {
     const result = await uploadReference({ ...transfer, file, sha256: hash, contentType: kind });
+    urlHashes.set(result.url, hash);
     events.push({ stage: "transfer", fingerprint: hash, reused: result.reused }); return result.url;
   };
+  const payloadIdentityOf = (payload: unknown) => sha256(JSON.stringify(payload, (_key, value) => typeof value === "string" && urlHashes.has(value) ? `sha256:${urlHashes.get(value)}` : value));
   const execute = async (plan: FlowPlan, op: GenerationOperation, urls: Record<string, string>, evidence: unknown) => {
     const attempt=(op.kind==="image"||/^scene-\d+-(draft|clip)$/.test(op.id))?services.imageRetries?.[op.id]??0:0;
     if(attempt)op={...op,id:`${op.id}-retry-${attempt}`,fingerprint:sha256(JSON.stringify({original:op.fingerprint,attempt}))};
-    const payload = materializeRequest(op, urls);
-    // A semantic plan fingerprint alone cannot distinguish replaced normalized
-    // files, renewed reviews or changed hosted URLs in the submitted payload.
-    const operation = { ...op, fingerprint: sha256(JSON.stringify({ mode: services.mode, operation: op.fingerprint, payload, evidence })) };
+    const payload = materializeRequest(op, urls), payloadIdentity = payloadIdentityOf(payload);
+    // A semantic plan fingerprint alone cannot distinguish replaced normalized files or renewed
+    // reviews: the identity carries the uploaded file hashes, so a refreshed hosted URL keeps it.
+    const operation = { ...op, fingerprint: sha256(JSON.stringify({ mode: services.mode, operation: op.fingerprint, payload: payloadIdentity, evidence })) };
+    // Receipts written before 2026-10-23 were keyed by the raw hosted URLs; a completed one for the same
+    // operation id, model and transport is reused rather than refused (its scene or cast identity is in the id).
+    const legacy = receipts.find(r => r.state === "complete" && r.binding?.operation === op.id && r.binding.model === op.model && r.binding.transport === op.transport && !r.binding.payloadIdentity && r.requestId && r.output);
+    if (legacy?.requestId && legacy.output && !services.completedInputs) {
+      events.push({ stage: `reuse-legacy-${op.id}`, scene: op.scene, fingerprint: legacy.fingerprint, reused: true, requestId: legacy.requestId });
+      return { ...legacy, operation: { ...op, fingerprint: legacy.fingerprint }, output: legacy.output, requestId: legacy.requestId };
+    }
     const reusable=receipts.find(r=>r.state==="complete"&&r.binding?.operation===op.id&&r.binding.model===op.model&&r.binding.transport===op.transport&&r.binding.payloadSha256===sha256(JSON.stringify(payload))&&services.completedInputs?.[op.id]===r.binding.payloadSha256);
     if(reusable?.requestId&&reusable.output){
       // Only byte-identical provider inputs can survive a renewed whole-board
@@ -139,7 +150,7 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
     await reservation.budget.reserve({ jobId, plan: phasePlan.fingerprint, operations: [operation], quote: reservation.quote, approval: reservation.approval });
     const queue = services.queue(operation, payload);
     if (queue.mode !== services.mode) throw new Error("Queue mode differs from production mode.");
-    const binding = RequestBinding.parse({ jobId, operation: operation.id, model: operation.model, transport: operation.transport, payloadSha256: sha256(JSON.stringify(payload)) });
+    const binding = RequestBinding.parse({ jobId, operation: operation.id, model: operation.model, transport: operation.transport, payloadSha256: sha256(JSON.stringify(payload)), payloadIdentity });
     if (!receipts.some(r=>r.fingerprint===operation.fingerprint&&r.state==="complete"))
       await saveCheckpoint(path.join(directory,"state.json"),{status:"pending",phase:op.id,events,paidGenerationAuthorized:services.mode==="live"},assertOwned);
     const result = await advanceRequest({ directory: journal, fingerprint: operation.fingerprint, binding, assertOwned,

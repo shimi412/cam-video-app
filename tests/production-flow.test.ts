@@ -188,6 +188,35 @@ it("keeps a failed revised scene and completes another scene without resubmittin
  }finally{await rm(path.join(process.cwd(),"storage/imports",f.input.jobId),{recursive:true,force:true});}
 });
 
+it('reuses completed images after the hosted reference URLs are refreshed (live Clay 2026-10-23)',async()=>{
+ const f=fixture();f.input.script="First idea. Second idea.";
+ f.input.params.sceneNarrations=["First idea.","Second idea."];
+ const image=await sharp({create:{width:72,height:128,channels:3,background:"#345678"}}).png().toBuffer();
+ const filePath=path.join(directory,"reference.png");await writeFile(filePath,image);const hash=sha256(image);
+ f.input.references[0]={...f.input.references[0],filePath,sha256:hash,characterSheet:{status:"approved",sha256:hash,approvedAt:"2026-10-18"}};
+ let book:BudgetBook|null=null;
+ const budget=createBudget({mode:"simulation",transaction:async update=>{const next=update(book);book=next.book;return next.result;}},{usd:1_000_000,"higgsfield-credit":0});
+ const reservations=new Map<string,NonNullable<Awaited<ReturnType<FlowInput["services"]["authorize"]>>>>();
+ const submitted:string[]=[];let uploads=0;
+ f.input.services={...f.input.services,storyboardBeforeVoice:true,reviewPolicy:"storyboard-first",
+  review:async request=>request.stage==="script"?{id:randomUUID(),target:request.target,mode:"simulation",decision:"approved"}:null,
+  authorize:async plan=>{const op=plan.operations[0];if(!reservations.has(plan.fingerprint)){const quote:BudgetQuote={plan:plan.fingerprint,source:"simulation-fixture",expiresAt:Date.now()+86400000,lines:[{operation:op.fingerprint,unit:"usd",maximum:1000}]};reservations.set(plan.fingerprint,{budget,quote,approval:{id:randomUUID(),mode:"simulation",plan:plan.fingerprint,quote:quoteHash(quote),expiresAt:quote.expiresAt,caps:{usd:1000,"higgsfield-credit":0}}});}return reservations.get(plan.fingerprint)!;},
+  queue:op=>({mode:"simulation",submit:async()=>{submitted.push(op.id);return {requestId:op.fingerprint};},poll:async()=>({state:"complete",output:"https://simulation.invalid/image.png"})}),
+  cost:async()=>({unit:"usd",actual:1000,evidence:"fixture"}),
+  // Every upload returns a fresh hosted URL, as fal does after an expiry.
+  assets:{mode:"simulation",upload:async bytes=>({url:`https://simulation.invalid/${sha256(bytes)}/${++uploads}`,expiresAt:Date.now()+3600_000}),download:async()=>new Response(new Uint8Array(image))}
+ };
+ try{
+  const first=await advanceProductionFlow(f.input);expect(first.review?.storyboard).toHaveLength(2);const count=submitted.length;expect(count).toBeGreaterThan(0);
+  // The hosted URLs expire (as fal's do after a day); the next run re-uploads and must reuse every completed image.
+  const uploadsDir=path.join(f.input.directory,"transfers","uploads");const {readdir,readFile:readF,writeFile:writeF}=await import("node:fs/promises");
+  for(const name of await readdir(uploadsDir)){const file=path.join(uploadsDir,name);const saved=JSON.parse(await readF(file,"utf8"));if(saved.state==="complete")await writeF(file,JSON.stringify({...saved,expiresAt:Date.now()-1000}));}
+  const again=await advanceProductionFlow(f.input);
+  expect(again.status).toBe("awaiting-review");expect(again.storyboardFailures??{}).toEqual({});expect(submitted).toHaveLength(count);expect(uploads).toBeGreaterThan(1);
+  expect(again.review?.storyboard?.map(p=>p.start?.sha256)).toEqual(first.review?.storyboard?.map(p=>p.start?.sha256));
+ }finally{await rm(path.join(process.cwd(),"storage/imports",f.input.jobId),{recursive:true,force:true});}
+});
+
 it('reworks a revised image refused by the provider inside the same batch and never shows the client a failure (Shimi, 2026-10-22)',async()=>{
  const f=fixture();f.input.script="First idea. Second idea.";
  f.input.params.sceneNarrations=["First idea.","Second idea."];

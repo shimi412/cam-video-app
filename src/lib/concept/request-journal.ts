@@ -8,6 +8,8 @@ import { Hash, readCheckpoint, saveCheckpoint, sha256 } from "./checkpoints";
 export const RequestBinding = z.object({
   jobId: z.uuid(), operation: z.string().min(1).max(100),
   model: z.string().min(1).max(200), transport: z.enum(["fal-queue", "higgsfield-mcp"]), payloadSha256: Hash,
+  /** Payload hash with hosted reference URLs replaced by the uploaded file hashes (2026-10-23): identity survives a URL refresh. */
+  payloadIdentity: z.string().optional(),
 }).strict();
 export type RequestBinding = z.infer<typeof RequestBinding>;
 const RequestId = z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/);
@@ -42,7 +44,11 @@ export async function advanceRequest(input: {
   let receipt = await readCheckpoint(file, Receipt);
   const binding = input.binding ? RequestBinding.parse(input.binding) : undefined;
   if (receipt && (receipt.fingerprint !== input.fingerprint || receipt.mode !== input.queue.mode)) throw new Error("Request journal mismatch.");
-  if (receipt && JSON.stringify(receipt.binding) !== JSON.stringify(binding)) throw new Error("Request binding mismatch.");
+  // A refreshed hosted URL changes the raw payload hash but not the request: bindings that carry a payload identity are compared on it (2026-10-23).
+  const sameBinding = (a?: z.infer<typeof RequestBinding>, b?: z.infer<typeof RequestBinding>) => a && b && a.payloadIdentity && b.payloadIdentity
+    ? a.jobId === b.jobId && a.operation === b.operation && a.model === b.model && a.transport === b.transport && a.payloadIdentity === b.payloadIdentity
+    : JSON.stringify(a) === JSON.stringify(b);
+  if (receipt && !sameBinding(receipt.binding, binding)) throw new Error("Request binding mismatch.");
   const save = async (value: Receipt) => {
     await saveCheckpoint(file, Receipt.parse(value), input.assertOwned);
     receipt = value;
