@@ -1,7 +1,8 @@
 "use client";
 /** Single journey (Shimi, 2026-10-23): one estimate, one approval, a complete version produced unattended, the
  * client's feedback on the whole version, a revision price, the next version, until a version is approved and
- * downloaded. No storyboard, budget, visual or finishing gate is shown; the storyboard is information only. */
+ * downloaded. No storyboard, budget, visual or finishing gate is shown; the storyboard is information only,
+ * shown folded with a complete version and never during production (Shimi, 2026-10-23). */
 import {useRef,useState} from "react";
 import Link from "next/link";
 import {VideoJourney,SINGLE_JOURNEY_STEPS} from "@/components/video-journey";
@@ -86,7 +87,8 @@ export function SingleJourney({id,data,observedAt,disabled,error,act,sceneAction
    {data.finished&&data.outputUrl&&<FormatDownloads key={data.outputUrl} jobId={id}/>}
   </div>
   <details className="bg-surface border border-line rounded-xl p-5 space-y-3"><summary className="font-medium cursor-pointer">Your script · {data.scenes.length} scenes</summary><p dir="auto" className="text-sm whitespace-pre-wrap">{data.script}</p><p className="text-xs text-muted">{data.format}</p></details>
-  {data.storyboard&&<details aria-label="Your storyboard" className="rounded-xl border border-line bg-surface p-5 space-y-4"><summary className="font-medium cursor-pointer">Storyboard of this version · {data.storyboard.panels.length} scenes</summary>
+  {/* Shimi, 2026-10-23: nothing of the storyboard during production; it arrives, folded, with the complete version. */}
+  {data.storyboard&&(ready||data.finished)&&<details aria-label="Your storyboard" className="rounded-xl border border-line bg-surface p-5 space-y-4"><summary className="font-medium cursor-pointer">Storyboard of this version · {data.storyboard.panels.length} scenes</summary>
    <p className="text-sm text-muted">For information: the images and movements planned for each sentence. Changes go through your feedback on the film.</p>
    <ol className="grid sm:grid-cols-2 gap-5">{data.storyboard.panels.map(panel=>{const picture=panel.start??panel.existing??panel.end;return <li key={panel.scene} data-scene={panel.scene} className="rounded-lg border border-line p-4 space-y-2 min-w-0"><h3 className="font-semibold">Scene {panel.scene}</h3><p className="text-sm">“{panel.narration}”</p>{picture&&<div className="w-full max-w-[280px] mx-auto"><Composition picture={picture} panel={panel}/></div>}<p className="text-sm text-muted"><span className="font-medium">What moves: </span>{panel.motion}</p><p className="text-sm text-muted"><span className="font-medium">What it explains: </span>{panel.meaning}</p></li>;})}</ol>
   </details>}

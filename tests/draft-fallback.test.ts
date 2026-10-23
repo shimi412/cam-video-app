@@ -1,5 +1,5 @@
 import {it,expect} from "vitest";
-import {quoteDraftFallback} from "../src/lib/concept/draft-fallback";
+import {quoteClipFallback,quoteDraftFallback} from "../src/lib/concept/draft-fallback";
 import {renewCamQuote,type CamQuote} from "../src/lib/providers/cam-pricing";
 import {withImageRecovery} from "../src/lib/concept/image-recovery";
 import {HF_SEEDANCE,KLING_PRO,KLING_STANDARD,selectedModels} from "../src/lib/concept/model-selection";
@@ -19,8 +19,35 @@ it("changes only the failed scene's new draft and unsubmitted final, preserving 
  expect(selectedModels(r.quote.lines)).toEqual({"scene-1-clip":KLING_PRO,"scene-6-clip":KLING_PRO});
  expect(r.quote.caps.usd).toBe(12e6);expect(r.quote.id).not.toBe(f.previous.id);
 });
-it.each([{state:"submitted"},{failureReason:"nsfw"},{failureReason:"ip_detected"},{requestId:undefined},{binding:{operation:"scene-6-draft-retry-1",model:KLING_STANDARD}}])("refuses uncertain, moderated or nonmatching failure evidence",change=>{
+it.each([{state:"submitted"},{state:"submitting",requestId:undefined},{binding:{operation:"scene-6-draft-retry-1",model:KLING_STANDARD}}])("refuses uncertain or nonmatching failure evidence",change=>{
  const f=fixture();expect(()=>quoteDraftFallback(f.previous,f.current,{...f.failed,...change},[f.failed],f.retries)).toThrow();
+});
+// No provider failure reaches the client (Shimi, 2026-10-23): a moderated or refused-at-submission draft is replaced too.
+it.each([{failureReason:"nsfw"},{failureReason:"ip_detected"},{requestId:undefined,failureReason:"Higgsfield refused the request"}])("replaces a moderated or refused draft like a technical failure",change=>{
+ const f=fixture(),r=quoteDraftFallback(f.previous,f.current,{...f.failed,...change},[f.failed],f.retries);
+ expect(r.quote.draftRecoveries?.at(-1)).toMatchObject({scene:6,attempt:2,failedRequestId:"requestId" in change?"refused-at-submission":"failed-id"});
+});
+it("replaces a failed Seedance continuation by the scene's native Kling clip, with no second line and the draft cost kept",()=>{
+ const f=fixture();
+ // Whimsical: the native route has no draft line; the continuation's scene keeps its ids.
+ const whimsical=(q:CamQuote):CamQuote=>({...q,lines:q.lines.filter(l=>l.id!=="scene-1-draft"),selection:{...q.selection!,workflow:"whimsical"}});
+ f.previous=whimsical(f.previous);f.current=whimsical(f.current);
+ const failed={fingerprint:"f".repeat(64),state:"failed",failureReason:"Higgsfield refused the request (tool error)",binding:{operation:"scene-6-clip",model:HF_SEEDANCE}};
+ const r=quoteClipFallback(f.previous,f.current,failed,{"scene-6-draft":1});
+ expect(r.retries).toEqual({"scene-6-draft":1,"scene-6-clip":1});
+ expect(r.quote.lines.map(l=>l.id)).toEqual(f.previous.lines.map(l=>l.id));
+ expect(r.quote.lines.find(l=>l.id==="scene-6-clip")).toMatchObject({model:KLING_PRO,maximum:2e6});
+ expect(r.quote.lines.filter(l=>l.id.startsWith("scene-6-draft")).every(l=>l.model===HF_SEEDANCE)).toBe(true);
+ expect(r.quote.draftRecoveries?.at(-1)).toEqual({scene:6,attempt:1,failedRequestId:"refused-at-submission",failedFingerprint:failed.fingerprint,operation:"scene-6-clip"});
+ expect(selectedModels(r.quote.lines)["scene-6-clip"]).toBe(KLING_PRO);
+ expect(r.quote.caps.usd).toBe(10e6);
+ // The next attempt runs under the Kling line: a recovery-aware allowance adds nothing for it.
+ expect(withImageRecovery(r.quote,r.retries).lines.map(l=>l.id)).toEqual(r.quote.lines.map(l=>l.id));
+ // A later Kling failure on the same scene still gets its own priced attempt.
+ expect(withImageRecovery(r.quote,{...r.retries,"scene-6-clip":2}).lines.at(-1)).toMatchObject({id:"scene-6-clip-retry-2",model:KLING_PRO});
+ expect(()=>quoteClipFallback(f.previous,f.current,{...failed,state:"submitted"},{})).toThrow(/confirmed/);
+ expect(()=>quoteClipFallback(f.previous,f.current,{...failed,binding:{operation:"scene-6-draft",model:HF_SEEDANCE}},{})).toThrow(/confirmed/);
+ expect(()=>quoteClipFallback(f.previous,f.current,failed,{"scene-6-clip":1})).toThrow(/confirmed/);
 });
 it("refuses to replace a scene with a final already submitted",()=>{
  const f=fixture();expect(()=>quoteDraftFallback(f.previous,f.current,f.failed,[f.failed,{...f.failed,state:"submitted",binding:{operation:"scene-6-clip",model:HF_SEEDANCE}}],f.retries)).toThrow(/final request/);

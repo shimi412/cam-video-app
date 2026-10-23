@@ -15,7 +15,8 @@ export function withImageRecovery(quote:CamQuote,retries:ImageRetries):CamQuote{
   // A native replacement retires the failed draft; no second paid clip is needed.
   if(operation.endsWith("-draft")&&quote.selection?.workflow==="whimsical"&&quote.selection.scenes.some(s=>s.operation===operation.replace(/-draft$/,"-clip")&&s.selected===KLING_PRO))continue;
   if(!original)throw new Error("Invalid recovery quote.");
-  for(let attempt=1;attempt<=count;attempt++)lines.push({...original,id:`${operation}-retry-${attempt}`,description:"Replacement attempt; previous cost remains reserved"});
+  // A failed Seedance continuation replaced natively (2026-10-23) runs under the scene's own Kling line: that attempt needs no second paid clip.
+  for(let attempt=1;attempt<=count;attempt++)if(!(operation.endsWith("-clip")&&quote.draftRecoveries?.some(r=>r.operation===operation&&r.attempt===attempt)))lines.push({...original,id:`${operation}-retry-${attempt}`,description:"Replacement attempt; previous cost remains reserved"});
  }
  const caps={usd:0,"higgsfield-credit":0};for(const line of lines)caps[line.unit]+=line.maximum;
  const content={...quote,id:undefined,lines,caps};
@@ -29,4 +30,13 @@ export function recoverableRequest(receipt:{state:string;requestId?:string;failu
  if(supersededImage(operation,retries))return false;
  if(/^scene-\d+-(start|end)(-retry-\d+)?$/.test(operation))return receipt.state==="submitting"&&!receipt.requestId||receipt.state==="failed";
  return /^scene-\d+-(draft|clip)(-retry-\d+)?$/.test(operation)&&receipt.state==="failed"&&Boolean(receipt.requestId)&&["failed","canceled"].includes(receipt.failureReason??"");
+}
+
+/** Single journey (Shimi, 2026-10-23): no provider failure reaches the client. A refusal at
+ * submission (no request id, reason saved) or a failed accepted request, whatever its reason,
+ * is a definitive video failure replaced internally, bounded by the approved price. */
+export function definitiveVideoFailure(receipt:{state:string;requestId?:string;failureReason?:string;binding?:{operation:string}},retries:ImageRetries){
+ const operation=receipt.binding?.operation??"";
+ if(supersededImage(operation,retries)||!/^scene-\d+-(draft|clip)(-retry-\d+)?$/.test(operation)||receipt.state!=="failed")return false;
+ return Boolean(receipt.requestId||receipt.failureReason);
 }

@@ -13,7 +13,7 @@ export const CamQuoteSchema = z.object({
   caps:z.object({usd:z.number().int().nonnegative(),"higgsfield-credit":z.number().int().nonnegative()}),
   falBillingAvailable:z.boolean(),
   selection:SelectionSchema.optional(),
-  draftRecoveries:z.array(z.object({scene:z.number().int().positive(),attempt:z.number().int().min(1).max(10),failedRequestId:z.string().min(1),failedFingerprint:z.string().regex(/^[a-f0-9]{64}$/)})).optional(),
+  draftRecoveries:z.array(z.object({scene:z.number().int().positive(),attempt:z.number().int().min(1).max(10),failedRequestId:z.string().min(1),failedFingerprint:z.string().regex(/^[a-f0-9]{64}$/),operation:z.string().regex(/^scene-\d+-clip$/).optional()})).optional(),
 });
 export type CamQuote=z.infer<typeof CamQuoteSchema>;
 export type PricingOptions=SelectionOptions & {scope?:"storyboard"|"production"};

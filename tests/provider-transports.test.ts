@@ -75,7 +75,7 @@ it("rejects another job's result, moderation failures and malformed MCP replies"
   const queue = bramQueue(voice.input, "simulation", call);
   await expect(queue.poll("bram-job-1")).rejects.toThrow("different job");
   expect(await queue.poll("bram-job-1")).toEqual({ state: "failed" });
-  await expect(queue.submit()).rejects.toThrow("tool returned an error");
+  await expect(queue.submit()).rejects.toThrow("Higgsfield refused the request");
   await expect(queue.submit()).rejects.toThrow();
 });
 

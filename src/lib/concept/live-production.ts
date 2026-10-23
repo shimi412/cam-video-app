@@ -15,10 +15,10 @@ import {pendingFilmComments} from "./film-feedback";
 import {FinishingReviewSchema,FinishingSettings,finishingTarget,assertFinishingApproval,type FinishingReview} from "./finishing-review";
 import {feedbackStage,FINISHING_NOTICE} from "./review-stages";
 import {FilmCorrectionSchema,correctionScenes} from "./film-correction";
-import {quoteDraftFallback} from "./draft-fallback";
+import {quoteClipFallback,quoteDraftFallback} from "./draft-fallback";
 import {FilmFeedbackSchema,addFilmComment, replaceFilmComment,assertFilmFeedbackResolved} from "./film-feedback";
 import { prepareCast } from "./cast-preparation";
-import {recoverableRequest,imageBase,imageAttempt,supersededImage,withImageRecovery} from "./image-recovery";
+import {definitiveVideoFailure,recoverableRequest,imageBase,imageAttempt,supersededImage,withImageRecovery} from "./image-recovery";
 import { HF_SEEDANCE,KLING_PRO,selectedModels,type VideoModels } from "./model-selection";
 import { reserveCredits, settleCredits, customerPricing, creditHold, customerQuote } from "../customer-wallet";
 import { SINGLE_JOURNEY, withinApprovedPrice, supplierCostUsd } from "./single-journey";
@@ -628,7 +628,7 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
    const priceBasis=!creativeQuote&&state.pendingQuote?.draftRecoveries?.length&&state.pendingRetries?state.pendingQuote:state.quote;
    const modelLocked=Boolean(state.approval&&priceBasis&&priceBasis.scope!=="storyboard");
    const editedPlan=generationPlan(job.script,params,board,placeholderTiming(board.shots.map(s=>s.narration)),references);
-   const current=withImageRecovery(await getQuote(editedPlan,{scope,workflow:modelLocked?(priceBasis?.selection?.workflow??"direct"):(params.productionMethod==="whimsical-v1"?"whimsical":"draft-first"),minimumResolution:modelLocked?(priceBasis?.selection?.minimumResolution??"1080p"):"1080p",...(modelLocked?{lockedModels:selectedModels(priceBasis!.lines)}:{})}),retries);
+   const current=withImageRecovery(await getQuote(editedPlan,{scope,workflow:modelLocked?(priceBasis?.selection?.workflow??"direct"):(params.productionMethod==="whimsical-v1"?"whimsical":"draft-first"),minimumResolution:modelLocked?(priceBasis?.selection?.minimumResolution??"1080p"):"1080p",...(modelLocked?{lockedModels:selectedModels(priceBasis!.lines)}:{})}).then(fresh=>({...fresh,draftRecoveries:modelLocked?priceBasis?.draftRecoveries:undefined})),retries);
 
    if(state.approval&&priceBasis){
     const receipts=await requestReceipts(path.join(directory(id),"requests"));
@@ -958,7 +958,8 @@ export async function automaticReplacement(id:string,state:z.infer<typeof stateS
   if(!state.approval||!state.quote)return {ok:false,reason:"no approved quote"};
   const receipts=await requestReceipts(path.join(directory(id),"requests"));
   const retriesNow=state.retries??{};
-  const failures=receipts.filter(r=>/^scene-\d+-(draft|clip)(-retry-\d+)?$/.test(r.binding?.operation??"")&&recoverableRequest(r,retriesNow));
+  // Refused at submission or failed after acceptance, whatever the reason: the client never sees it (Shimi, 2026-10-23).
+  const failures=receipts.filter(r=>definitiveVideoFailure(r,retriesNow));
   if(!failures.length)return {ok:false,reason:"no confirmed failed animation"};
   const counts={...(state.automaticReplacements??{})};
   for(const failed of failures){const base=imageBase(failed.binding!.operation);if((counts[base]??0)>=AUTOMATIC_REPLACEMENTS_PER_SCENE)return {ok:false,reason:`${base} already replaced ${AUTOMATIC_REPLACEMENTS_PER_SCENE} times`};}
@@ -968,19 +969,22 @@ export async function automaticReplacement(id:string,state:z.infer<typeof stateS
   const plan=generationPlan(input.script,input.params,board,placeholderTiming(board.shots.map(s=>s.narration)),input.references);
   const workflow=state.quote.selection?.workflow??"whimsical",minimumResolution=state.quote.selection?.minimumResolution??"1080p";
   const attempted=new Set(receipts.map(r=>r.binding!.operation));
-  const seedance=failures.filter(r=>r.binding?.model===HF_SEEDANCE&&/^scene-\d+-draft(-retry-\d+)?$/.test(r.binding.operation)),others=failures.filter(r=>!seedance.includes(r));
+  // A failed Seedance draft or continuation moves its scene to one native Kling clip; a failed Kling clip is retried under its own line.
+  const seedance=failures.filter(r=>r.binding?.model===HF_SEEDANCE&&/^scene-\d+-(draft|clip)(-retry-\d+)?$/.test(r.binding.operation)),others=failures.filter(r=>!seedance.includes(r));
+  const seedanceDrafts=seedance.filter(r=>/-draft(-retry-\d+)?$/.test(r.binding!.operation)),seedanceClips=seedance.filter(r=>!seedanceDrafts.includes(r));
   let replacement={quote:state.quote,retries:{...retriesNow}};
   if(seedance.length){
    const lockedModels:VideoModels={...selectedModels(state.quote.lines)};
    for(const failed of seedance)lockedModels[imageBase(failed.binding!.operation).replace(/-draft$/,"-clip")]=KLING_PRO;
    const current=await input.quote(plan,{scope:"production",workflow,minimumResolution,lockedModels});
-   for(const failed of seedance)replacement=quoteDraftFallback(replacement.quote,current,failed,receipts,replacement.retries);
-   replacement.quote=renewCamQuote(replacement.quote,withImageRecovery(current,replacement.retries),attempted);
+   for(const failed of seedanceClips)replacement=quoteClipFallback(replacement.quote,current,failed,replacement.retries);
+   for(const failed of seedanceDrafts)replacement=quoteDraftFallback(replacement.quote,current,failed,receipts,replacement.retries);
+   if(seedanceDrafts.length)replacement.quote=renewCamQuote(replacement.quote,withImageRecovery({...current,draftRecoveries:replacement.quote.draftRecoveries},replacement.retries),attempted);
   }
   if(others.length){
    for(const failed of others){const base=imageBase(failed.binding!.operation);replacement.retries={...replacement.retries,[base]:imageAttempt(failed.binding!.operation)+1};}
    const current=await input.quote(plan,{scope:"production",workflow,minimumResolution,lockedModels:selectedModels(replacement.quote.lines)});
-   replacement.quote=renewCamQuote({...replacement.quote,plan:current.plan},withImageRecovery(current,replacement.retries),attempted);
+   replacement.quote=renewCamQuote({...replacement.quote,plan:current.plan},withImageRecovery({...current,draftRecoveries:replacement.quote.draftRecoveries},replacement.retries),attempted);
   }
   if(!withinApprovedPrice(replacement.quote,input.pricing.higgsfieldCreditUsd,input.hold.amountCents))return {ok:false,reason:`the replacement would exceed the approved price (${supplierCostUsd(replacement.quote,input.pricing.higgsfieldCreditUsd).toFixed(2)} USD estimated against ${(input.hold.amountCents/100).toFixed(2)} USD approved)`};
   // The approved amount is bound to the renewed supplier quote: same hold, same price, new request identities.

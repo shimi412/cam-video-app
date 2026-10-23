@@ -1,5 +1,5 @@
 import {it,expect} from "vitest";
-import {withImageRecovery,supersededImage,recoverableRequest} from "../src/lib/concept/image-recovery";
+import {withImageRecovery,supersededImage,recoverableRequest,definitiveVideoFailure} from "../src/lib/concept/image-recovery";
 import type {CamQuote} from "../src/lib/providers/cam-pricing";
 const quote:CamQuote={id:"a".repeat(64),plan:"b".repeat(64),createdAt:1,expiresAt:2,lines:[{id:"scene-3-start",model:"image",kind:"image",unit:"usd",quantity:1,unitPrice:.15,maximum:150000,description:"image"}],caps:{usd:150000,"higgsfield-credit":0},falBillingAvailable:false};
 it("adds a replacement allowance without releasing the uncertain original",()=>{
@@ -44,6 +44,14 @@ it("permits an explicitly priced replacement of a failed native clip but never a
  expect(recoverableRequest({...receipt,state:"submitting",requestId:undefined},{})).toBe(false);
  expect(recoverableRequest({...receipt,failureReason:"nsfw"},{})).toBe(false);
  expect(recoverableRequest(receipt,{"scene-3-clip":1})).toBe(false);
+ // Single journey: refused at submission or moderated is definitive too; uncertain or superseded never is.
+ expect(definitiveVideoFailure(receipt,{})).toBe(true);
+ expect(definitiveVideoFailure({...receipt,failureReason:"nsfw"},{})).toBe(true);
+ expect(definitiveVideoFailure({...receipt,requestId:undefined,failureReason:"Higgsfield refused the request"},{})).toBe(true);
+ expect(definitiveVideoFailure({...receipt,state:"submitting",requestId:undefined},{})).toBe(false);
+ expect(definitiveVideoFailure({...receipt,state:"submitted"},{})).toBe(false);
+ expect(definitiveVideoFailure(receipt,{"scene-3-clip":1})).toBe(false);
+ expect(definitiveVideoFailure({...receipt,binding:{operation:"scene-3-start"}},{})).toBe(false);
  const q:CamQuote={...quote,lines:[{id:"scene-3-clip",kind:"video",model:"native",unit:"usd",quantity:5,unitPrice:.1,maximum:500000,description:"clip"}],caps:{usd:500000,"higgsfield-credit":0}};
  const replacement=withImageRecovery(q,{"scene-3-clip":1});
  expect(replacement.lines[0]).toEqual(q.lines[0]);

@@ -413,6 +413,7 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
       }
       filmDecision = await review("draft-film",null,{packet:packet.fingerprint,film:film.sha256},{film});
     }
+    const clipFailures:number[]=[];
     for (const {shot,parent,urls,imported} of prepared) {
       if (imported) {
         if (!filmDecision) await review("clip", shot.index, { media: imported, direction:parent, voice:voiceDecision, timing:alignmentHash(alignment), storyboard:storyboardDecision }, {media:imported});
@@ -448,13 +449,21 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
             draftEvidence={approved,draftId:draftResult.draftId,media:draftMedia.sha256};
           }
         }
-        const received=await receive(await execute(plan,finalOperation,{...referenceUrls,...urls},{parent,voice:voiceDecision,storyboard:storyboardDecision,...(draftEvidence?{draft:draftEvidence}:{})}));
+        let received;
+        try{received=await receive(await execute(plan,finalOperation,{...referenceUrls,...urls},{parent,voice:voiceDecision,storyboard:storyboardDecision,...(draftEvidence?{draft:draftEvidence}:{})}));}
+        catch(error){
+          // A definitively failed continuation (refused or failed Seedance final, 2026-10-23) blocks its
+          // scene only; completed finals keep their receipts and the controller replaces the scene.
+          if(!(error instanceof DefinitiveRequestFailure))throw error;
+          clipFailures.push(shot.index);events.push({stage:"clip-failed",scene:shot.index,fingerprint:error.fingerprint});continue;
+        }
         if(!received.media)throw new Error("No normalized animation.");asset=received.media;
       }
       if(!asset.duration||asset.duration+1/30<Number(op.input.duration))throw new Error("Animation is shorter than the requested synchronized duration.");
       if (!filmDecision) await review("clip",shot.index,{operation:op.fingerprint,media:asset,parent,voice:voiceDecision,storyboard:storyboardDecision},{media:asset});
       media[shot.index]=asset;
     }
+    if(clipFailures.length)throw new Pause({status:"blocked-scenes",phase:"clip-failures",sceneFailures:clipFailures});
     const packet = { mode: services.mode, jobId, board, timing, aspectRatio: input.params.aspectRatio, voiceOrigin: importedVoice ? "reviewed-import" as const : "generated-bram" as const, voiceFile, audioSha256: audio.sha256,
       alignmentSha256: alignmentHash(alignment), media, reviews: decisions };
     outcome = { status: "ready-to-render", phase: "montage", events, paidGenerationAuthorized: services.mode === "live", plan,

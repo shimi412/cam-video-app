@@ -1,6 +1,6 @@
 import {CamQuoteSchema,type CamQuote} from "../providers/cam-pricing";
 import {HF_SEEDANCE,KLING_PRO,KLING_STANDARD} from "./model-selection";
-import {imageAttempt,imageBase,recoverableRequest,type ImageRetries} from "./image-recovery";
+import {definitiveVideoFailure,imageAttempt,imageBase,recoverableRequest,type ImageRetries} from "./image-recovery";
 import {sha256} from "./checkpoints";
 
 type Receipt={fingerprint:string;state:string;requestId?:string;failureReason?:string;binding?:{operation:string;model:string}};
@@ -8,7 +8,7 @@ type Receipt={fingerprint:string;state:string;requestId?:string;failureReason?:s
  * old receipts, refunds unverified spending or changes an approved image. */
 export function quoteDraftFallback(previous:CamQuote,current:CamQuote,failed:Receipt,receipts:Receipt[],retries:ImageRetries){
  const operation=failed.binding?.operation??"",base=imageBase(operation),scene=Number(base.split("-")[1]);
- if(!/^scene-\d+-draft$/.test(base)||failed.binding?.model!==HF_SEEDANCE||!recoverableRequest(failed,retries))throw new Error("No confirmed failed draft can use this alternative.");
+ if(!/^scene-\d+-draft$/.test(base)||failed.binding?.model!==HF_SEEDANCE||!(recoverableRequest(failed,retries)||definitiveVideoFailure(failed,retries)))throw new Error("No confirmed failed draft can use this alternative.");
  const workflow=previous.selection?.workflow,native=workflow==="whimsical";
  if(previous.plan!==current.plan||previous.scope!=="production"||current.scope!=="production"||!["draft-first","whimsical"].includes(workflow??"")||current.selection?.workflow!==workflow)throw new Error("The replacement must preserve the approved production.");
  const finalId=`scene-${scene}-clip`,attempt=imageAttempt(operation)+1;
@@ -25,7 +25,29 @@ export function quoteDraftFallback(previous:CamQuote,current:CamQuote,failed:Rec
  const selected=current.selection!.scenes.find(s=>s.operation===finalId);
  if(!selected||selected.selected!==KLING_PRO)throw new Error("Alternative route selection missing.");
  const selection={...previous.selection!,scenes:previous.selection!.scenes.map(s=>s.operation===finalId?{...selected,reason:"Explicitly priced alternative after a confirmed technical draft failure."}:s)};
- const draftRecoveries=[...(previous.draftRecoveries??[]),{scene,attempt,failedRequestId:failed.requestId!,failedFingerprint:failed.fingerprint}];
+ const draftRecoveries=[...(previous.draftRecoveries??[]),{scene,attempt,failedRequestId:failed.requestId??"refused-at-submission",failedFingerprint:failed.fingerprint}];
+ const caps={usd:0,"higgsfield-credit":0};for(const line of lines)caps[line.unit]+=line.maximum;
+ const content={...previous,id:undefined,createdAt:current.createdAt,expiresAt:current.expiresAt,lines,caps,selection,draftRecoveries};
+ return {quote:CamQuoteSchema.parse({...content,id:sha256(JSON.stringify(content))}),retries:{...retries,[base]:attempt}};
+}
+
+/** A failed Seedance continuation (`scene-N-clip` after an accepted draft) replaced by one
+ * native Kling clip in the whimsical workflow (single journey, 2026-10-23). The scene's final
+ * line becomes the Kling line; the next attempt runs under it, so no extra line is added. The
+ * draft's cost and every receipt stay; the recovery is recorded with its operation. */
+export function quoteClipFallback(previous:CamQuote,current:CamQuote,failed:Receipt,retries:ImageRetries){
+ const operation=failed.binding?.operation??"",base=imageBase(operation),scene=Number(base.split("-")[1]);
+ if(!/^scene-\d+-clip$/.test(base)||failed.binding?.model!==HF_SEEDANCE||!definitiveVideoFailure(failed,retries))throw new Error("No confirmed failed continuation can use this alternative.");
+ if(previous.plan!==current.plan||previous.scope!=="production"||current.scope!=="production"||previous.selection?.workflow!=="whimsical"||current.selection?.workflow!=="whimsical")throw new Error("The replacement must preserve the approved production.");
+ const attempt=imageAttempt(operation)+1;
+ if(attempt>10)throw new Error("This scene has exhausted its replacement attempts.");
+ const oldFinal=previous.lines.find(l=>l.id===base),final=current.lines.find(l=>l.id===base);
+ if(!oldFinal||!final||final.model!==KLING_PRO||final.kind!=="video"||final.unit!=="usd"||final.billing!=="seconds"||final.seconds!==oldFinal.seconds)throw new Error("The native replacement must keep the approved scene duration.");
+ const lines=previous.lines.map(l=>l.id===base?{...final,description:"Native replacement after a failed continuation; original request history retained"}:l);
+ const selected=current.selection!.scenes.find(s=>s.operation===base);
+ if(!selected||selected.selected!==KLING_PRO)throw new Error("Alternative route selection missing.");
+ const selection={...previous.selection!,scenes:previous.selection!.scenes.map(s=>s.operation===base?{...selected,reason:"Native replacement after a confirmed continuation failure."}:s)};
+ const draftRecoveries=[...(previous.draftRecoveries??[]),{scene,attempt,failedRequestId:failed.requestId??"refused-at-submission",failedFingerprint:failed.fingerprint,operation:base}];
  const caps={usd:0,"higgsfield-credit":0};for(const line of lines)caps[line.unit]+=line.maximum;
  const content={...previous,id:undefined,createdAt:current.createdAt,expiresAt:current.expiresAt,lines,caps,selection,draftRecoveries};
  return {quote:CamQuoteSchema.parse({...content,id:sha256(JSON.stringify(content))}),retries:{...retries,[base]:attempt}};

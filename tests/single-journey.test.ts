@@ -18,6 +18,7 @@ vi.mock("../src/lib/providers/cam",()=>({connectCamProviders:mocks.providers}));
 vi.mock("../src/lib/job-lock",()=>({acquireJobLock:async()=>({assertOwned:async()=>{},release:async()=>{},db:{select:()=>({from:()=>({where:async()=>[mocks.job]})}),update:()=>({set:(values:Record<string,unknown>)=>({where:async()=>Object.assign(mocks.job,values)})})}})}));
 vi.mock("../src/lib/agent/observations",()=>({observeVideo:async()=>{}}));
 import { updateLiveProduction, liveView, automaticReplacement } from "../src/lib/concept/live-production";
+import { withImageRecovery } from "../src/lib/concept/image-recovery";
 import { deliveryReviewDependencies } from "../src/lib/agent/delivery-review";
 import { sha256 } from "../src/lib/concept/checkpoints";
 import { planConcept } from "../src/lib/concept/storyboard";
@@ -185,6 +186,26 @@ describe("single-journey controller",()=>{
   const costly=await automaticReplacement(id,{...state,quote:previous,retries:{"scene-2-draft":1},automaticReplacements:{}},{script,params:mocks.job.params,recipe:getRecipe("cam-clay")!,references,quote:quoteRead,pricing:{higgsfieldCreditUsd:.1},hold:{amountCents:500}});
   expect(costly).toMatchObject({ok:false,reason:expect.stringContaining("exceed the approved price")});
   expect(KLING_STANDARD).toBeTruthy();
+ });
+ it("replaces a Seedance continuation refused at submission by the scene's native Kling clip, with no client action",async()=>{
+  const line=(opId:string,model:string,amount:number,unit:"usd"|"higgsfield-credit"="usd"):CamQuote["lines"][number]=>({id:opId,model,kind:"video",unit,quantity:4,unitPrice:amount/4e6,maximum:amount,seconds:4,billing:"seconds",description:opId});
+  const scenes=(seedance:number[]):NonNullable<CamQuote["selection"]>["scenes"]=>[1,2].map(scene=>({scene,operation:`scene-${scene}-clip`,selected:seedance.includes(scene)?HF_SEEDANCE:KLING_PRO,reason:"old",localText:false,candidates:[]}));
+  const previous:CamQuote={id:"a".repeat(64),plan:"b".repeat(64),scope:"production",createdAt:1,expiresAt:Date.now()+3600000,lines:[line("scene-1-clip",KLING_PRO,2e6),line("scene-2-draft",HF_SEEDANCE,24e6,"higgsfield-credit"),line("scene-2-clip",HF_SEEDANCE,128e6,"higgsfield-credit")],caps:{usd:2e6,"higgsfield-credit":152e6},falBillingAvailable:false,selection:{version:1,minimumResolution:"1080p",workflow:"whimsical",method:"capabilities-and-live-prices",scenes:scenes([2]),notes:[]}};
+  const current:CamQuote={...previous,createdAt:3,expiresAt:Date.now()+3600000,lines:[line("scene-1-clip",KLING_PRO,2e6),line("scene-2-clip",KLING_PRO,2e6)],caps:{usd:4e6,"higgsfield-credit":0},selection:{...previous.selection!,scenes:scenes([])}};
+  const draft={mode:"live",fingerprint:"1".repeat(64),state:"complete",requestId:"draft-id",output:"x",binding:{jobId:id,operation:"scene-2-draft",model:HF_SEEDANCE,transport:"higgsfield-mcp",payloadSha256:"d".repeat(64)}};
+  const refused={mode:"live",fingerprint:"2".repeat(64),state:"failed",failureReason:"Higgsfield refused the request: tool error",binding:{...draft.binding,operation:"scene-2-clip"}};
+  await save(`requests/${draft.fingerprint}.json`,draft);await save(`requests/${refused.fingerprint}.json`,refused);
+  const state={...await json("production.json"),quote:previous,approval:{quote:previous.id,actor:"client",at:Date.now()},retries:{}};
+  const quoteRead=vi.fn(async()=>current);
+  const references=mocks.references as unknown as Parameters<typeof automaticReplacement>[2]["references"];
+  const result=await automaticReplacement(id,state,{script,params:mocks.job.params,recipe:getRecipe("cam-clay")!,references,quote:quoteRead,pricing:{higgsfieldCreditUsd:.05},hold:{amountCents:3000}});
+  expect(result).toEqual({ok:true});
+  expect(quoteRead).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({lockedModels:{"scene-1-clip":KLING_PRO,"scene-2-clip":KLING_PRO}}));
+  expect(state.quote.lines.map((l:{id:string;model:string})=>`${l.id}:${l.model}`)).toEqual([`scene-1-clip:${KLING_PRO}`,`scene-2-draft:${HF_SEEDANCE}`,`scene-2-clip:${KLING_PRO}`]);
+  expect(state.retries).toEqual({"scene-2-clip":1});expect(state.automaticReplacements).toEqual({"scene-2-clip":1});expect(state.approval.actor).toBe("automatic-replacement");
+  expect(state.quote.draftRecoveries).toEqual([{scene:2,attempt:1,failedRequestId:"refused-at-submission",failedFingerprint:refused.fingerprint,operation:"scene-2-clip"}]);
+  // The next worker run names the attempt scene-2-clip-retry-1 and runs it under the scene's Kling line; nothing is priced twice.
+  expect(withImageRecovery(state.quote,state.retries).lines).toHaveLength(3);
  });
 });
 
