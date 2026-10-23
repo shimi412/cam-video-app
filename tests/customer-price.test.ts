@@ -26,3 +26,10 @@ describe("adaptive cumulative pricing",()=>{
  it.each([NaN,Infinity,-1])("rejects invalid cost %s",cost=>expect(()=>customerPriceCents(cost,policy)).toThrow());
  it("retains explicitly selected legacy fixed pricing",()=>expect(customerPriceCents(27.485,{multiplier:2})).toBe(5500));
 });
+
+it("prices a first version by cost tiers and a revision at cost x2 rounded up (Shimi, 2026-10-23)",async()=>{
+ const {firstVersionPriceCents,revisionPriceCents,customerPriceCents}=await import("../src/lib/customer-price");
+ expect(firstVersionPriceCents(4.2)).toBe(3000);expect(firstVersionPriceCents(20)).toBe(3000);expect(firstVersionPriceCents(20.01)).toBe(4000);expect(firstVersionPriceCents(30)).toBe(4000);expect(firstVersionPriceCents(31)).toBe(5000);expect(firstVersionPriceCents(90)).toBe(5000);
+ expect(revisionPriceCents(1.5)).toBe(300);expect(revisionPriceCents(0.15)).toBe(100);expect(revisionPriceCents(0)).toBe(0);expect(revisionPriceCents(2)).toBe(400);
+ expect(customerPriceCents(12,{mode:"tiers-v2",multiplier:2})).toBe(3000);
+});

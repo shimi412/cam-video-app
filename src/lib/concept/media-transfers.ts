@@ -40,8 +40,10 @@ export async function uploadReference(input: TransferContext & { file: string; s
     if (previous.mode !== input.transport.mode || previous.fingerprint !== key || previous.sha256 !== hash) throw new Error("Upload receipt mismatch.");
     if (previous.state === "uploading") throw new Error("Upload outcome unknown. Reconcile the original upload.");
     if (previous.state === "complete") {
-      if (!previous.expiresAt || previous.expiresAt <= now + 60_000) throw new Error("Uploaded reference expired. A reviewed refresh is required.");
-      return { url: providerOutputUrl(previous.url, "fal", input.transport.mode), sha256: hash, reused: true };
+      // A hosted URL expires after about a day (fal). The bytes are the exact reviewed file, hash-verified
+      // above, so they are simply uploaded again; the client never sees this (live Clay 2026-10-23, a
+      // storyboard revision resumed the next morning stopped on "Uploaded reference expired").
+      if (previous.expiresAt && previous.expiresAt > now + 60_000) return { url: providerOutputUrl(previous.url, "fal", input.transport.mode), sha256: hash, reused: true };
     }
   }
   await saveCheckpoint(file, { mode: input.transport.mode, fingerprint: key, sha256: hash, state: "uploading" }, input.assertOwned);

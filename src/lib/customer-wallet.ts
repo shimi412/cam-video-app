@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { customerPriceCents } from "./customer-price";
 import type { CamQuote } from "./providers/cam-pricing";
-export const CustomerPricingSchema=z.object({mode:z.enum(["fixed","adaptive-v1"]).default("fixed"),multiplier:z.number().finite().min(1).max(100),higgsfieldCreditUsd:z.number().finite().positive().max(1000)});
+export const CustomerPricingSchema=z.object({mode:z.enum(["fixed","adaptive-v1","tiers-v2"]).default("fixed"),multiplier:z.number().finite().min(1).max(100),higgsfieldCreditUsd:z.number().finite().positive().max(1000)});
 export async function customerPricingReady(){return CustomerPricingSchema.safeParse((await pool.query("SELECT value FROM settings WHERE key='customer_pricing'")).rows[0]?.value).success;}
 /** No default customer price: pricing must be explicitly configured after the
  * commercial review. Supplier credits and USD cannot be silently conflated. */
