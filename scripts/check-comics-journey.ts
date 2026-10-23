@@ -1,4 +1,7 @@
-/** Real browser, controllers, database and renderer; only paid boundaries are injected. */
+/** Attack single journey (Shimi, 2026-10-23) rehearsed end to end: real browser, controllers, database
+ * and renderer; only paid boundaries are injected. Script -> one estimate (delay and price) -> complete
+ * V1 produced with no human gate -> feedback on the complete version -> revision quote -> V2 -> finishing
+ * note -> V3 -> approval -> download. Zero external call, zero paid call. */
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {readFile,writeFile,mkdir,readdir,rm,cp} from 'node:fs/promises';
@@ -9,7 +12,7 @@ import {Pool} from 'pg';
 import puppeteer,{type Browser} from 'puppeteer-core';
 import sharp from 'sharp';
 import {comicsFixture} from '../comics/runtime/fixture';
-import {hash,validatePlan,assertChecks} from '../src/lib/comics/model';
+import {hash,validatePlan,assertChecks,estimatedMinutes} from '../src/lib/comics/model';
 import type {ComicDependencies} from '../src/lib/comics/service';
 const root=process.cwd(),origin='http://127.0.0.1:3122',actor='local',isolation=`comics_qa_${randomUUID().replaceAll('-','')}`;
 const url=new URL(process.env.DATABASE_URL??'postgres://cam@127.0.0.1:55439/cam_video_app'),setup=new Pool({connectionString:url.href});url.searchParams.set('options',`-c search_path=${isolation}`);process.env.DATABASE_URL=url.href;process.env.PROVIDER_MODE='dryrun';
@@ -25,16 +28,18 @@ async function main(){await mkdir(evidence,{recursive:true});await setup.query(`
  try{
   assert.equal((await pool.query('SELECT current_schema() AS name')).rows[0].name,isolation);
   for(const f of(await readdir('migrations')).filter(f=>f.endsWith('.sql')).sort())await pool.query(await readFile(`migrations/${f}`,'utf8'));
-  await pool.query("INSERT INTO credit_ledger(delta_usd,kind,note,wallet) VALUES(300,'topup','Isolated Attack rehearsal','customer')");await pool.query("INSERT INTO settings(key,value) VALUES('customer_pricing',$1)",[JSON.stringify({mode:'adaptive-v1',multiplier:2,higgsfieldCreditUsd:.1})]);
-  const f=await comicsFixture();let directions=0,builds=0,preflights=0;
+  await pool.query("INSERT INTO credit_ledger(delta_usd,kind,note,wallet) VALUES(300,'topup','Isolated Attack rehearsal','customer')");await pool.query("INSERT INTO settings(key,value) VALUES('customer_pricing',$1)",[JSON.stringify({mode:'tiers-v2',multiplier:2,higgsfieldCreditUsd:.1})]);
+  const f=await comicsFixture();let directions=0,finishings=0,builds=0,preflights=0;
   const deps:ComicDependencies={
-   direct:async(s,notes=[])=>{directions++;if(!notes.length)return {plan:f.plan,deferred:[]};const plan=structuredClone(s.plan!);for(const n of notes){if(n.stage==='finishing')continue;for(const target of n.targets)plan.panels[target-1].title='';}return {plan:validatePlan(s.script,plan,s.plan,notes.flatMap(n=>n.targets)),deferred:[]};},
-   finishing:async(s,notes)=>({settings:{...s.settings,music:'quiet'},applied:notes.map(n=>n.id),unresolved:[]}),
+   // Injected director: a "Remove this title" note is a local change (no new media), a "Redraw" note changes the scene (new image and clip), a sound note is deferred to finishing.
+   direct:async(s,notes=[])=>{directions++;if(!notes.length)return {plan:f.plan,deferred:[]};const plan=structuredClone(s.plan!),deferred:string[]=[];for(const n of notes){if(/music|sound/i.test(n.text)){deferred.push(n.id);continue;}for(const target of n.targets){if(/^Redraw/.test(n.text))plan.panels[target-1].scene=`A calmer flat comic object for panel ${target}, after the client note.`;else plan.panels[target-1].title='';}}return {plan:validatePlan(s.script,plan,s.plan,notes.filter(n=>!deferred.includes(n.id)).flatMap(n=>n.targets)),deferred};},
+   finishing:async(s,notes)=>{finishings++;return {settings:{...s.settings,music:'quiet'},applied:notes.map(n=>n.id),unresolved:[]};},
    price:priceComic,
-   gateway:{cost:async r=>r.tool==='generate_video'?4:2,media:async(s,r,allowance,save)=>{
+   gateway:{cost:async r=>r.tool==='generate_video'?4:r.tool==='generate_audio'?1:2,media:async(s,r,allowance,save)=>{
     const previous=s.operations[r.key];if(previous){assert.equal(previous.fingerprint,hash(r));if(previous.state==='complete')return {file:previous.file!,requestId:previous.requestId!};}
+    assert(Number.isFinite(allowance)&&allowance>0,`Every request runs under an approved allowance (${r.key}).`);
     const dir=comicDirectory(s.id);await mkdir(dir,{recursive:true});calls.set(r.key,(calls.get(r.key)??0)+1);
-    const file=`${r.key}.${r.extension}`;s.operations[r.key]={fingerprint:hash(r),state:'accepted',requestId:`fixture-${r.key}`,quotedCredits:allowance,actualCredits:0};await save();
+    const file=`${r.key}.${r.extension}`;s.operations[r.key]={fingerprint:hash(r),state:'accepted',requestId:`fixture-${r.key}`,quotedCredits:allowance,actualCredits:0,sentAt:Date.now()};await save();
     const panel=Number(r.key.split('-')[1]);
     if(r.tool==='generate_video')await cp(`storage/cam-attack-gazalighting/montage/assets/clips/case-${String(panel).padStart(2,'0')}.mp4`,path.join(dir,file));
     else if(r.tool==='generate_audio')await cp(f.voice,path.join(dir,file));
@@ -61,26 +66,45 @@ async function main(){await mkdir(evidence,{recursive:true});await setup.query(`
   }catch(e){console.error('Route failure:',e);return reply({error:e instanceof Error?e.message:String(e)},409);}})();});
   // Independent worker, not tied to page polling. Re-reads the durable state each cycle.
   const tick=async()=>{if(!id||running)return;running=true;try{await runComic(id,actor,deps);}finally{running=false;}};worker=setInterval(()=>void tick(),250);
-  const text=async(t:string)=>{console.log('UI wait:',t);await page.waitForFunction(t=>document.body.innerText.includes(t)||document.body.innerText.includes('Preparation needs attention'),{},t);const s=id?await getComic(id,actor):null;if(s?.phase==='blocked')throw Error(s.error);};
+  const text=async(t:string)=>{console.log('UI wait:',t);await page.waitForFunction(t=>document.body.innerText.includes(t)||document.body.innerText.includes('needs attention'),{},t);const s=id?await getComic(id,actor):null;if(s?.phase==='blocked')throw Error(s.error);};
   const click=async(t:string)=>{console.log('UI click:',t);await page.waitForFunction(t=>[...document.querySelectorAll('button')].some(b=>b.textContent?.trim()===t&&!b.disabled),{},t);await page.evaluate(t=>[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()===t)?.click(),t);};
-  await page.goto(origin+'/');await page.waitForSelector('a[href="/comics/new"]');await page.click('a[href="/comics/new"]');await text('Review storyboard preparation price');await page.type('input[maxlength="80"]','Attack acceptance rehearsal');await page.type('textarea',f.script);await click('Review storyboard preparation price');await text('Start my Attack video');assert.equal(calls.size,0);
-  await click('Start my Attack video');await text('Your storyboard · 9 panels');await assert.rejects(()=>getComic(id,'another-user'));
-  let s=await getComic(id,actor);assert.equal(s.phase,'board');assert.equal(s.plan!.panels.length,9);assert.equal(await page.$('a[download]'),null);assert(!/Claude|Higgsfield|ElevenLabs|Nano Banana|Kling/.test(await page.evaluate(()=>document.body.innerText)));
+  const openDetails=()=>page.evaluate(()=>{for(const d of document.querySelectorAll('details'))d.open=true;});
+  const body=()=>page.evaluate(()=>document.body.innerText);
+  const settled=async()=>{let s=await getComic(id,actor);for(let i=0;i<2400&&s.queued;i++){await new Promise(r=>setTimeout(r,500));s=await getComic(id,actor);}if(s.phase==='blocked')throw Error(s.error);return s;};
+  // 1. Script -> one estimate: delay from the panel count and the V1 price by the grid, nothing generated.
+  await page.goto(origin+'/');await page.waitForSelector('a[href="/comics/new"]');await page.click('a[href="/comics/new"]');await text('Review estimate');await page.type('input[maxlength="80"]','Attack single journey rehearsal');await page.type('textarea',f.script);await click('Review estimate');await text('Approve & start production');
+  assert.equal(calls.size,0);assert.equal(directions,1);let s=await getComic(id,actor);assert.equal(s.phase,'estimate');assert.equal(s.quote!.kind,'film');assert.equal(s.quote!.totalUsd,30);
+  const estimate=await body();assert(estimate.includes(`about ${estimatedMinutes(9)} minutes`),'The estimate shows the delay.');assert(estimate.includes('$30'),'The estimate shows the V1 price.');assert(!/storyboard preparation|video price/i.test(estimate));
+  await assert.rejects(()=>getComic(id,'another-user'));
+  // 2. One approval, then the complete first version with no human gate. The browser leaves during production.
+  await click('Approve & start production');await page.goto('about:blank');
+  s=await settled();assert.equal(s.phase,'review');assert.equal(s.filmVersion,1);assert.equal(s.work,'video'===s.work?'video':s.work);assertChecks(s.checks!);assert.equal(s.checks!.duration>50,true);assert.equal(recoveries,1,'The interrupted local build was retried from the saved clips.');
+  assert.deepEqual([...calls.keys()].filter(k=>k.startsWith('clip-')).length,9);assert.equal(s.plan!.panels.length,9);assert.equal(Object.keys(s.clips).length,9);
+  await page.goto(`${origin}/comics/${id}`);await text('Version 1');assert.equal(await page.$('a[download]'),null);assert(!/Claude|Higgsfield|ElevenLabs|Nano Banana|Kling/.test(await body()));
   assert.equal(await page.evaluate(async u=>(await fetch(u)).status,`/api/comics/${id}/media/download`),403);
-  await page.type('textarea[aria-label="Panel 2 feedback"]','Remove this title.');const lockPanel=async(n:number)=>{await page.$eval(`textarea[aria-label="Panel ${n} feedback"]`,el=>el.parentElement!.parentElement!.querySelector('button')!.click());await page.waitForFunction(n=>{const el=document.querySelector(`textarea[aria-label="Panel ${n} feedback"]`);return (el as HTMLTextAreaElement|null)?.readOnly;},{},n);};await lockPanel(2);
-  await page.type('textarea[aria-label="Panel 8 feedback"]','Remove this title too.');await lockPanel(8);assert.equal(directions,1);assert.equal((await getComic(id,actor)).notes.filter(n=>n.status==='locked').length,2);
-  await page.reload();await text('Apply all feedback');await click('Apply all feedback');await text('Approve price & apply all feedback');assert.equal(directions,2);await click('Approve price & apply all feedback');await page.waitForFunction(async id=>{const r=await fetch(`/api/comics/${id}`),s=await r.json();return s.phase==='board'&&s.revision===1;},{},id);await page.waitForSelector('[data-review-revision="1"][data-review-phase="board"]');await text('Your storyboard · 9 panels');
-  s=await getComic(id,actor);assert.equal(s.plan!.panels[1].title,'');assert.equal(s.plan!.panels[7].title,'');assert.equal(s.plan!.panels[0].title,f.plan.panels[0].title);assert([...calls.values()].every(n=>n===1),'Local title edits must preserve all images.');
-  for(let n=1;n<=9;n++)await page.click(`input[name="panel-${n}"]`);await click('Approve storyboard & see video price');await text('Approve video price & create complete film');await click('Approve video price & create complete film');
-  // Closing this browser page does not own the worker or its queued intent.
-  await page.goto('about:blank');for(let i=0;i<1200;i++){s=await getComic(id,actor);if(!s.queued)break;await new Promise(r=>setTimeout(r,500));}if(s.phase==='blocked')throw Error(s.error);assert.equal(s.phase,'visuals');await page.goto(`${origin}/comics/${id}`);await text('Review the complete film visuals');assertChecks(s.checks!);assert.equal(s.checks!.duration>50,true);
-  await page.screenshot({path:path.join(evidence,'visual-review.png'),fullPage:true});await page.click('input[type="checkbox"]');await click('Approve visuals & continue');await text('Review sound, editing and subtitles');
-  await page.type('textarea[aria-label="Whole video feedback"]','Lower the music.');await click('Lock feedback');await click('Apply all feedback');await text('Applying your finishing feedback');await page.waitForFunction(async id=>{const s=await (await fetch(`/api/comics/${id}`)).json();return s.phase==='finishing'&&s.settings.music==='quiet';},{},id);await text('Review sound, editing and subtitles');
-  s=await getComic(id,actor);assert.equal(s.settings.music,'quiet');assert(s.notes.every(n=>n.status==='applied'));assert.equal(builds,3);
-  await page.click('input[type="checkbox"]:not([name])');await click('Approve final film & unlock download');await text('Download video');await click('Save to My videos');await text('Saved to My videos');
+  await page.screenshot({path:path.join(evidence,'version-1.png'),fullPage:true});
+  // 3. Feedback on the complete version: one local change (title) and one redraw (new image and clip), one additional price, V2 unattended.
+  await openDetails();const lockPanel=async(n:number,note:string)=>{await page.type(`textarea[aria-label="Panel ${n} feedback"]`,note);await page.$eval(`textarea[aria-label="Panel ${n} feedback"]`,el=>el.parentElement!.parentElement!.querySelector('button')!.click());await page.waitForFunction(n=>{const el=document.querySelector(`textarea[aria-label="Panel ${n} feedback"]`);return (el as HTMLTextAreaElement|null)?.readOnly;},{},n);};
+  await lockPanel(2,'Remove this title.');await lockPanel(8,'Redraw this panel with a calmer object.');assert.equal(directions,1);assert.equal((await getComic(id,actor)).notes.filter(n=>n.status==='locked').length,2);
+  await page.reload();await text('Apply feedback');await click('Apply feedback');await text('Approve & produce version 2');assert.equal(directions,2);
+  s=await getComic(id,actor);assert.equal(s.quote!.kind,'revision');assert.equal(s.quote!.additionalUsd,4,'2 + 4 credits, two inspections, direction: $1.60 x 2 rounded up.');assert.equal(s.quote!.totalUsd,34);assert((await body()).includes('$4 additional'));
+  const before=new Map(calls);await click('Approve & produce version 2');await page.waitForSelector('[data-review-version="2"][data-review-phase="review"]');await text('Version 2');
+  s=await getComic(id,actor);assert.equal(s.filmVersion,2);assert.equal(s.plan!.panels[1].title,'');assert.equal(s.plan!.panels[7].scene,'A calmer flat comic object for panel 8, after the client note.');assert.equal(s.plan!.panels[0].title,f.plan.panels[0].title);
+  const added=[...calls.keys()].filter(k=>!before.has(k));assert.deepEqual(added.map(k=>k.replace(/-[0-9a-f]{8}$/,'')).sort(),['clip-8-1','image-8-1'],'Only the redrawn panel costs new media; the title change is local.');assert([...calls.values()].every(n=>n===1));
+  assert(s.notes.every(n=>n.status==='applied'));
+  // 4. A finishing instruction goes through the same feedback box and the finishing director: no media, V3 rebuilt quieter.
+  await page.type('textarea[aria-label="Whole video feedback"]','Lower the music.');await click('Lock feedback');await click('Apply feedback');await text('Approve & produce version 3');assert.equal(finishings,1);
+  s=await getComic(id,actor);assert.deepEqual(s.quote!.items,{});assert.equal(s.quote!.additionalUsd,2);assert.deepEqual(s.pendingSettings,{music:'quiet',captions:true});
+  await click('Approve & produce version 3');await page.waitForSelector('[data-review-version="3"][data-review-phase="review"]');await text('Version 3');
+  s=await getComic(id,actor);assert.equal(s.settings.music,'quiet');assert(s.notes.every(n=>n.status==='applied'));assert.equal(builds,4);assert([...calls.values()].every(n=>n===1));
+  await page.screenshot({path:path.join(evidence,'version-3.png'),fullPage:true});
+  // 5. Approve the version: settlement, download.
+  await page.click('input[type="checkbox"]');await click('Approve this version & unlock download');await text('Download video');await click('Save to My videos');await text('Saved to My videos');
   const result=await page.evaluate(async()=>{const a=document.querySelector<HTMLAnchorElement>('a[download]')!;const r=await fetch(a.href);return {status:r.status,bytes:(await r.arrayBuffer()).byteLength};});assert.equal(result.status,200);assert(result.bytes>100000);
+  s=await getComic(id,actor);assert.equal(s.phase,'complete');assert.equal(s.approvedQuotes.map(q=>q.totalUsd).join(','),'30,34,36');
+  assert.equal((await pool.query("SELECT state,amount_cents FROM credit_holds WHERE job_id=$1",[id])).rows[0].amount_cents,3600);
   assert.equal(recoveries,1);assert.equal(preflights,1);assert.equal(externalCalls,0);assert.deepEqual(errors,[]);assert([...calls.values()].every(n=>n===1));
-  await writeFile(path.join(evidence,'proof.json'),JSON.stringify({id,externalCalls,paidCalls:0,recoveries,directions,builds,downloadBytes:result.bytes,media:s.media,mediaHash:s.mediaHash,fallbacks:s.fallbacks,checks:s.checks,lockedBatchNotes:2,localTitleRevisionPreservedImages:true,browserClosedDuringRendering:true,operations:Object.fromEntries(calls)},null,2));console.log('PASS: Attack browser journey, real comic montage, all human gates, zero paid calls.');
+  await writeFile(path.join(evidence,'proof.json'),JSON.stringify({id,journey:'single',externalCalls,paidCalls:0,recoveries,directions,finishings,builds,versions:s.filmVersion,approvedPrices:s.approvedQuotes.map(q=>({kind:q.kind,totalUsd:q.totalUsd,additionalUsd:q.additionalUsd,additionalCostUsd:q.additionalCostUsd})),downloadBytes:result.bytes,media:s.media,mediaHash:s.mediaHash,fallbacks:s.fallbacks,checks:s.checks,browserClosedDuringProduction:true,operations:Object.fromEntries(calls)},null,2));console.log('PASS: Attack single journey in the browser, real comic montage, one estimate, V1/V2/V3 unattended, zero paid calls.');
  }finally{if(worker)clearInterval(worker);while(running)await new Promise(r=>setTimeout(r,250));await browser?.close();server?.kill('SIGTERM');await pool.end();await setup.query(`DROP SCHEMA ${isolation} CASCADE`);await setup.end();await rm('tsconfig.comics-qa.json',{force:true});}
 }
 main().then(()=>process.exit(0)).catch(e=>{console.error(e);process.exit(1);});

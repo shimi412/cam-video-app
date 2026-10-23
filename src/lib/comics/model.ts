@@ -42,7 +42,10 @@ export function panelTiming(plan:ComicPlan,t:MotionTiming){
 }
 export type Note={id:string;text:string;targets:number[];stage:'board'|'visuals'|'finishing';status:'locked'|'applied'|'deferred';};
 export type Operation={fingerprint:string;state:'sending'|'accepted'|'complete'|'failed';requestId?:string;url?:string;file?:string;sha?:string;quotedCredits:number;actualCredits?:number;error?:string;sentAt?:number;reconcileAttempts?:number;declinedPresetId?:string;adjustments?:Record<string,unknown>;};
-export type Quote={id:string;kind:'prepare'|'video'|'revision';items:Record<string,number>;credits:number;analysisUsd:number;costUsd:number;totalUsd:number;additionalUsd:number;expires:number;inputHash:string;};
+/** `film` is the single-journey V1 quote (Shimi, 2026-10-23): every supplier cost of the complete
+ * first version, priced by the common grid. `additionalCostUsd` is the estimated supplier cost
+ * this quote adds (the base of a revision price); `costUsd` stays cumulative as before. */
+export type Quote={id:string;kind:'prepare'|'video'|'revision'|'film';items:Record<string,number>;credits:number;analysisUsd:number;costUsd:number;totalUsd:number;additionalUsd:number;expires:number;inputHash:string;additionalCostUsd?:number;};
 /** Build results. Durations, safe zones, loudness, sound balance and the logo block review;
  * flash candidates, title carries/drops and still fallbacks are disclosed notes for the human
  * visual approval (senior review 2026-10-21: consultative, as in Motion). */
@@ -50,11 +53,24 @@ export type Checks={durations:boolean;safeZones:string[];flashCandidates:number[
 export function assertChecks(c:Checks){if(!c.durations||c.safeZones.length||!Number.isFinite(c.mixLufs)||Math.abs(c.mixLufs+16)>1||!Number.isFinite(c.sfxBelowVoiceDb)||c.sfxBelowVoiceDb<15||!c.logo)throw new ComicStop('needs-attention','Quality checks need correction. The film has not been submitted for approval. Your approved images and scenes are saved.',`Quality checks need correction: ${JSON.stringify({durations:c.durations,briefItems:c.briefItems,safeZones:c.safeZones,mixLufs:c.mixLufs,sfxBelowVoiceDb:c.sfxBelowVoiceDb,logo:c.logo})}`);}
 /** Consultative automatic review of one generated file (image or clip). Never blocks. */
 export type Inspection={panel:number;kind:'image'|'clip';issues:string[];description?:string;unavailable?:boolean};
-export type ComicState={version:1;recovery?:PipelineRecovery;id:string;title:string;script:string;phase:'planning'|'preparation-price'|'working'|'board'|'video-price'|'visuals'|'finishing'|'complete'|'blocked';revision:number;work?:'prepare'|'video'|'revision'|'finish';queued:boolean;progress:string;error?:string;plan?:ComicPlan;proposal?:ComicPlan;quote?:Quote;approvedQuotes:Quote[];operations:Record<string,Operation>;notes:Note[];votes:Record<string,boolean>;approved:{board?:string;visuals?:string;final?:string};timing?:MotionTiming;voice?:string;sheet?:string;images:Record<string,string>;clips:Record<string,string>;media?:string;mediaHash?:string;checks?:Checks;fallbacks?:number[];settings:{music:'normal'|'quiet'|'off';captions:boolean};targets:number[];pendingResolved?:string[];unresolved?:{id:string;reason:string}[];saved?:boolean;
+export type ComicState={version:1;recovery?:PipelineRecovery;id:string;title:string;script:string;phase:'planning'|'preparation-price'|'working'|'board'|'video-price'|'visuals'|'finishing'|'complete'|'blocked'|'estimate'|'review';revision:number;work?:'prepare'|'video'|'revision'|'finish'|'film';queued:boolean;progress:string;error?:string;plan?:ComicPlan;proposal?:ComicPlan;quote?:Quote;approvedQuotes:Quote[];operations:Record<string,Operation>;notes:Note[];votes:Record<string,boolean>;approved:{board?:string;visuals?:string;final?:string};timing?:MotionTiming;voice?:string;sheet?:string;images:Record<string,string>;clips:Record<string,string>;media?:string;mediaHash?:string;checks?:Checks;fallbacks?:number[];settings:{music:'normal'|'quiet'|'off';captions:boolean};targets:number[];pendingResolved?:string[];unresolved?:{id:string;reason:string}[];saved?:boolean;
  /* Optional since 2026-10-21; older rows parse without them. */
- inspections?:Record<string,Inspection>;stop?:{kind:StopKind;message:string};transientRetries?:number;resumeRequested?:boolean;/** Shimi 2026-10-22: a provider's refusal is reworked by the director, never shown to the client. Overlays change the generation request only, never the approved plan or its hashes. */reworkedPanels?:Record<string,{scene:string;action:string;preserve:string}>;reworks?:Record<string,{key:string;reason:string;at:number}[]>;audioReview?:{endingNeedsListening:boolean;tailPaddingSeconds:number};deliveryNotes?:string;};
+ inspections?:Record<string,Inspection>;stop?:{kind:StopKind;message:string};transientRetries?:number;resumeRequested?:boolean;/** Shimi 2026-10-22: a provider's refusal is reworked by the director, never shown to the client. Overlays change the generation request only, never the approved plan or its hashes. */reworkedPanels?:Record<string,{scene:string;action:string;preserve:string}>;reworks?:Record<string,{key:string;reason:string;at:number}[]>;audioReview?:{endingNeedsListening:boolean;tailPaddingSeconds:number};deliveryNotes?:string;
+ /** Single journey (Shimi, 2026-10-23): script -> one estimate (delay and price) -> complete V1 with no
+  * intermediate human gate -> feedback on the complete version -> revision quote -> V2 ... -> approve
+  * -> download. Films created before this field keep the legacy gated flow unchanged. */
+ journey?:'single';/** Client-facing version number of the current complete film (1 after V1). `revision` stays the internal request identity counter; `version` is the schema version. */filmVersion?:number;/** The approved quote that the running work item executes under; after the plan swap of a revision the work is bound by this identity, not by a fresh price. */workQuote?:string;/** Finishing settings decided from the client's notes by the finishing director, applied at the next build. */pendingSettings?:{music:'normal'|'quiet'|'off';captions:boolean};};
 export const boardHash=(s:ComicState)=>hash({plan:s.plan,images:s.images});
 export const quoteHash=(s:ComicState,kind:Quote['kind'])=>hash({kind,plan:s.proposal??s.plan,images:kind==='video'?s.images:undefined,notes:kind==='revision'?s.notes.filter(n=>n.status==='locked'):undefined,revision:s.revision});
+export const singleJourney=(s:ComicState)=>s.journey==='single';
+/** Delay shown with the V1 estimate, from the panel count: live 2026-10-22, ten panels took about
+ * 28 minutes of voice, sheet, images and inspections, then about 20 minutes of clips, then the
+ * local build. Rounded to five minutes, never below fifteen. */
+export const estimatedMinutes=(panels:number)=>Math.max(15,Math.round((10+3.5*panels)/5)*5);
+/** The latest request of one panel for a key prefix (reworks add `-rwK`, replacements bump the revision). */
+export function latestOperation(s:ComicState,prefix:string){
+ return Object.entries(s.operations).filter(([key])=>key.startsWith(prefix)).sort(([,a],[,b])=>(a.sentAt??0)-(b.sentAt??0)).at(-1)?.[1];
+}
 const clean=(t:string)=>t.replace(/Claude|Higgsfield|Kling|Nano Banana|ElevenLabs|OpenRouter/gi,'review');
 const decision=(s:ComicState)=>s.recovery?.current?.decision?.action;
 /** Consultative notes for one panel: its current image, then its current clip. */
@@ -64,13 +80,15 @@ export function panelNotes(s:ComicState,id:number){
 export function publicComic(s:ComicState){const media=(file:string)=>`/api/comics/${s.id}/media/${encodeURIComponent(file)}`;
  const blocked=s.phase==='blocked',stop=blocked?s.stop:undefined;
  const legacyMessage=s.error?(recoveryView(s.recovery)?.message??(/^(Panel \d+ needs visual correction:|Quality checks need correction|The saved work|The storyboard approval)/.test(s.error)?s.error.replace(/Claude|Higgsfield|Kling|Nano Banana|ElevenLabs/gi,"media service"):"This step needs attention. Your completed media and feedback are saved. No new generation was started automatically.")):undefined;
- const failedClips=!!s.plan?.panels.some(p=>!s.clips[p.id])&&!!s.plan?.panels.filter(p=>!s.clips[p.id]).every(p=>s.operations[`clip-${p.id}-${s.revision}`]?.state==='failed');
+ const failedClips=!!s.plan?.panels.some(p=>!s.clips[p.id])&&!!s.plan?.panels.filter(p=>!s.clips[p.id]).every(p=>(singleJourney(s)?latestOperation(s,`clip-${p.id}-`):s.operations[`clip-${p.id}-${s.revision}`])?.state==='failed');
+ const single=singleJourney(s);
  return {id:s.id,title:s.title,phase:s.phase,revision:s.revision,progress:s.progress,failureAnalysis:s.error&&!stop?recoveryView(s.recovery):null,
+  journey:single?'single' as const:'legacy' as const,version:s.filmVersion??0,estimateMinutes:s.plan?estimatedMinutes(s.plan.panels.length):null,
   // A needs-attention decision keeps Resume available (bounded by `exhausted`): the client asks for a fresh analysis after a repair, never for a resubmission (live 2026-10-22, local encode guard corrected while the film was blocked).
   canResume:blocked&&!['review-budget','replace-failed'].includes(stop?.kind??'')&&(!s.recovery?.current||s.recovery.current.status==='unavailable'||['retry-saved','needs-attention'].includes(decision(s)??'')||!!stop)&&!s.recovery?.exhausted,
   canReviewBudget:blocked&&(stop?stop.kind==='review-budget':decision(s)==='review-budget'),
   error:stop?.message??legacyMessage,work:s.work,queued:s.queued,saved:s.saved,
-  canReplace:blocked&&(stop?stop.kind==='replace-failed':decision(s)==='replace-failed')&&s.work==='video'&&failedClips,
+  canReplace:blocked&&(stop?stop.kind==='replace-failed':decision(s)==='replace-failed')&&(s.work==='video'||single&&s.work==='film')&&failedClips,
   quote:s.quote&&s.phase!=='blocked'&&s.phase!=='working'?{id:s.quote.id,totalUsd:s.quote.totalUsd,additionalUsd:s.quote.additionalUsd,kind:s.quote.kind,expires:s.quote.expires,expired:s.quote.expires<Date.now()}:null,
   notes:s.notes,fallbacks:s.fallbacks??[],unresolved:s.unresolved,votes:s.votes,settings:s.settings,
   panels:s.plan?.panels.map(p=>({id:p.id,narration:p.narration,meaning:p.meaning,scene:p.scene,action:p.action,title:p.title,image:s.images[p.id]?media(s.images[p.id]):null,reviewNotes:panelNotes(s,p.id)})),
