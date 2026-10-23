@@ -107,18 +107,23 @@ it("uploads exact reference bytes once, detects edits and stops after an ambiguo
   expect(transport.upload).toHaveBeenCalledTimes(1);
   await writeFile(file, "changed"); await expect(uploadReference(input)).rejects.toThrow("Reference bytes changed");
   input.sha256 = sha256("changed"); transport.upload = vi.fn(async () => { throw new Error("Lost upload response"); });
-  await expect(uploadReference(input)).rejects.toThrow("Lost upload"); await expect(uploadReference(input)).rejects.toThrow("outcome unknown");
-  expect(transport.upload).toHaveBeenCalledTimes(1);
+  // Shimi, 2026-10-23: an interrupted upload is retried from the same verified bytes (no cost, no side effect), never a stop.
+  await expect(uploadReference(input)).rejects.toThrow("Lost upload"); await expect(uploadReference(input)).rejects.toThrow("Lost upload");
+  expect(transport.upload).toHaveBeenCalledTimes(2);
 });
 
-it("refuses expired upload URLs and refuses sending bytes after the job lock is lost", async () => {
+it("re-uploads the same reviewed bytes once a hosted URL expired, and refuses sending bytes after the job lock is lost", async () => {
   const file = path.join(directory, "reference.png"); await writeFile(file, "abc"); const transport = fakeAssets();
   const input = { file, sha256: sha256("abc"), contentType: "image/png" as const, directory, transport, assertOwned: async () => {} };
   await uploadReference(input);
-  await expect(uploadReference({ ...input, now: Date.now() + 7200_000 })).rejects.toThrow("expired");
+  // Shimi, 2026-10-23: an expired hosted URL is refreshed from the exact verified bytes, never a client-facing stop.
+  const { readdir, readFile: readSaved } = await import("node:fs/promises"); const uploads = path.join(directory, "uploads");
+  for (const name of await readdir(uploads)) { const saved = JSON.parse(await readSaved(path.join(uploads, name), "utf8")); await writeFile(path.join(uploads, name), JSON.stringify({ ...saved, expiresAt: Date.now() - 1000 })); }
+  const refreshed = await uploadReference(input);
+  expect(refreshed.reused).toBe(false); expect(transport.upload).toHaveBeenCalledTimes(2);
   await writeFile(file, "def");
   await expect(uploadReference({ ...input, sha256: sha256("def"), assertOwned: async () => { throw new Error("Lock lost"); } })).rejects.toThrow("Lock lost");
-  expect(transport.upload).toHaveBeenCalledTimes(1);
+  expect(transport.upload).toHaveBeenCalledTimes(2);
 });
 
 it("bounds streamed media, rejects errors and cancels oversized responses without trusting MIME", async () => {
@@ -164,11 +169,12 @@ it("explains an empty fal balance and resumes an explicitly rejected upload with
 
 it("keeps a lost initiation response blocked and never exposes provider error bodies", async () => {
   const file = path.join(directory, "voice.wav"); await writeFile(file, "voice bytes");
-  const request = vi.fn().mockRejectedValueOnce(new Error("Connection lost"));
+  const request = vi.fn().mockRejectedValueOnce(new Error("Connection lost")).mockRejectedValueOnce(new Error("Connection lost again"));
   const input = { file, sha256: sha256("voice bytes"), contentType: "audio/wav" as const, directory, transport: assetTransport("simulation", request, "fake-test-key"), assertOwned: async () => {} };
   await expect(uploadReference(input)).rejects.toThrow("Connection lost");
-  await expect(uploadReference(input)).rejects.toThrow("outcome unknown");
-  expect(request).toHaveBeenCalledTimes(1);
+  // The interrupted upload is tried again from the same bytes (2026-10-23).
+  await expect(uploadReference(input)).rejects.toThrow("Connection lost again");
+  expect(request).toHaveBeenCalledTimes(2);
   request.mockResolvedValueOnce(Response.json({ detail: "private provider diagnostic" }, { status: 401 }));
   await expect(input.transport.upload(Buffer.from("abc"), `${usd}.wav`, "audio/wav")).rejects.toThrow("File transfer was not started (fal HTTP 401)");
 });

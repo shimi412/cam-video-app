@@ -50,6 +50,7 @@ import { mediaFile } from "./preview-inputs";
 import { DirectionSchema } from "./types";
 import { StoryboardSheetSchema, StoryboardDecisionSchema, validateStoryboardAction, storyboardReviewContent, applyStoryboardEdits } from "./storyboard-review";
 import { reworkRefusedImageInstruction } from "./image-rework";
+import { withBrainRequest } from "../providers/brain";
 import { StoryboardFeedbackSchema, emptyStoryboardFeedback, recordSceneComment, applySceneComment, applyGlobalStoryboardComment, combinedStoryboardEdits, mergeStoryboardEdits, assertStoryboardCommentsResolved, applyImageRevisions, revisionRequestsNewCast, revisionRequestsActionChange, revisionRequestsRecut } from "./storyboard-feedback";
 
 export function workspaceProductionCaps(){
@@ -692,7 +693,8 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
     services:{mode:"live",recoverAlignment:input=>supervisedAudioCheck({jobId:id,inputs:{phrases:input.phrases,audio:input.audio.sha256,original:input.original},directory:directory(id),assertOwned:input.assertOwned,execute:()=>recoverLocalVoiceAlignment(input)}),completedInputs:state.filmCorrection?.completedInputs,reuseOnly:state.filmCorrection?.reuseOnly,storyboardEdits:combinedStoryboardEdits(feedback),imageRevisions:feedback.imageRevisions,storyboardBeforeVoice:state.storyboardFirst,imageRetries:state.retries,
      reworkRefusedImage:async({scene,narration,revision,reason,attempt})=>{
       // The director reworks a refused composition; the client's note and the batch approval are unchanged, the next attempt is persisted so a restart resumes it (Shimi, 2026-10-22).
-      const reworked=await reworkRefusedImageInstruction({narration,clientNote:feedback.comments[scene]?.text??revision.note,refusedInstruction:revision.note,reason,attempt});
+      // The worker has no HTTP request scope: the director call runs under its own saved request identity (job, scene, attempt), replayable without a second paid call.
+      const reworked=await withBrainRequest({jobId:id,requestId:`rework-${sha256(JSON.stringify({id,scene,attempt,reason}))}`},()=>reworkRefusedImageInstruction({narration,clientNote:feedback.comments[scene]?.text??revision.note,refusedInstruction:revision.note,reason,attempt}));
       if(!reworked)return null;
       const next={...revision,note:reworked.instruction,attempt:attempt+1,...(revision.cast?{cast:{...revision.cast,brief:reworked.instruction}}:{})};
       feedback.imageRevisions={...feedback.imageRevisions,[scene]:next};
