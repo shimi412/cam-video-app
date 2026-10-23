@@ -7,6 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {z} from 'zod';
 import {higgsfieldAccessToken} from '../providers/higgsfield-auth';
+import {motionBudgets} from './budgets';
 import {assertAuthorizedExecution} from '../providers/live-policy';
 import {providerFetch} from '../providers/network';
 import {mcpData,providerOutputUrl} from '../concept/provider-transports';
@@ -40,7 +41,7 @@ export async function motionVoice(directory:string,script:string,state:MotionSta
   if(!op){
    const quote=z.object({cost:z.object({credits:z.number().nonnegative(),credits_exact:z.number().nonnegative().optional()})}).parse(await call('generate_audio',{params:{...params,get_cost:true}}));
    credits=quote.cost.credits_exact??quote.cost.credits;
-   const ceiling=Number(process.env.CAM_MOTION_VOICE_CAP_CREDITS??3);if(!Number.isFinite(ceiling)||ceiling<=0||ceiling>10||credits>ceiling)throw Error('Recording exceeds the configured supplier budget. No recording was submitted.');
+   const ceiling=motionBudgets().voiceCredits;if(credits>ceiling)throw Error('Recording exceeds the configured supplier budget. No recording was submitted.');
    state.operations.voice={state:'sending',result:{quotedCredits:credits}};await save();
    const result=z.object({results:z.array(z.object({id:z.string().min(1)})).length(1)}).parse(await call('generate_audio',{params}));
    state.operations.voice={state:'accepted',id:result.results[0].id,result:{quotedCredits:credits}};await save();op=state.operations.voice;

@@ -16,6 +16,9 @@ export function motionBudgets(){
   repairUsd:read('CAM_MOTION_REPAIR_CAP_USD',.75),
   reviewUsd:read('CAM_MOTION_REVIEW_CAP_USD',.35),
   feedbackUsd:read('CAM_MOTION_FEEDBACK_CAP_USD',.20),
+  /** Supplier credits the narration may cost (Higgsfield text2speech); read by the voice step and by the first-version estimate. */
+  voiceCredits:read('CAM_MOTION_VOICE_CAP_CREDITS',3,10),
+  /** Legacy. Since Shimi's grid of 2026-10-23 no cumulative client ceiling limits revisions (each one is its estimated cost x2). Still read so an old .env keeps validating; nothing uses it. */
   ceilingUsd:read('CAM_MOTION_PRICE_CEILING_USD',30,1000),
  };
 }

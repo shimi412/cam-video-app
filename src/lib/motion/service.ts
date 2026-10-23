@@ -1,5 +1,5 @@
-/** An error whose text is written for the client and may be shown as is. */
-export class ClientMessage extends Error{}
+export {ClientMessage} from './client-message';
+import {ClientMessage} from './client-message';
 import {motionBudgets} from './budgets';
 import {AIHttpTransient} from '../agent/transport';
 import {savedWritingDiagnostic} from './saved-diagnostic';
@@ -10,7 +10,7 @@ import {consumeRecovery,recoveryView} from '../agent/recovery-policy';
 import {reviewDelivery} from '../agent/delivery-review';
 import {CreativeApproval,reviewMotionCreative} from './creative-review';
 import {randomUUID} from 'node:crypto';
-import {acceptedMotionPrice,revisionTargets,estimateMotionRevision,revisionAmounts,assertRevisionQuote} from './pricing';
+import {acceptedMotionPrice,revisionTargets,estimateMotionRevision,revisionAmounts,assertRevisionQuote,motionFirstVersionOffer} from './pricing';
 import {freshRecovery,writingKey,planMotionRecovery,diagnoseMotionFailure,incompleteMotionDiagnosis,legacyRepairContractFailure,writerRepairError,resumableRepairTurn,savedRecordingRecheck,restartableWriting,resumableAgentWriting} from './recovery';
 import {localRepairDiagnostic,provisionalBuildDiagnostic,bestSavedCandidate,scoreCandidate} from './diagnostic';
 import {assembleMotionRuntime} from './assembly';
@@ -26,7 +26,7 @@ import {directMotionFeedback} from './feedback-direction';
 import {withCamExecution} from '../providers/live-policy';
 import {getMotion,saveMotion,lockMotion,motionDirectory,motionQuote,newMotion} from './store';
 import {publicMotion} from './state';
-import {Film,Timing,price,digest,validateTiming,assertChecks,type MotionFilm} from './model';
+import {Film,Timing,assertMotionRevisionAvailable,digest,validateTiming,assertChecks,type MotionFilm} from './model';
 import {AgentPlanFailure} from '../agent/runtime';
 import {AIHttpRejection} from '../ai-usage';
 import {writeMotion,type WriterInput} from './writer';
@@ -34,7 +34,7 @@ import {motionVoice,prepareSavedMotionVoice} from './voice';
 import {buildMotion,renderMotion,motionSound,inspectMotion,compileMotion} from './worker';
 export type MotionDependencies={diagnose?:typeof diagnoseMotionFailure;voice:typeof motionVoice;write:typeof writeMotion;build:typeof buildMotion;finish:typeof renderMotion;authorize:<T>(id:string,work:()=>Promise<T>)=>Promise<T>};
 const dependencies:MotionDependencies={diagnose:diagnoseMotionFailure,voice:motionVoice,write:writeMotion,build:buildMotion,finish:renderMotion,authorize:withCamExecution};
-export const StartMotion=z.object({script:z.string().trim().min(10).max(12000),title:z.string().trim().min(1).max(80),requestId:z.uuid(),acceptedPriceUsd:z.literal(10)}).strict();
+export const StartMotion=z.object({script:z.string().trim().min(10).max(12000),title:z.string().trim().min(1).max(80),requestId:z.uuid(),acceptedPriceUsd:z.number().int().positive()}).strict();
 export const MotionAction=z.discriminatedUnion('type',[
  z.object({type:z.literal('approve-board'),revision:z.number().int(),votes:z.record(z.string(),z.boolean())}),
  z.object({type:z.literal('approve-visuals'),revision:z.number().int()}),
@@ -46,7 +46,10 @@ export const MotionAction=z.discriminatedUnion('type',[
  z.object({type:z.literal('resume'),revision:z.number().int()}),
  z.object({type:z.literal('save'),revision:z.number().int()}),
 ]);
-export async function startMotion(actor:string,value:unknown,preflight=async()=>{await motionPreflight();await motionWriterReady();}){const input=StartMotion.parse(value);const id=await newMotion(actor,input);await lockMotion(id,async()=>{const s=await getMotion(id,actor);if(s.progress!=='Waiting to start')return;await supervisedStep({jobId:id,category:'motion',stage:'preflight',inputs:{script:s.script},directory:motionDirectory(id),assertOwned:async()=>{},execute:preflight});const q=await motionQuote(id,0);await reserveCredits(id,q.quoteId,q.quote);s.recovery=freshRecovery();s.progress='Preparing your recording';await saveMotion(id,s);});return id;}
+/** Creation binds the client to the first-version price shown on the creation screen (Shimi's grid of 2026-10-23):
+ * the price is recomputed here from the same allowances, must equal the accepted one, and is saved with its
+ * estimate before any paid step. A changed price is a client message, never a silent recompute. */
+export async function startMotion(actor:string,value:unknown,preflight=async()=>{await motionPreflight();await motionWriterReady();},offer=motionFirstVersionOffer){const input=StartMotion.parse(value);const current=await offer();if(input.acceptedPriceUsd!==current.priceUsd)throw new ClientMessage(`The film price is now $${current.priceUsd}. Review the price before starting.`);const id=await newMotion(actor,input);await lockMotion(id,async()=>{const s=await getMotion(id,actor);if(s.progress!=='Waiting to start')return;await supervisedStep({jobId:id,category:'motion',stage:'preflight',inputs:{script:s.script},directory:motionDirectory(id),assertOwned:async()=>{},execute:preflight});const q=await motionQuote(id,0,{totalUsd:current.priceUsd});await reserveCredits(id,q.quoteId,q.quote);s.acceptedPriceUsd=current.priceUsd;s.firstVersionOffer=current;s.recovery=freshRecovery();s.progress='Preparing your recording';await saveMotion(id,s);});return id;}
 export async function actMotion(id:string,actor:string,value:unknown,options:{estimate?:typeof estimateMotionRevision;direct?:typeof directMotionFeedback}={}){const action=MotionAction.parse(value);return lockMotion(id,async()=>{
  const s=await getMotion(id,actor);if(action.revision!==s.revision)throw Error('This film has changed. Review its latest version.');
  if(action.type==='save'){await pool.query('UPDATE jobs SET saved_to_library=true WHERE id=$1',[id]);s.saved=true;await saveMotion(id,s);return publicMotion(id,s);}
@@ -72,7 +75,7 @@ export async function actMotion(id:string,actor:string,value:unknown,options:{es
  }else if(action.type==='revise'||action.type==='quote-revision'){
   if(!['board','visuals'].includes(s.phase)||!s.film)throw Error('Revisions are available while reviewing your storyboard or film visuals.');
   if(action.targets.some(t=>!s.film!.scenes.some(scene=>scene.id===t)))throw Error('Select a scene from this film.');
-  price(s.revision+1);
+  assertMotionRevisionAvailable(s.revision+1);
   if(action.type==='quote-revision'){
    const targets=revisionTargets(action.targets),direction=await supervisedStep({jobId:id,category:'motion',stage:'feedback',inputs:{revision:s.revision,targets,feedback:action.feedback,source:digest(s.film.source)},directory:motionDirectory(id,s.revision),assertOwned:async()=>{},execute:()=>(options.direct??directMotionFeedback)(id,s,targets,action.feedback)});
    if(direction.finishingFeedback)s.deferredFeedback=[s.deferredFeedback,direction.finishingFeedback].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join('\n');

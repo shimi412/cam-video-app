@@ -23,6 +23,7 @@ async function main(){
  deliveryReviewDependencies.review=async input=>({mediaHash:input.mediaHash,ready:true,reason:'Offline injected Claude delivery decision for isolated QA.',corrections:[]});
  const {pool}=await import('../src/db');
  const {startMotion,actMotion,runQueuedMotions}=await import('../src/lib/motion/service');
+ const {motionFirstVersionOffer}=await import('../src/lib/motion/pricing');
  const estimateRevision=async()=>({model:'fixture',inputTokens:10000,outputTokens:18000,inputRate:.000002,outputRate:.00001,requestRate:0,supplierUsd:.20});
  const {getMotion,motionDirectory}=await import('../src/lib/motion/store');
  const {publicMotion}=await import('../src/lib/motion/state');
@@ -32,6 +33,7 @@ async function main(){
   assert.equal((await pool.query('SELECT current_schema() AS name')).rows[0].name,isolation);
   for(const file of(await readdir('migrations')).filter(f=>f.endsWith('.sql')).sort())await pool.query(await readFile(path.join('migrations',file),'utf8'));
   await pool.query("INSERT INTO credit_ledger(delta_usd,kind,note,wallet) VALUES(100,'topup','Offline motion QA','customer')");
+  await pool.query("INSERT INTO settings(key,value) VALUES('customer_pricing',$1)",[JSON.stringify({mode:'tiers-v2',multiplier:2,higgsfieldCreditUsd:.1})]);
   const fixture=await referenceFixture();
   const referenceDir=path.join(evidence,'reference');
   const original=await compileMotion(referenceDir,fixture.film,fixture.timing,fixture.voice);
@@ -63,6 +65,7 @@ async function main(){
    try{
     if(u.pathname==='/api/account')return reply({connected:true,preview:false,balance:100,user:{role:'client',name:'QA'}});
     if(u.pathname==='/api/motion'){
+     if(req.method()==='GET')return reply(await motionFirstVersionOffer());
      id=await startMotion(actor,JSON.parse(req.postData()!),async()=>{});await reply({id});return;
     }
     if(u.pathname===`/api/motion/${id}`){
@@ -75,7 +78,7 @@ async function main(){
   worker=setInterval(()=>{if(running)return;running=true;work=runQueuedMotions(deps).finally(()=>{running=false;});},250);
   const text=async(value:string)=>{console.log('UI wait:',value);await page.waitForFunction(t=>document.body.innerText.includes(t)||document.body.innerText.includes('Preparation needs attention'),{},value);const failure=await getMotion(id,actor).catch(()=>null);if(failure?.phase==='blocked')throw Error(failure.error);};
   const click=async(value:string)=>{console.log('UI click:',value);await page.waitForFunction(t=>[...document.querySelectorAll('button')].some(b=>b.textContent?.trim()===t&&!b.disabled),{},value);await page.evaluate(t=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent?.trim()===t);b?.click();},value);};
-  await page.goto(origin+'/motion/new');await text('Start my motion video');
+  await page.goto(origin+'/motion/new');await text('Start my motion video');await text('Ready in about 15 minutes');await text('$30 for your first complete version');
   await page.type('input[maxlength="80"]','Motion acceptance rehearsal');await page.type('textarea',fixture.script);await page.click('input[type="checkbox"]');await click('Start my motion video');
   await page.waitForFunction(()=>location.pathname.startsWith('/motion/')&&!location.pathname.endsWith('/new'));
   await page.goto('about:blank');
@@ -117,7 +120,7 @@ async function main(){
   assert.equal(downloaded.status,200);assert.equal(downloaded.type,'video/mp4');assert(downloaded.size>100000);
   const final=await getMotion(id,actor);assert.equal(final.approved.finishing,digest(await readFile(path.join(motionDirectory(id,1),'final.mp4'))));
   await click('Save to My videos');await text('Saved to My videos');
-  assert.equal((await pool.query('SELECT billed_usd,saved_to_library FROM jobs WHERE id=$1',[id])).rows[0].billed_usd,'13.00');
+  assert.equal((await pool.query('SELECT billed_usd,saved_to_library FROM jobs WHERE id=$1',[id])).rows[0].billed_usd,'31.00'); // grid of 2026-10-23: $30 first version + $1 revision ($0.20 estimated x2, rounded up)
   assert.equal(writerCalls,2);assert.equal(externalCalls,0);assert.deepEqual(browserErrors,[]);
   await cp(path.join(motionDirectory(id,0),'preview.mp4'),path.join(evidence,'approved-reference-preview.mp4'));
   await cp(path.join(motionDirectory(id,0),'render-comparison.json'),path.join(evidence,'approved-reference-render-comparison.json'));
