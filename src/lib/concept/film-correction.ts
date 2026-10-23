@@ -4,7 +4,11 @@ import {sha256,Hash} from "./checkpoints";
 import type {FilmComment} from "./film-feedback";
 import {ImageRevisionSchema,type ImageRevisions} from "./storyboard-feedback";
 import type {PreparedCast} from "./cast-preparation";
-export const FilmCorrectionSchema=z.object({source:Hash,comment:z.string().uuid(),commentHash:Hash,notes:z.array(z.object({id:z.uuid(),hash:Hash})).min(1).max(37).optional(),scenes:z.array(z.number().int().positive()).min(1),status:z.enum(["quoted","working","applied"]),revisions:z.record(z.string(),ImageRevisionSchema),edits:z.record(z.string(),StoryboardEditSchema).optional(),reuseOnly:z.boolean().optional(),completedInputs:z.record(z.string(),Hash),result:Hash.optional()});
+import {FinishingSettings} from "./finishing-review";
+/** `finishing`, `summary` and `version` belong to the single journey (2026-10-23): a revision of a complete
+ * version may carry finishing settings only (no scene), one client-facing reading of the notes, and the number
+ * of the version it produces. Staged films never set them. */
+export const FilmCorrectionSchema=z.object({source:Hash,comment:z.string().uuid(),commentHash:Hash,notes:z.array(z.object({id:z.uuid(),hash:Hash})).min(1).max(37).optional(),scenes:z.array(z.number().int().positive()),status:z.enum(["quoted","working","applied"]),revisions:z.record(z.string(),ImageRevisionSchema),edits:z.record(z.string(),StoryboardEditSchema).optional(),reuseOnly:z.boolean().optional(),completedInputs:z.record(z.string(),Hash),result:Hash.optional(),finishing:FinishingSettings.optional(),summary:z.string().max(4000).optional(),version:z.number().int().positive().optional()});
 export type FilmCorrection=z.infer<typeof FilmCorrectionSchema>;
 const Timeline=z.object({fps:z.number().positive(),scenes:z.array(z.object({scene:z.number().int().positive(),startFrame:z.number().nonnegative(),endFrame:z.number().positive()}))});
 export function correctionScenes(comment:FilmComment,timeline:unknown){

@@ -91,6 +91,10 @@ export default function StudioPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [pricingReady,setPricingReady]=useState(false);
+  const [pricingMode,setPricingMode]=useState<string|null>(null);
+  // Single journey (Shimi, 2026-10-23): Start analyses the script and returns ONE estimate (delay and price);
+  // approving it reserves the price and launches the complete film. No preparation allowance, no token.
+  const [estimate,setEstimate]=useState<{jobId:string;quote:string;customerQuote:string;amountCents:number;expiresAt:number;minutes:number;sceneCount:number;availableCents:number}|null>(null);
   const [connected, setConnected] = useState<boolean|null>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [title, setTitle] = useState("");
@@ -116,10 +120,11 @@ export default function StudioPage() {
   const overrides = previewSource === "existing" ? {templateSlug:"cam-clay",tone:"serious",tier:"premium",aspectRatio} : {aspectRatio};
   const launchInput = JSON.stringify({script,mode,previewSource,overrides});
   const currentLaunchCost = launchCost?.input === launchInput ? launchCost.cost : null;
+  const single = Boolean(connected) && pricingMode === "tiers-v2" && previewSource === "planning";
 
   // Price disclosure only. Typing, loading and refreshing never launch media.
   useEffect(() => {
-    if (!connected || !pricingReady || !templatesLoaded || restoring || loading || framing || job || script.trim().length < 40) return;
+    if (single || !connected || !pricingReady || !templatesLoaded || restoring || loading || framing || job || script.trim().length < 40) return;
     const controller = new AbortController();
     let renewal: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
@@ -134,7 +139,7 @@ export default function StudioPage() {
         .catch(cause => { if (!controller.signal.aborted) setLaunchCostError({input:launchInput,message:cause instanceof Error?cause.message:"Preparation pricing is temporarily unavailable."}); });
     }, 600);
     return () => { clearTimeout(timer); clearTimeout(renewal); controller.abort(); };
-  }, [connected,pricingReady,templatesLoaded,restoring,loading,framing,job,script,launchInput,costRevision]);
+  }, [single,connected,pricingReady,templatesLoaded,restoring,loading,framing,job,script,launchInput,costRevision]);
 
   const stopPolling = useCallback(() => {
     pollEpoch.current += 1;
@@ -205,7 +210,7 @@ export default function StudioPage() {
   }, [watchJob, stopPolling]);
 
   useEffect(() => {
-    const refreshPricing=()=>{void fetch("/api/account").then(r=>{if(!r.ok)throw Error("Could not open your workspace. Reload this page.");return r.json();}).then(d=>{setConnected(d.connected===true);setPricingReady(d.pricingReady===true);}).catch(e=>setError(e.message));};
+    const refreshPricing=()=>{void fetch("/api/account").then(r=>{if(!r.ok)throw Error("Could not open your workspace. Reload this page.");return r.json();}).then(d=>{setConnected(d.connected===true);setPricingReady(d.pricingReady===true);setPricingMode(typeof d.pricingMode==="string"?d.pricingMode:null);}).catch(e=>setError(e.message));};
     refreshPricing();
     window.addEventListener("focus",refreshPricing);
     return ()=>window.removeEventListener("focus",refreshPricing);
@@ -229,7 +234,7 @@ export default function StudioPage() {
 
   async function frame() {
     if (launchInFlight.current) return;
-    if (connected && (!currentLaunchCost || currentLaunchCost.expiresAt <= Date.now())) {
+    if (connected && !single && (!currentLaunchCost || currentLaunchCost.expiresAt <= Date.now())) {
       setCostRevision(value => value + 1);
       return;
     }
@@ -238,8 +243,8 @@ export default function StudioPage() {
     setError(null);
     try {
       const body = JSON.stringify({script,mode,previewSource,title:title.trim()||undefined,overrides});
-      if(framingAttempt.current?.body!==body)framingAttempt.current={body,id:crypto.randomUUID(),token:connected?currentLaunchCost!.token:undefined};
-      else if(connected&&!framingAttempt.current.token)framingAttempt.current.token=currentLaunchCost!.token;
+      if(framingAttempt.current?.body!==body)framingAttempt.current={body,id:crypto.randomUUID(),token:connected&&!single?currentLaunchCost!.token:undefined};
+      else if(connected&&!single&&!framingAttempt.current.token)framingAttempt.current.token=currentLaunchCost!.token;
       const res = await fetch("/api/productions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -257,6 +262,7 @@ export default function StudioPage() {
         }
         throw new Error(data.error ?? "Could not prepare your storyboard.");
       }
+      if (data.journey === "single-v1" && data.approved === false && data.estimate) { setEstimate({ jobId: data.jobId, ...data.estimate }); return; }
       if (!data.simulation) { router.push(`/production/${data.jobId}`); return; }
       setFraming(data);
       window.history.replaceState(null, "", `/?job=${data.jobId}`);
@@ -267,6 +273,20 @@ export default function StudioPage() {
       launchInFlight.current = false;
       setLoading(false);
     }
+  }
+
+  /** One approval: reserves the estimated price on the wallet and launches the complete first version. */
+  async function approveEstimate() {
+    if (!estimate || launchInFlight.current) return;
+    launchInFlight.current = true; setLoading(true); setError(null);
+    try {
+      const res = await fetch(`/api/jobs/${estimate.jobId}/live`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "approve", quote: estimate.quote, customerQuote: estimate.customerQuote }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Your video could not be started. Your script and estimate are saved.");
+      try { localStorage.setItem("cam-last-job", estimate.jobId); } catch { /* Optional persistence. */ }
+      router.push(`/production/${estimate.jobId}`);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { launchInFlight.current = false; setLoading(false); }
   }
 
   async function confirm() {
@@ -310,13 +330,14 @@ export default function StudioPage() {
     window.history.replaceState(null, "", "/");
     try { localStorage.removeItem("cam-last-job"); } catch { /* No saved job when storage is disabled. */ }
     setFraming(null);
+    setEstimate(null);
     setJob(null);
     setScript("");
     setPreviewSource("planning");
     setError(null);
   }
 
-  const inputDisabled = framing !== null || job !== null || restoring || loading;
+  const inputDisabled = framing !== null || job !== null || estimate !== null || restoring || loading;
   const settingsDisabled = inputDisabled || previewSource === "existing";
   const framedTemplate = framing ? templates.find((t) => t.slug === framing.params.templateSlug) : undefined;
 
@@ -327,7 +348,7 @@ export default function StudioPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Create a video</h1>
         <nav aria-label="Video category" className="flex gap-3 mt-4"><span className="rounded-xl bg-accent text-white px-4 py-2">Clay animation</span><Link className="rounded-xl border border-line px-4 py-2 text-accent" href="/motion/new">Motion design</Link><Link className="rounded-xl border border-line px-4 py-2 text-accent" href="/comics/new">Attack video</Link></nav>
         <p className="text-muted mt-1">
-          {connected ? "Prepare your storyboard, review the images, then approve the animation price to create your film." : "Prepare your script, review the recording and scenes, then assemble a free preview. Paid generation is disabled in this version."}
+          {single ? "Paste your script. You get one estimate, delay and price; approve it and your complete film is produced. Then watch it and ask for changes until you approve a version." : connected ? "Prepare your storyboard, review the images, then approve the animation price to create your film." : "Prepare your script, review the recording and scenes, then assemble a free preview. Paid generation is disabled in this version."}
         </p>
       </div>
 
@@ -390,21 +411,33 @@ export default function StudioPage() {
           placeholder="Paste the narration for your film…"
           className="w-full bg-surface-2 border border-line rounded-lg p-3 text-sm placeholder:text-muted/60 focus:outline-none focus:border-accent disabled:opacity-60"
         />
-        {connected && !framing && !job && script.trim().length >= 40 && <div className="text-sm" aria-live="polite">
+        {connected && !single && !framing && !job && script.trim().length >= 40 && <div className="text-sm" aria-live="polite">
           {currentLaunchCost ? <><p>Storyboard preparation allowance: <strong>${currentLaunchCost.maximumAmountCents/100} USD</strong></p><p className="mt-1 text-xs text-muted">Starting analyses your script and prepares the storyboard within this amount. If its image needs cost more, you see the revised price first. Preparation is included in your final total.</p></> : launchCostError?.input===launchInput ? <p>{launchCostError.message} <button type="button" className="text-accent underline" onClick={()=>setCostRevision(value=>value+1)}>Check again</button></p> : <p role="status" className="text-muted">Checking preparation cost…</p>}
         </div>}
-        {!framing && !job && (
+        {!framing && !job && !estimate && (
           <button
             onClick={frame}
-            disabled={loading || restoring || (connected&&(!pricingReady||!currentLaunchCost)) || templates.length === 0 || script.trim().length < 40}
+            disabled={loading || restoring || (connected&&(!pricingReady||(!single&&!currentLaunchCost))) || templates.length === 0 || script.trim().length < 40}
             className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
           >
-            {loading ? <span className="inline-flex items-center gap-2"><span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white motion-safe:animate-spin"/>Preparing storyboard…</span> : connected ? "Start my video" : previewSource === "existing" ? "Prepare existing film · $0" : "Frame my request"}
+            {loading ? <span className="inline-flex items-center gap-2"><span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white motion-safe:animate-spin"/>{single ? "Analysing your script…" : "Preparing storyboard…"}</span> : single ? "Get my estimate" : connected ? "Start my video" : previewSource === "existing" ? "Prepare existing film · $0" : "Frame my request"}
           </button>
         )}
       </section>
 
-      {loading && <WorkProgress title="Preparing your storyboard" description="Organizing your scenes and preparing the images. Your storyboard opens automatically."/>}
+      {estimate && <section aria-label="Your video estimate" className="rounded-xl border border-accent/40 bg-surface p-5 space-y-4">
+        <h2 className="text-xl font-semibold">Your video estimate</h2>
+        <p className="text-sm text-muted">Your script is analysed: {estimate.sceneCount} scenes. Approving starts the whole film; you will watch the complete version and ask for changes from there.</p>
+        <div className="grid sm:grid-cols-2 gap-4"><div className="rounded-lg border border-line p-4"><p className="text-sm text-muted">Estimated delay</p><p className="text-3xl font-semibold">about {estimate.minutes} minutes</p></div><div className="rounded-lg border border-line p-4"><p className="text-sm text-muted">Price of your film</p><p className="text-3xl font-semibold">${estimate.amountCents/100} USD</p><p className="text-xs text-muted mt-2">Reserved on approval, charged once you approve a version. Available: ${(estimate.availableCents/100).toFixed(2)} USD.</p></div></div>
+        {estimate.availableCents < estimate.amountCents && <p role="status" className="text-sm">Your balance is too low for this film. <Link href="/credits" className="text-accent underline">View your balance</Link>, then approve.</p>}
+        <div className="flex flex-wrap gap-4 items-center">
+          <button onClick={() => void approveEstimate()} disabled={loading || estimate.availableCents < estimate.amountCents} className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium">{loading ? "Starting your video…" : "Approve & start my video"}</button>
+          <button onClick={() => { setEstimate(null); void frame(); }} disabled={loading} className="text-sm text-accent">Refresh the estimate</button>
+          <button onClick={reset} disabled={loading} className="text-muted hover:text-foreground text-sm">Change my script</button>
+        </div>
+      </section>}
+
+      {loading && !estimate && <WorkProgress title={single ? "Analysing your script" : "Preparing your storyboard"} description={single ? "Reading your script scene by scene and pricing your film. Nothing is generated yet." : "Organizing your scenes and preparing the images. Your storyboard opens automatically."}/>}
 
       {connected&&!pricingReady&&<p role="status" className="rounded-xl border border-line bg-surface p-4 text-sm">Your CAM credit pricing is being set up by Bina. You can write your script; production will be available once your price is configured.</p>}
 

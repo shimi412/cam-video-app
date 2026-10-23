@@ -43,6 +43,7 @@
     "test:client-audit": "tsx --env-file-if-exists=.env scripts/check-client-audit.ts",
     "test:model-selection-flow": "tsx scripts/check-model-selection.ts",
     "test:client-journey": "tsx scripts/check-client-journey.ts",
+    "test:clay-single-journey": "tsx scripts/check-clay-single-journey.ts",
     "test:motion-journey": "tsx scripts/check-motion-journey.ts",
     "worker": "tsx --env-file-if-exists=.env scripts/production-worker.ts",
     "test:worker-restart": "tsx scripts/check-worker-restart.ts",
