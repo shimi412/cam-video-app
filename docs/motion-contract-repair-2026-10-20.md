@@ -228,3 +228,7 @@ Shimi a relancé le lot de retours sur « Test 22 Oct Clay » (scène 5) : direc
 ### 23 octobre, 10:45 : décision de Shimi, parcours unique et grille commune
 
 Pour l'option A (moteur) comme pour l'option B (studio, Shimi produit en local et l'app sert de canal) : script → estimation de délai et de prix → validation → V1 complète sans validation intermédiaire → retours du client sur la V1 → devis V2 → … → validation d'une version → téléchargement. Prix V1 par paliers de coût réel estimé (≤ 20 $ → 30 $, 20 à 30 $ → 40 $, au-delà 50 $ maximum) ; retour = coût estimé × 2 arrondi au dollar supérieur. Même règle pour Clay, Motion et Attack. Ordre de réalisation : grille, Clay et Attack enchaînés, Motion aligné, option B.
+
+### 23 octobre, 11:30 : reprise, références et coupure réseau
+
+Après le clic Resume de Shimi, le worker a renvoyé les références (correctif précédent), puis une coupure réseau vers fal (« Connect Timeout rest.fal.ai ») a interrompu un envoi : le point de contrôle est resté « uploading » et la course suivante s'est arrêtée sur « Upload outcome unknown. Reconcile the original upload. ». Un envoi de référence n'a ni coût ni effet de bord : un envoi interrompu est désormais refait depuis les mêmes octets vérifiés (`media-transfers.ts`), comme une adresse expirée ; test `tests/media-transfers.test.ts`. Le réseau était revenu (fal joignable en 2,3 s) ; la boucle de fond reprend seule le film.

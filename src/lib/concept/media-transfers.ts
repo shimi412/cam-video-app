@@ -38,7 +38,7 @@ export async function uploadReference(input: TransferContext & { file: string; s
   const previous = await readCheckpoint(file, Upload);
   if (previous) {
     if (previous.mode !== input.transport.mode || previous.fingerprint !== key || previous.sha256 !== hash) throw new Error("Upload receipt mismatch.");
-    if (previous.state === "uploading") throw new Error("Upload outcome unknown. Reconcile the original upload.");
+    // An interrupted upload (network timeout, worker restart) is simply done again: the bytes are the exact verified file and a hosted upload has no cost or side effect (live Clay 2026-10-23, fal connect timeout left a checkpoint "uploading" and the film stopped on "Upload outcome unknown").
     if (previous.state === "complete") {
       // A hosted URL expires after about a day (fal). The bytes are the exact reviewed file, hash-verified
       // above, so they are simply uploaded again; the client never sees this (live Clay 2026-10-23, a
