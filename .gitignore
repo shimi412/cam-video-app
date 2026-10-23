@@ -64,3 +64,6 @@ storage/
 
 /.next-comics-qa/
 /tsconfig.comics-qa.json
+
+# agent worktrees
+/.claude/worktrees/
