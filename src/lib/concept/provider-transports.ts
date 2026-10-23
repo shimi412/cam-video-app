@@ -1,3 +1,4 @@
+import { SubmissionRejectedError } from "../providers/network";
 import { VIDEO_MODELS, HF_SEEDANCE, SEEDANCE_COMPLETE } from "./model-selection";
 import { z } from "zod";
 import { BramRequestSchema, ImageRequestSchema, parseVideoRequest, IMAGE_ENDPOINT, type GenerationOperation } from "./generation-plan";
@@ -81,7 +82,14 @@ export function falQueue(operation: GenerationOperation, input: Record<string, u
  */
 export function mcpData(value: unknown) {
   const envelope = object.parse(value);
-  if (envelope.isError) throw new Error("Higgsfield tool returned an error.");
+  if (envelope.isError) {
+    // The tool's own words travel with the refusal: a definitive provider rejection is journaled as a failed
+    // request with its reason, which routes the scene to the automatic replacement (live Clay 2026-10-23,
+    // a Seedance continuation refused with a bare "tool returned an error" stopped the film for the client).
+    const detail = z.array(z.object({ type: z.string(), text: z.string().optional() })).safeParse(envelope.content);
+    const text = detail.success ? detail.data.filter((item) => item.type === "text" && item.text).map((item) => item.text!).join(" ").replace(/\s+/g, " ").slice(0, 300) : "";
+    throw new SubmissionRejectedError(400, `Higgsfield refused the request: ${text || "no detail"}`);
+  }
   if (envelope.structuredContent) return object.parse(envelope.structuredContent);
   const content = z.array(z.object({ type: z.string(), text: z.string().optional() })).parse(envelope.content);
   const texts = content.filter((item) => item.type === "text" && item.text);
