@@ -14,6 +14,7 @@ import { planConcept } from "./storyboard";
 import { placeholderTiming } from "./timing";
 import { Hash, readCheckpoint, saveCheckpoint, sha256 } from "./checkpoints";
 import { advanceRequest, DefinitiveRequestFailure, RequestBinding, requestReceipts } from "./request-journal";
+import { RetryableReadError } from "../providers/network";
 import { budgetedQueue, type BudgetApproval, type BudgetQuote, type createBudget } from "./budget";
 import { downloadResult, uploadReference, type AssetTransport } from "./media-transfers";
 import { alignVoice, alignmentHash, scriptHash, whisperAlignment, TranscriptMismatchError } from "./voice-alignment";
@@ -283,6 +284,8 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
         }
         if(error instanceof Pause&&error.result.status==="pending")storyboardPending.push(shot.index);
         else if(error instanceof Pause)throw error;
+        // A transient provider read (network, provider busy) is not a failure of the revision: the scene stays pending and the background worker reads it again (live Clay 2026-10-23, "The saved result could not be read yet." shown as a failed scene).
+        else if(error instanceof RetryableReadError)storyboardPending.push(shot.index);
         else storyboardFailures[shot.index]=error instanceof Error?error.message:"Image update failed.";
         panels.push(previous); // Preserve the last complete pair, never mix old/new endpoints.
         break;

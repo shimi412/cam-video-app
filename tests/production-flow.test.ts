@@ -188,6 +188,35 @@ it("keeps a failed revised scene and completes another scene without resubmittin
  }finally{await rm(path.join(process.cwd(),"storage/imports",f.input.jobId),{recursive:true,force:true});}
 });
 
+it('keeps a revised scene pending on a transient provider read instead of showing it as failed (live Clay 2026-10-23)',async()=>{
+ const f=fixture();f.input.script="First idea. Second idea.";
+ f.input.params.sceneNarrations=["First idea.","Second idea."];
+ const image=await sharp({create:{width:72,height:128,channels:3,background:"#456789"}}).png().toBuffer();
+ const filePath=path.join(directory,"reference.png");await writeFile(filePath,image);const hash=sha256(image);
+ f.input.references[0]={...f.input.references[0],filePath,sha256:hash,characterSheet:{status:"approved",sha256:hash,approvedAt:"2026-10-18"}};
+ let book:BudgetBook|null=null;
+ const budget=createBudget({mode:"simulation",transaction:async update=>{const next=update(book);book=next.book;return next.result;}},{usd:1_000_000,"higgsfield-credit":0});
+ const reservations=new Map<string,NonNullable<Awaited<ReturnType<FlowInput["services"]["authorize"]>>>>();
+ const {RetryableReadError}=await import("../src/lib/providers/network");
+ const submitted:string[]=[];let flaky=true;
+ f.input.services={...f.input.services,storyboardBeforeVoice:true,reviewPolicy:"storyboard-first",
+  review:async request=>request.stage==="script"?{id:randomUUID(),target:request.target,mode:"simulation",decision:"approved"}:null,
+  authorize:async plan=>{const op=plan.operations[0];if(!reservations.has(plan.fingerprint)){const quote:BudgetQuote={plan:plan.fingerprint,source:"simulation-fixture",expiresAt:Date.now()+86400000,lines:[{operation:op.fingerprint,unit:"usd",maximum:1000}]};reservations.set(plan.fingerprint,{budget,quote,approval:{id:randomUUID(),mode:"simulation",plan:plan.fingerprint,quote:quoteHash(quote),expiresAt:quote.expiresAt,caps:{usd:1000,"higgsfield-credit":0}}});}return reservations.get(plan.fingerprint)!;},
+  queue:op=>({mode:"simulation",submit:async()=>{submitted.push(op.id);return {requestId:op.fingerprint};},poll:async()=>{if(op.id==="scene-1-start-retry-1"&&flaky){flaky=false;throw new RetryableReadError("The saved result could not be read yet.");}return {state:"complete",output:"https://simulation.invalid/image.png"};}}),
+  cost:async()=>({unit:"usd",actual:1000,evidence:"fixture"}),
+  assets:{mode:"simulation",upload:async bytes=>({url:`https://simulation.invalid/${sha256(bytes)}`,expiresAt:Date.now()+86400000}),download:async()=>new Response(new Uint8Array(image))}
+ };
+ try{
+  const initial=await advanceProductionFlow(f.input);expect(initial.review?.storyboard).toHaveLength(2);
+  f.input.services.imageRetries={"scene-1-start":1};
+  f.input.services.imageRevisions={1:{note:"Cooler lighting",attempt:1,animationContract:2}};
+  const pending=await advanceProductionFlow(f.input);
+  expect(pending.status).toBe("pending");expect(pending.storyboardPending).toEqual([1]);expect(pending.storyboardFailures??{}).toEqual({});
+  let done=await advanceProductionFlow(f.input);for(let i=0;i<6&&done.status==="pending";i++){await new Promise(r=>setTimeout(r,1200));done=await advanceProductionFlow(f.input);} // the journal's read backoff (2 s) keeps the scene pending until the next read
+  expect(done.status).toBe("awaiting-review");expect(done.storyboardFailures??{}).toEqual({});expect(done.review?.storyboard?.[0].startScene).toContain("Cooler lighting");
+ }finally{await rm(path.join(process.cwd(),"storage/imports",f.input.jobId),{recursive:true,force:true});}
+});
+
 it('reuses completed images after the hosted reference URLs are refreshed (live Clay 2026-10-23)',async()=>{
  const f=fixture();f.input.script="First idea. Second idea.";
  f.input.params.sceneNarrations=["First idea.","Second idea."];
