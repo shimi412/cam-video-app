@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { Hash, sha256 } from "./checkpoints";
 import { CAM_VOICE } from "./cam-voice";
@@ -51,6 +52,31 @@ function compoundWords(words: VoiceAlignment["words"]) {
   return joined;
 }
 
+/** A script word the recogniser split into adjacent tokens whose letters, concatenated, equal that word
+ * exactly ("Gaza" + "lighting." for "Gazalighting", live Clay 2026-10-23) is one word: its timing spans the
+ * tokens. This is a letter-for-letter equality, never a fuzzy match; any other difference still stops. */
+let dictionary: Set<string> | null | undefined;
+/** The system word list (macOS and Linux ship /usr/share/dict/words). A script word found in it ("nowhere")
+ * is never assembled from neighbours ("now" + "here"); without a word list no join happens at all. */
+function knownWord(word: string) {
+  if (dictionary === undefined) { try { dictionary = new Set(readFileSync("/usr/share/dict/words", "utf8").split("\n").map((w: string) => w.toLowerCase())); } catch { dictionary = null; } }
+  return dictionary ? dictionary.has(word) : true;
+}
+export function joinSplitScriptWords(words: VoiceAlignment["words"], originals: string[]) {
+  const letters = (w: string) => spokenToken(w).replace(/\s+/g, "");
+  const joined: VoiceAlignment["words"] = [];
+  let i = 0;
+  for (const original of originals) {
+    const word = words[i]; if (!word) break;
+    if (letters(word.word) === letters(original) || knownWord(letters(original))) { joined.push({ ...word }); i += 1; continue; }
+    let merged = "", end = i;
+    while (end < words.length && end - i < 4 && letters(original).startsWith(merged + letters(words[end].word))) { merged += letters(words[end].word); end += 1; if (merged === letters(original)) break; }
+    if (merged === letters(original) && end - i > 1) { joined.push({ word: original, start: words[i].start, end: words[end - 1].end }); i = end; }
+    else { joined.push({ ...word }); i += 1; }
+  }
+  return [...joined, ...words.slice(i).map((w) => ({ ...w }))];
+}
+
 /** Match every token to the exact audio hash and script. Punctuation/case can
  * differ in the transcript; captions retain the original script verbatim.
  * A transcript is timing evidence, not proof the speaker is Bram or an approval.
@@ -63,7 +89,7 @@ export function alignVoice(phrases: string[], audio: AudioAsset, value: unknown,
   for (const [i, word] of alignment.words.entries()) {
     if (word.end < word.start || word.end > audio.duration || (i > 0 && word.start < alignment.words[i - 1].end)) throw new Error("Word timestamps overlap or exceed the audio.");
   }
-  const measured = compoundWords(alignment.words);
+  const measured = joinSplitScriptWords(compoundWords(alignment.words), originals);
   if (originals.length !== measured.length) throw new TranscriptMismatchError("Transcript omits or adds words. Review the reading.");
   for (const [i, word] of measured.entries()) {
     if (spokenToken(word.word) !== spokenToken(originals[i]) || !normalizedText(word.word)) throw new TranscriptMismatchError(`Transcript differs at word ${i + 1}. Review the reading.`);
