@@ -127,7 +127,8 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
     const operation = { ...op, fingerprint: sha256(JSON.stringify({ mode: services.mode, operation: op.fingerprint, payload: payloadIdentity, evidence })) };
     // Receipts written before 2026-10-23 were keyed by the raw hosted URLs; a completed one for the same
     // operation id, model and transport is reused rather than refused (its scene or cast identity is in the id).
-    const legacy = receipts.find(r => r.state === "complete" && r.binding?.operation === op.id && r.binding.model === op.model && r.binding.transport === op.transport && !r.binding.payloadIdentity && r.requestId && r.output);
+    // A prepared character sheet carries its identity in its operation id (the characters' hash): a completed sheet is reused even when the scene brief around it was reworked after a refusal (2026-10-23).
+    const legacy = receipts.find(r => r.state === "complete" && r.binding?.operation === op.id && r.binding.model === op.model && r.binding.transport === op.transport && (!r.binding.payloadIdentity || op.id.startsWith("cast-")) && r.requestId && r.output);
     if (legacy?.requestId && legacy.output && !services.completedInputs) {
       events.push({ stage: `reuse-legacy-${op.id}`, scene: op.scene, fingerprint: legacy.fingerprint, reused: true, requestId: legacy.requestId });
       return { ...legacy, operation: { ...op, fingerprint: legacy.fingerprint }, output: legacy.output, requestId: legacy.requestId };

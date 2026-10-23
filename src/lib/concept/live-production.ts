@@ -696,7 +696,8 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
       // The worker has no HTTP request scope: the director call runs under its own saved request identity (job, scene, attempt), replayable without a second paid call.
       const reworked=await withBrainRequest({jobId:id,requestId:`rework-${sha256(JSON.stringify({id,scene,attempt,reason}))}`},()=>reworkRefusedImageInstruction({narration,clientNote:feedback.comments[scene]?.text??revision.note,refusedInstruction:revision.note,reason,attempt}));
       if(!reworked)return null;
-      const next={...revision,note:reworked.instruction,attempt:attempt+1,...(revision.cast?{cast:{...revision.cast,brief:reworked.instruction}}:{})};
+      // The prepared cast keeps its brief (its paid sheet identity depends on it); the rewritten composition goes to the image prompt only.
+      const next={...revision,note:reworked.instruction,attempt:attempt+1,...(revision.cast?{reworkedBrief:reworked.instruction}:{})};
       feedback.imageRevisions={...feedback.imageRevisions,[scene]:next};
       await saveCheckpoint(path.join(directory(id),"storyboard-feedback.json"),feedback,lock.assertOwned);
       state.retries={...(state.retries??{}),[`scene-${scene}-start`]:attempt+1,[`scene-${scene}-end`]:attempt+1};
@@ -733,7 +734,9 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
       const approved=state.approval?.quote===state.quote!.id;
       if(!approved&&state.quote!.expiresAt<=Date.now())throw new Error("The production quote expired. Refresh and approve the remaining budget; existing requests and files are preserved.");
       const operationExpiry=approved?Math.max(state.quote!.expiresAt,Date.now()+7*24*3600*1000):state.quote!.expiresAt;
-      const op=plan.operations[0],line=state.quote!.lines.find(l=>l.id===op.id&&l.model===op.model&&l.kind===op.kind);
+      const op=plan.operations[0],baseId=op.id.replace(/-retry-\d+$/,"");
+      // A reworked attempt (next retry number after a provider refusal, 2026-10-23) runs under the line of the attempt it replaces.
+      const line=state.quote!.lines.find(l=>l.id===op.id&&l.model===op.model&&l.kind===op.kind)??state.quote!.lines.filter(l=>l.model===op.model&&l.kind===op.kind&&l.id.replace(/-retry-\d+$/,"")===baseId).sort((a,b)=>b.id.localeCompare(a.id))[0];
       if(!line){if(state.quote!.scope==="storyboard")return null;throw new Error("This operation was not included in the approved quote.");}
       if(op.kind==="video"&&line.seconds!==undefined&&Number(op.input.duration)>line.seconds)throw new Error("This animation exceeds the approved scene duration. Refresh the budget before continuing.");
       // Per-video endpoints charge once for their supported clip length. Older
@@ -743,7 +746,9 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
       const maximum=Math.ceil(Number((quantity*line.unitPrice*1e6).toPrecision(12)));
       const quote:BudgetQuote={plan:plan.fingerprint,source:"provider",expiresAt:operationExpiry,lines:[{operation:op.fingerprint,unit:line.unit,maximum}]};
       const caps={usd:line.unit==="usd"?maximum:0,"higgsfield-credit":line.unit==="higgsfield-credit"?maximum:0};
-      const used={usd:0,"higgsfield-credit":0};for(const p of Object.values(state.phases))for(const l of p.quote.lines)used[l.unit]+=l.maximum;
+      // Reservations of attempts the provider definitively refused are not spent: they do not count against the caps, so a reworked attempt fits the approved budget.
+      const refused=new Set((await requestReceipts(path.join(directory(id),"requests"))).filter(r=>r.state==="failed").map(r=>r.fingerprint));
+      const used={usd:0,"higgsfield-credit":0};for(const p of Object.values(state.phases))for(const l of p.quote.lines){if(refused.has(l.operation))continue;used[l.unit]+=l.maximum;}
       if(used.usd+caps.usd>state.quote!.caps.usd||used["higgsfield-credit"]+caps["higgsfield-credit"]>state.quote!.caps["higgsfield-credit"])throw new Error("The approved production budget is exhausted.");
       const approval:BudgetApproval={id:randomUUID(),mode:"live",plan:plan.fingerprint,quote:quoteHash(quote),expiresAt:quote.expiresAt,caps};
       state.phases[plan.fingerprint]={quote,approval};await save();return {budget,quote,approval};
