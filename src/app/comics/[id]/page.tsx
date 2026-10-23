@@ -3,6 +3,7 @@
 import {use,useCallback,useEffect,useRef,useState} from 'react';
 import type {ComicView} from '@/lib/comics/model';
 import {WorkProgress} from '@/components/work-progress';
+import {SingleJourney} from './single-journey';
 const box='p-5 border border-line bg-surface rounded-2xl space-y-4',button='rounded-xl bg-accent text-white px-5 py-3 disabled:opacity-40';
 export default function ComicPage({params}:{params:Promise<{id:string}>}){
  const {id}=use(params),[view,setView]=useState<ComicView|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[drafts,setDrafts]=useState<Record<string,string>>({}),[voteState,setVoteState]=useState<{hash:string;values:Record<string,boolean>}>({hash:'',values:{}}),[watched,setWatched]=useState(false),[resolved,setResolved]=useState<Record<string,boolean>>({}),[dirty,setDirty]=useState(false);
@@ -13,6 +14,8 @@ export default function ComicPage({params}:{params:Promise<{id:string}>}){
  useEffect(()=>{const target=`${view?.phase}:${view?.mediaHash}`;if(lastMedia.current!==target){lastMedia.current=target;const timer=setTimeout(()=>{setWatched(false);setDirty(false);},0);return()=>clearTimeout(timer);}},[view?.mediaHash,view?.phase]);
  async function act(type:string,extra:object={}){if(busy)return false;setBusy(true);setError('');try{const r=await fetch(`/api/comics/${id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,...extra})}),v=await r.json();if(!r.ok)throw Error(v.error);setView(v);return true;}catch(e){setError(e instanceof Error?e.message:'Could not apply this action.');return false;}finally{setBusy(false);}}
  if(!view)return <WorkProgress title="Opening your video" description={error||'Loading saved progress.'}/>;
+ // Films created since 2026-10-23 follow the single journey; the gated flow below stays for saved legacy films.
+ if(view.journey==='single')return <SingleJourney view={view} act={act} busy={busy} error={error}/>;
  const votes=voteState.hash===view.boardHash?voteState.values:{};
  const panels=view.panels??[],stage=(['planning','preparation-price','board'].includes(view.phase)||view.phase==='working'&&['prepare','revision'].includes(view.work??''))?0:view.phase==='video-price'?1:view.phase==='finishing'||view.work==='finish'?3:view.phase==='complete'?4:2;
  const hasDraft=Object.values(drafts).some(t=>t.trim()),locked=view.notes.filter(n=>n.status==='locked'),deferred=view.notes.filter(n=>n.status==='deferred');
