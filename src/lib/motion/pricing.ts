@@ -2,12 +2,46 @@ import {motionBudgets} from './budgets';
 import {readFile} from 'node:fs/promises';
 import {getSetting} from '../settings';
 import {openrouterPrice,type ModelPrice} from '../providers/openrouter';
-import {digest,price,type MotionFilm} from './model';
+import {firstVersionPriceCents,revisionPriceCents} from '../customer-price';
+import {CustomerPricingSchema} from '../customer-wallet';
+import {ClientMessage} from './client-message';
+import {digest,legacyMotionPrice,type MotionFilm} from './model';
 import type {MotionState} from './state';
 
 export type RevisionEstimate={model:string;inputTokens:number;outputTokens:number;inputRate:number;outputRate:number;requestRate:number;supplierUsd:number};
 export type RevisionQuote={id:string;revision:number;sourceHash:string;targets:string[];feedback:string;originalFeedback?:string;summary?:string;expiresAt:number;estimate:RevisionEstimate;additionalUsd:number;totalUsd:number};
-export const acceptedMotionPrice=(s:MotionState)=>s.acceptedPriceUsd??price(s.revision);
+export const acceptedMotionPrice=(s:MotionState)=>s.acceptedPriceUsd??legacyMotionPrice(s.revision);
+
+/** Delay announced on the creation screen: measured complete V1 runs of 2026-10-21/22 (recording,
+ * alignment, writer turn with its builds, review, render) land around a quarter of an hour. */
+export const MOTION_V1_ESTIMATED_MINUTES=15;
+/** The narration is aligned by the local Whisper model (voice.ts): no supplier charge. The line stays
+ * explicit so the estimate lists every V1 step; raise it only if alignment ever moves to a paid service. */
+export const LOCAL_ALIGNMENT_ALLOWANCE_USD=0;
+export type FirstVersionEstimate={writingUsd:number;reviewUsd:number;narrationCredits:number;higgsfieldCreditUsd:number;narrationUsd:number;alignmentUsd:number;supplierUsd:number};
+export type FirstVersionOffer={estimate:FirstVersionEstimate;priceUsd:number;estimatedMinutes:number;grid:'tiers-2026-10-23'};
+/** Estimated supplier cost of a complete first version: the writing and review allowances of
+ * `motionBudgets()` (the feedback cap belongs to revisions), the narration credits at the admin
+ * credit price and the local alignment. Allowances, not measured spend: every paid step runs inside them. */
+export function estimateFirstVersionCost(higgsfieldCreditUsd:number,budgets=motionBudgets()):FirstVersionEstimate{
+ if(!Number.isFinite(higgsfieldCreditUsd)||higgsfieldCreditUsd<=0)throw Error('The film price is unavailable: the supplier credit price is not configured.');
+ const narrationUsd=Number((budgets.voiceCredits*higgsfieldCreditUsd).toFixed(8));
+ const supplierUsd=Number((budgets.writingUsd+budgets.reviewUsd+narrationUsd+LOCAL_ALIGNMENT_ALLOWANCE_USD).toFixed(8));
+ return {writingUsd:budgets.writingUsd,reviewUsd:budgets.reviewUsd,narrationCredits:budgets.voiceCredits,higgsfieldCreditUsd,narrationUsd,alignmentUsd:LOCAL_ALIGNMENT_ALLOWANCE_USD,supplierUsd};
+}
+/** Shimi's grid of 2026-10-23: a first complete version is priced by tiers of its estimated cost
+ * (up to $20 -> $30, $20 to $30 -> $40, above -> $50). Replaces the fixed $10 creation price. */
+export function firstVersionOffer(higgsfieldCreditUsd:number,budgets=motionBudgets()):FirstVersionOffer{
+ const estimate=estimateFirstVersionCost(higgsfieldCreditUsd,budgets);
+ return {estimate,priceUsd:firstVersionPriceCents(estimate.supplierUsd)/100,estimatedMinutes:MOTION_V1_ESTIMATED_MINUTES,grid:'tiers-2026-10-23'};
+}
+/** The offer shown before Start and checked again at creation. The credit price is the admin
+ * `customer_pricing.higgsfieldCreditUsd` (the same setting Clay and Attack use). */
+export async function motionFirstVersionOffer():Promise<FirstVersionOffer>{
+ const config=CustomerPricingSchema.safeParse(await getSetting('customer_pricing'));
+ if(!config.success)throw new ClientMessage('The film price is not configured yet. Contact support before starting a film.');
+ return firstVersionOffer(config.data.higgsfieldCreditUsd);
+}
 export const revisionTargets=(targets:string[])=>[...new Set(targets)].sort();
 
 /** One normal code revision; no initial voice/media, previous calls or bug retries.
@@ -34,12 +68,13 @@ export async function estimateMotionRevision(s:MotionState,targets:string[],feed
  const rates=await openrouterPrice(model).catch(()=>{throw Error('The correction price is unavailable. Please try again later.');});
  return estimateRevisionCost({film:s.film!,targets,feedback,context:method+template+JSON.stringify(s.timing)},rates);
 }
-/** Cumulative client ceiling per film. Shimi raised it from $20 to $30 on 2026-10-21 when the writer moved to Fable 5.1 (revision quotes keep the x12 formula). */
-export const motionPriceCeilingUsd=()=>motionBudgets().ceilingUsd;
+/** Shimi's grid of 2026-10-23: every revision is its estimated supplier cost x2, rounded up to a whole
+ * dollar, added to the accepted film price. Replaces the x12 formula and the cumulative ceiling
+ * (`CAM_MOTION_PRICE_CEILING_USD`, $20 then $30) of 2026-10-19/21; the three-version limit is unchanged. */
 export function revisionAmounts(estimatedSupplierUsd:number,currentPriceUsd:number){
  if(!Number.isFinite(estimatedSupplierUsd)||estimatedSupplierUsd<=0)throw Error('The correction price is unavailable. Please try again later.');
- const additionalUsd=Math.ceil(Number((estimatedSupplierUsd*12).toFixed(8))),totalUsd=currentPriceUsd+additionalUsd;
- const ceiling=motionPriceCeilingUsd();if(totalUsd>ceiling)throw Error(`This film has reached its $${ceiling} revision limit. Contact support before continuing.`);
+ if(!Number.isFinite(currentPriceUsd)||currentPriceUsd<0)throw Error('The correction price is unavailable. Please try again later.');
+ const additionalUsd=revisionPriceCents(estimatedSupplierUsd)/100,totalUsd=currentPriceUsd+additionalUsd;
  return {additionalUsd,totalUsd};
 }
 export function assertRevisionQuote(s:MotionState,action:{quoteId:string;targets:string[];feedback:string;acceptedPriceUsd:number}){

@@ -3,7 +3,6 @@ import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {z} from 'zod';
 import type {MotionState} from './state';
-import {price} from './model';
 import {providerMode} from '../providers/mode';
 export const motionDirectory=(id:string,revision?:number)=>path.resolve('storage/motion',z.uuid().parse(id),revision===undefined?'':`revision-${z.number().int().min(0).max(2).parse(revision)}`);
 export async function getMotion(id:string,actor:string){
@@ -12,9 +11,10 @@ export async function getMotion(id:string,actor:string){
 }
 export async function saveMotion(id:string,state:MotionState){await pool.query('UPDATE motion_runs SET state=$2,updated_at=now() WHERE job_id=$1',[id,JSON.stringify(state)]);}
 export async function lockMotion<T>(id:string,fn:()=>Promise<T>,tryOnly=false){const c=await pool.connect();let owned=false;try{const r=await c.query(`SELECT ${tryOnly?'pg_try_advisory_lock':'pg_advisory_lock'}(hashtextextended($1,0)) AS acquired`,[`motion-${id}`]);if(tryOnly&&!r.rows[0].acquired)return;owned=true;return await fn();}finally{if(owned)await c.query('SELECT pg_advisory_unlock(hashtextextended($1,0))',[`motion-${id}`]);c.release();}}
-export async function motionQuote(id:string,revision:number,offer?:{id:string;totalUsd:number}){
- const quote=offer?.id??`motion-v1-${revision}`,quoteId=`${id}-${quote}`;
- await pool.query('INSERT INTO customer_quotes(id,job_id,supplier_quote,amount_cents,expires_at) VALUES($1,$2,$3,$4,now()+interval \'15 minutes\') ON CONFLICT(job_id,supplier_quote) DO UPDATE SET expires_at=excluded.expires_at',[quoteId,id,quote,(offer?.totalUsd??price(revision))*100]);
+/** Records the customer quote the wallet will reserve: the accepted first-version price at creation (`motion-v1-0`) or a revision offer. */
+export async function motionQuote(id:string,revision:number,offer:{id?:string;totalUsd:number}){
+ const quote=offer.id??`motion-v1-${revision}`,quoteId=`${id}-${quote}`;
+ await pool.query('INSERT INTO customer_quotes(id,job_id,supplier_quote,amount_cents,expires_at) VALUES($1,$2,$3,$4,now()+interval \'15 minutes\') ON CONFLICT(job_id,supplier_quote) DO UPDATE SET expires_at=excluded.expires_at',[quoteId,id,quote,offer.totalUsd*100]);
  return {quoteId,quote};
 }
 export async function newMotion(actor:string,input:{script:string;title:string;requestId:string}){

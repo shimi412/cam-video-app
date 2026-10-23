@@ -20,7 +20,12 @@ export function assertChecks(c:Checks){
  if(!c.logo)failures.push('brand ending');
  if(failures.length)throw new Error(`Quality checks need correction: ${failures.join(', ')}. Your film has not been submitted for approval.`);
 }
-export function price(revisions:number){if(!Number.isInteger(revisions)||revisions<0||revisions>2)throw Error('The revision limit has been reached. Contact support.');return 10+5*revisions;}
+/** A film has at most three versions (V1 plus two revisions); its per-revision folders are bound to that limit. */
+export const MAX_MOTION_REVISIONS=2;
+export function assertMotionRevisionAvailable(revisions:number){if(!Number.isInteger(revisions)||revisions<0||revisions>MAX_MOTION_REVISIONS)throw Error('The revision limit has been reached. Contact support.');}
+/** Price of a film created before Shimi's grid of 2026-10-23 ($10 creation, $5 per historical correction), used only when the saved state carries no accepted price. New films store their accepted first-version price at creation (src/lib/motion/pricing.ts). */
+export const legacyMotionPrice=(revisions:number)=>10+5*revisions;
+export function price(revisions:number){assertMotionRevisionAvailable(revisions);return legacyMotionPrice(revisions);}
 export function validateTiming(t:MotionTiming,script:string){
  const norm=(s:string)=>s.toLowerCase().replace(/[^a-z0-9]/g,'');
  if(norm(t.phrases.map(p=>p.text).join(' '))!==norm(script)||norm(t.words.map(w=>w.word).join(' '))!==norm(script))throw Error('The recording does not match your complete script.');
