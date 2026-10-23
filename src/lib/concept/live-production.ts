@@ -638,15 +638,16 @@ async function agentProductionSnapshot(id:string){
  return {phase:view.phase,status:view.status,error:view.error,review:view.review,requests:view.requests,finished:view.finished};
 }
 
+const debugRun=(id:string,step:string)=>{if(process.env.CAM_DEBUG_RUN==="1")console.error(`[live-run] ${id.slice(0,8)} ${step}`);};
 export async function runLiveProduction(id:string, dependencies={providers:connectCamProviders,assets:connectCamAssets,budgetScope:"cam-provider-account"},options:{background?:boolean}={}){
- const lock=await acquireJobLock(id);if(!lock)return;
+ const lock=await acquireJobLock(id);if(!lock){debugRun(id,'lock busy');return;}
  let belongsToDatabase=false;
  try{await withCamExecution(id,async()=>{
   const [job]=await lock.db.select().from(schema.jobs).where(eq(schema.jobs.id,id));
-  if(!job||job.deletedAt)return;belongsToDatabase=true;
-  const state=await readState(id);if(!state?.approval||!state.quote||state.pendingQuote||state.finished)return;
+  if(!job||job.deletedAt){debugRun(id,'no job');return;}belongsToDatabase=true;
+  const state=await readState(id);if(!state?.approval||!state.quote||state.pendingQuote||state.finished){debugRun(id,`state gate approval=${Boolean(state?.approval)} quote=${Boolean(state?.quote)} pending=${Boolean(state?.pendingQuote)} finished=${state?.finished}`);return;}
   if(options.background){
-   if(!backgroundMayRun(state.background,await liveView(id)))return;
+   if(!backgroundMayRun(state.background,await liveView(id))){debugRun(id,'background gate');return;}
    state.background={...state.background!,nextAt:Date.now()+4000};
    await saveCheckpoint(path.join(directory(id),"production.json"),state,lock.assertOwned);
   }
@@ -664,7 +665,7 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
   const save=()=>saveCheckpoint(path.join(directory(id),"production.json"),state,lock.assertOwned);
   if(state.storyboardFirst&&state.quote.scope==="storyboard"){
    const sheet=await readCheckpoint(path.join(directory(id),"storyboard-review.json"),StoryboardSheetSchema);
-   if(sheet&&state.decisions.some(d=>d.target===sheet.target&&d.decision==="approved"))return;
+   if(sheet&&state.decisions.some(d=>d.target===sheet.target&&d.decision==="approved")){debugRun(id,'storyboard already approved');return;}
   }
   const finishing=await readCheckpoint(path.join(directory(id),"finishing.json"),FinishingReviewSchema);
   if(finishing){
@@ -683,6 +684,7 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
    }
    return;
   }
+  debugRun(id,'advancing flow');
   const providers=await dependencies.providers("generation",{imagesOnly:state.quote.scope==="storyboard"});
   // The workspace ceiling is independent from each approved video's ceiling.
   // It is deliberately conservative; no client credit is fabricated or topped up.
@@ -790,6 +792,8 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
   finally{await providers.close();}
  });}catch(error){
   const state=belongsToDatabase?await readState(id):null;
+  // A failure before the job is known (configuration, policy, lock loss) was silent until 2026-10-23: it is now logged for the operator.
+  if(!state)console.error(`[live-run] ${id.slice(0,8)} stopped before the job was read: ${error instanceof Error?error.message:String(error)}`);
   if(state){state.error=recoveryDiagnostic(error);if(options.background&&state.background)state.background=backgroundAfterAttempt(state.background,state.error);await saveCheckpoint(path.join(directory(id),"production.json"),state,lock.assertOwned);await superviseClayFailure(id,state,()=>saveCheckpoint(path.join(directory(id),"production.json"),state,lock.assertOwned));await lock.db.update(schema.jobs).set({error:state.error}).where(eq(schema.jobs.id,id));}
  }finally{
   try{if(belongsToDatabase&&options.background){const saved=await readState(id);if(saved?.background?.kick&&!(await liveView(id)).automaticRecovery){saved.background.kick=false;await saveCheckpoint(path.join(directory(id),"production.json"),saved,lock.assertOwned);}}}

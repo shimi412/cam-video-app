@@ -140,9 +140,19 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
       events.push({stage:`reuse-completed-${op.id}`,scene:op.scene,fingerprint:reusable.fingerprint,reused:true,requestId:reusable.requestId});
       return {...reusable,operation:{...op,fingerprint:reusable.fingerprint},output:reusable.output,requestId:reusable.requestId};
     }
-    if ((op.kind === "image" || op.kind === "video") && receipts.some(r => r.binding?.operation === op.id && r.fingerprint !== operation.fingerprint)) {
-      if (op.kind === "image") throw new Error("This scene already has a saved image request from an earlier plan. Reuse its saved image or request an explicit image revision before continuing. No additional image was submitted.");
-      throw new Error("This scene already has a saved animation request under a different review. Reuse that result in a new version; no duplicate animation was submitted.");
+    const conflicting = (op.kind === "image" || op.kind === "video") ? receipts.find(r => r.binding?.operation === op.id && r.fingerprint !== operation.fingerprint) : undefined;
+    if (conflicting) {
+      console.error(`[production-flow] ${jobId} ${op.id}: saved request ${conflicting.fingerprint.slice(0, 12)} (${conflicting.state}, identity ${conflicting.binding?.payloadIdentity?.slice(0, 12) ?? "raw"}) differs from the current identity ${payloadIdentity.slice(0, 12)}; evidence ${sha256(JSON.stringify(evidence)).slice(0, 12)}`);
+      // The operation id (scene, stage, attempt) is the request's identity for the client: a request already sent to the
+      // provider for this attempt is adopted and read again, never refused and never duplicated (live Clay 2026-10-23,
+      // a submitted revision was refused on the next run after its payload identity drifted). A failed attempt stays
+      // a definitive failure, so the rework path can take the next attempt number.
+      if (conflicting.state === "failed") throw new DefinitiveRequestFailure(conflicting.fingerprint);
+      if (conflicting.state === "complete" && conflicting.requestId && conflicting.output) {
+        events.push({ stage: `reuse-saved-${op.id}`, scene: op.scene, fingerprint: conflicting.fingerprint, reused: true, requestId: conflicting.requestId });
+        return { ...conflicting, operation: { ...op, fingerprint: conflicting.fingerprint }, output: conflicting.output, requestId: conflicting.requestId };
+      }
+      operation.fingerprint = conflicting.fingerprint; events.push({ stage: `adopt-saved-${op.id}`, scene: op.scene, fingerprint: conflicting.fingerprint, requestId: conflicting.requestId });
     }
     if(services.reuseOnly)throw new Error("This local correction cannot submit new media. The saved inputs need reconciliation before continuing.");
     const phasePlan: FlowPlan = { ...plan, operations: [operation], fingerprint: sha256(JSON.stringify({ version: 1, operation })) };
@@ -152,7 +162,7 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
     await reservation.budget.reserve({ jobId, plan: phasePlan.fingerprint, operations: [operation], quote: reservation.quote, approval: reservation.approval });
     const queue = services.queue(operation, payload);
     if (queue.mode !== services.mode) throw new Error("Queue mode differs from production mode.");
-    const binding = RequestBinding.parse({ jobId, operation: operation.id, model: operation.model, transport: operation.transport, payloadSha256: sha256(JSON.stringify(payload)), payloadIdentity });
+    const binding = conflicting?.binding ? RequestBinding.parse(conflicting.binding) : RequestBinding.parse({ jobId, operation: operation.id, model: operation.model, transport: operation.transport, payloadSha256: sha256(JSON.stringify(payload)), payloadIdentity });
     if (!receipts.some(r=>r.fingerprint===operation.fingerprint&&r.state==="complete"))
       await saveCheckpoint(path.join(directory,"state.json"),{status:"pending",phase:op.id,events,paidGenerationAuthorized:services.mode==="live"},assertOwned);
     const result = await advanceRequest({ directory: journal, fingerprint: operation.fingerprint, binding, assertOwned,

@@ -81,14 +81,18 @@ it("never resubmits an already saved image operation after a changed or legacy p
   f.input.references[0] = { ...f.input.references[0], filePath, sha256: hash, characterSheet: { status: "approved", sha256: hash, approvedAt: "2026-10-15" } };
   f.input.services.storyboardBeforeVoice = true;
   f.input.services.reviewPolicy = "storyboard-first";
-  f.input.services.review = async request => ({ id: randomUUID(), target: request.target, mode: "simulation", decision: "approved" });
+  f.input.services.review = async request => request.stage === "storyboard" ? null : ({ id: randomUUID(), target: request.target, mode: "simulation", decision: "approved" });
   f.input.services.assets.upload = async () => ({ url: "https://simulation.invalid/reference.png", expiresAt: Date.now() + 86400_000 });
   const queue = vi.fn(() => { throw new Error("No generation may be submitted"); }); f.input.services.queue = queue;
   await mkdir(path.join(directory, "requests"));
   const fingerprint = "c".repeat(64);
   await writeFile(path.join(directory, "requests", `${fingerprint}.json`), JSON.stringify({ mode: "simulation", fingerprint, state: "complete", requestId: "already-paid-image", output: "https://simulation.invalid/saved.png",
     binding: { jobId: f.input.jobId, operation: "scene-1-start", model: "earlier-image-model", transport: "fal-queue", payloadSha256: "b".repeat(64) } }));
-  await expect(advanceProductionFlow(f.input)).rejects.toThrow("saved image request from an earlier plan");
+  // Since 2026-10-23 the saved, paid image of the same scene and stage is adopted (never resubmitted, never refused).
+  f.input.services.assets.download = async () => new Response(new Uint8Array(image));
+  const outcome = await advanceProductionFlow(f.input);
+  expect(outcome.status).toBe("awaiting-review");
+  expect(outcome.events.some(e => e.stage === "reuse-saved-scene-1-start" && e.requestId === "already-paid-image")).toBe(true);
   expect(queue).not.toHaveBeenCalled(); expect(f.unexpected).not.toHaveBeenCalled();
 });
 
