@@ -5,6 +5,8 @@ import { EventEmitter } from "node:events";
 const fixture = vi.hoisted(() => ({
   job: null as Record<string, unknown> | null,
   locked: true, unlockFails: false, available: 100,
+  pricing: { mode: "adaptive-v1", multiplier: 2, higgsfieldCreditUsd: .1 } as { mode: string; multiplier: number; higgsfieldCreditUsd: number },
+  customerQuote: vi.fn(),
   actor: { id: "launch-actor", local: false },
   direct: vi.fn(), prepare: vi.fn(),
   verify: vi.fn(), validate: vi.fn(), view: vi.fn(), update: vi.fn(), frame: vi.fn(), initialize: vi.fn(), after: vi.fn(), release: vi.fn(), worker: vi.fn(), query: vi.fn(),
@@ -33,7 +35,7 @@ vi.mock("../src/db", async () => {
 });});
 vi.mock("../src/lib/providers/mode", () => ({ isSimulation: () => false, providerMode: () => "fal", brainMode: () => "api" }));
 vi.mock("../src/lib/providers/live-policy", () => ({ assertCamConfigured: () => {} }));
-vi.mock("../src/lib/customer-wallet", () => ({ customerPricingReady: async () => true, customerQuote: vi.fn(), walletTotals: async () => ({ available: fixture.available }) }));
+vi.mock("../src/lib/customer-wallet", () => ({ customerPricingReady: async () => true, customerPricing: async () => fixture.pricing, customerQuote: fixture.customerQuote, walletTotals: async () => ({ available: fixture.available }) }));
 vi.mock("../src/lib/concept/storyboard-launch", () => ({ verifyStoryboardLaunch: fixture.verify, assertStoryboardLaunchQuote: fixture.validate }));
 vi.mock("../src/lib/concept/storyboard-launch-service", () => ({ initializeStoryboardLaunch: fixture.initialize }));
 vi.mock("../src/lib/concept/live-production", () => ({ liveView: fixture.view, updateLiveProduction: fixture.update, runLiveProduction: fixture.worker }));
@@ -70,8 +72,9 @@ const send = (body: Record<string, unknown> = requestBody) => POST(new Request("
 beforeEach(() => {
   vi.stubEnv("CAM_LIVE_ENABLED", "1");
   fixture.job = null; fixture.locked = true; fixture.unlockFails = false; fixture.available = 100;
+  fixture.pricing = { mode: "adaptive-v1", multiplier: 2, higgsfieldCreditUsd: .1 };
   fixture.actor = { id: "launch-actor", local: false };
-  for (const fn of [fixture.direct, fixture.prepare, fixture.verify, fixture.validate, fixture.view, fixture.update, fixture.frame, fixture.initialize, fixture.after, fixture.release, fixture.worker, fixture.query]) fn.mockReset();
+  for (const fn of [fixture.direct, fixture.prepare, fixture.verify, fixture.validate, fixture.view, fixture.update, fixture.frame, fixture.initialize, fixture.after, fixture.release, fixture.worker, fixture.query, fixture.customerQuote]) fn.mockReset();
   fixture.verify.mockReturnValue(receipt);
   fixture.frame.mockRejectedValue(new Error("Offline test stops before any planning provider."));
   fixture.initialize.mockResolvedValue({ advance: false });
@@ -209,4 +212,39 @@ it("persists the semantic director result on the real Start route and reuses it 
  expect((await send()).status).toBe(200);
  expect(fixture.direct).toHaveBeenCalledTimes(1);expect(fixture.frame).toHaveBeenCalledTimes(1);expect(fixture.prepare).toHaveBeenCalledTimes(1);
  expect(fixture.after).not.toHaveBeenCalled();
+});
+
+it("single journey (tiers-v2): needs no preparation ticket, analyses once, quotes the complete version and returns ONE estimate without launching",async()=>{
+ fixture.pricing={mode:"tiers-v2",multiplier:2,higgsfieldCreditUsd:.1};
+ const base=resolveParams(requestBody.script,"auto",{templateSlug:"cam-clay"});
+ fixture.frame.mockResolvedValue({...base,brain:"mock"});
+ fixture.direct.mockResolvedValue({...base.params,sceneNarrations:[requestBody.script],editorialPlan:{version:"semantic-ideas-v1",beats:[]}});
+ fixture.prepare.mockResolvedValue({durationSeconds:5});
+ const quote={id:"q".repeat(64),scope:"production",expiresAt:Date.now()+3600_000,caps:{usd:6_000_000,"higgsfield-credit":0},lines:[]};
+ fixture.view.mockResolvedValueOnce({quote:null,approved:false,finished:false,renewing:false,review:null,requests:[],phase:"quote"}).mockResolvedValue({quote,approved:false,finished:false,renewing:false,review:null,requests:[],phase:"quote"});
+ fixture.customerQuote.mockResolvedValue({id:"c".repeat(64),amountCents:3000,expiresAt:quote.expiresAt});
+ const missing={...requestBody,overrides:{templateSlug:"cam-clay"}};delete (missing as Partial<typeof requestBody>).storyboardLaunchToken;
+ const response=await send(missing);
+ expect(response.status).toBe(200);
+ const body=await response.json();
+ expect(body).toMatchObject({jobId:requestBody.requestId,journey:"single-v1",approved:false,estimate:{quote:quote.id,customerQuote:"c".repeat(64),amountCents:3000,minutes:15,sceneCount:1,availableCents:10000}});
+ expect(fixture.verify).not.toHaveBeenCalled();
+ expect(fixture.update).toHaveBeenCalledExactlyOnceWith(requestBody.requestId,{action:"quote"},"launch-actor");
+ expect(fixture.customerQuote).toHaveBeenCalledWith(requestBody.requestId,quote,{allowanceUsd:2.5});
+ expect(fixture.job?.params).toMatchObject({journey:"single-v1",live:true});
+ expect(fixture.initialize).not.toHaveBeenCalled();expect(fixture.worker).not.toHaveBeenCalled();
+ // A replay returns the saved estimate without repeating the paid analysis.
+ fixture.update.mockClear();
+ expect((await send(missing)).status).toBe(200);expect(fixture.frame).toHaveBeenCalledTimes(1);expect(fixture.direct).toHaveBeenCalledTimes(1);expect(fixture.update).not.toHaveBeenCalled();
+ // Once approved, a replay simply reopens the film.
+ fixture.view.mockResolvedValue({quote,approved:true,finished:false,renewing:false,review:null,requests:[],phase:"images"});
+ const reopened=await send(missing);expect(reopened.status).toBe(202);expect(await reopened.json()).toMatchObject({jobId:requestBody.requestId,approved:true});
+});
+
+it("single journey: refuses to analyse for a wallet below the lowest tier, with nothing charged",async()=>{
+ fixture.pricing={mode:"tiers-v2",multiplier:2,higgsfieldCreditUsd:.1};fixture.available=20;
+ const missing={...requestBody};delete (missing as Partial<typeof requestBody>).storyboardLaunchToken;
+ const response=await send(missing);expect(response.status).toBe(409);
+ expect(await response.json()).toMatchObject({error:expect.stringContaining("$30")});
+ expect(fixture.frame).not.toHaveBeenCalled();expect(fixture.update).not.toHaveBeenCalled();
 });

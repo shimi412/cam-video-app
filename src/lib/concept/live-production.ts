@@ -20,7 +20,8 @@ import {FilmFeedbackSchema,addFilmComment, replaceFilmComment,assertFilmFeedback
 import { prepareCast } from "./cast-preparation";
 import {recoverableRequest,imageBase,imageAttempt,supersededImage,withImageRecovery} from "./image-recovery";
 import { HF_SEEDANCE,KLING_PRO,selectedModels,type VideoModels } from "./model-selection";
-import { reserveCredits, settleCredits } from "../customer-wallet";
+import { reserveCredits, settleCredits, customerPricing, creditHold, customerQuote } from "../customer-wallet";
+import { SINGLE_JOURNEY, withinApprovedPrice, supplierCostUsd } from "./single-journey";
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, rename, rm, readFile, cp } from "node:fs/promises";
 import path from "node:path";
@@ -60,7 +61,14 @@ export function workspaceProductionCaps(){
 const approval=z.object({quote:Hash,actor:z.string().min(1),at:z.number()});
 const decision=z.object({id:z.uuid(),target:Hash,decision:z.enum(["approved","rejected"]),mode:z.literal("live")});
 const stateSchema=z.object({version:z.literal(1),background:BackgroundState.optional(),storyboardFirst:z.boolean().default(false),inputHash:Hash,quote:CamQuoteSchema.nullable(),pendingQuote:CamQuoteSchema.nullable().default(null),retries:z.record(z.string(),z.number().int().min(1).max(10)).optional(),pendingRetries:z.record(z.string(),z.number().int().min(1).max(10)).optional(),pendingRevision:z.object({scene:z.number().int().positive(),scenes:z.array(z.number().int().positive()).optional(),scope:z.enum(["scene","global","batch"]).optional(),notes:z.record(z.string(),z.string()).optional(),compiledHash:Hash.optional(),requestedGlobalScenes:z.array(z.number()).optional(),globalText:z.string().optional(),globalScenes:z.array(z.number()).optional(),noteHash:Hash,attempt:z.number().int().positive(),target:Hash}).nullable().default(null),approval:approval.nullable(),history:z.array(z.object({quote:CamQuoteSchema,approval})).default([]),decisions:z.array(decision),
-  filmCorrection:FilmCorrectionSchema.optional(),phases:z.record(z.string(),z.object({quote:QuoteSchema,approval:ApprovalSchema})),error:z.string().nullable(),finished:z.boolean()});
+  filmCorrection:FilmCorrectionSchema.optional(),phases:z.record(z.string(),z.object({quote:QuoteSchema,approval:ApprovalSchema})),error:z.string().nullable(),finished:z.boolean(),
+  /** Single journey (Shimi, 2026-10-23): `single-v1` films are produced unattended version by version; films saved before carry `staged` and keep their gates. */
+  journey:z.enum(["staged",SINGLE_JOURNEY]).default("staged"),filmVersion:z.number().int().min(1).default(1),
+  /** Finishing settings carried into the next unattended render (a note like "no music" is a finishing instruction). */
+  finishingSettings:FinishingSettings.optional(),
+  /** Automatic replacements per failed animation, bounded; beyond the bound the admin sees the detail and the client a calm state. */
+  automaticReplacements:z.record(z.string(),z.number().int().min(0).max(10)).optional()});
+const AUTOMATIC_REPLACEMENTS_PER_SCENE=2;
 const directory=(id:string)=>path.join(process.cwd(),"storage/concepts",z.uuid().parse(id),"live");
 const hashInput=(script:string,params:ProductionParams,references:unknown)=>sha256(JSON.stringify({script,format:params.aspectRatio,directions:params.sceneDirections??{},...(params.sceneNarrations?{narrations:params.sceneNarrations}:{}),references}));
 const sceneCommentText=z.string().trim().min(1).max(2000);
@@ -153,7 +161,7 @@ export async function liveView(id:string,aspect?:string){
  const needsProductionBudget=Boolean(state?.storyboardFirst&&state.quote?.scope==="storyboard"&&sheetDecision?.decision==="approved");
  const revision=state?.pendingQuote?state.pendingRevision:null;
  const visibleComments=pendingFilmComments(filmFeedback?.comments??[],review?.target,finishing);
- const view={failureAnalysis:state?.error?recoveryView(state.background?.supervision):null,storyboardPending:outcome?.storyboardPending??[],backgroundManaged:Boolean(state?.background?.enabled),finishing:finishing?{settings:finishing.settings,pending:Boolean(finishing.pending)}:null,filmCorrection:state?.filmCorrection?{comment:state.filmCorrection.comment,comments:correctionNoteIds(state.filmCorrection),scenes:state.filmCorrection.scenes,status:state.filmCorrection.status}:null,filmComments:visibleComments.map(({id,target,text,seconds,at,stage,interpretation})=>({id,target,text,seconds,at,interpretation,stage:stage??feedbackStage(text)})),needsPreviewContinuation,storyboardFirst:state?.storyboardFirst??false,needsProductionBudget,revisionScene:revision?.scope==="global"?null:revision?.scene??null,revisionScenes:revision?revision.scenes??[revision.scene]:null,revisionScope:revision?revision.scope??"scene":null,recovery,storyboard,repairProgress,finishingReview,repairQuote:repairQuote?{...repairQuote,expired:repairQuote.expiresAt<=Date.now()}:null,quote:state?.pendingQuote??state?.quote??null,approved:Boolean(state?.approval),renewing:Boolean(state?.pendingQuote),finished:state?.finished??false,error:state?.error??null,
+ const view={journey:state?.journey??"staged",filmVersion:state?.filmVersion??1,approvedQuote:state?.pendingQuote?state.quote:null,failureAnalysis:state?.error?recoveryView(state.background?.supervision):null,storyboardPending:outcome?.storyboardPending??[],backgroundManaged:Boolean(state?.background?.enabled),finishing:finishing?{settings:finishing.settings,pending:Boolean(finishing.pending)}:null,filmCorrection:state?.filmCorrection?{comment:state.filmCorrection.comment,comments:correctionNoteIds(state.filmCorrection),scenes:state.filmCorrection.scenes,status:state.filmCorrection.status,summary:state.filmCorrection.summary??null,version:state.filmCorrection.version??null}:null,filmComments:visibleComments.map(({id,target,text,seconds,at,stage,interpretation})=>({id,target,text,seconds,at,interpretation,stage:stage??feedbackStage(text)})),needsPreviewContinuation,storyboardFirst:state?.storyboardFirst??false,needsProductionBudget,revisionScene:revision?.scope==="global"?null:revision?.scene??null,revisionScenes:revision?revision.scenes??[revision.scene]:null,revisionScope:revision?revision.scope??"scene":null,recovery,storyboard,repairProgress,finishingReview,repairQuote:repairQuote?{...repairQuote,expired:repairQuote.expiresAt<=Date.now()}:null,quote:state?.pendingQuote??state?.quote??null,approved:Boolean(state?.approval),renewing:Boolean(state?.pendingQuote),finished:state?.finished??false,error:state?.error??null,
   phase:finishing&&!state?.finished?"finishing-film":outcome?.phase??"quote",status:finishing&&!state?.finished?(finishing.pending?"pending":"awaiting-review"):outcome?.status??"awaiting-budget",review:review?{stage:review.stage,scene:review.scene,target:review.target,media,audio,duration:review.film?.duration??review.audio?.duration,width:review.media?.width,height:review.media?.height}:null,
   requests:receipts.map(r=>({operation:r.binding?.operation,state:supersededImage(r.binding?.operation??"",state?.retries??{})?"replaced":r.state,requestId:r.requestId??null})),
   costsPending:outcome?.events.filter(e=>e.stage.startsWith("cost-receipt-pending-")).length??0};
@@ -190,7 +198,9 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
    // Recover a draft edit saved to PostgreSQL before its file checkpoint.
    state.inputHash=inputHash;state.quote=null;state.pendingQuote=null;
   }
-  state??={version:1,storyboardFirst:true,inputHash,quote:null,pendingQuote:null,pendingRevision:null,approval:null,history:[],decisions:[],phases:{},error:null,finished:false};
+  // The journey is decided once, at creation, from the job's saved params: a later pricing change never moves a running film.
+  state??={version:1,storyboardFirst:true,inputHash,quote:null,pendingQuote:null,pendingRevision:null,approval:null,history:[],decisions:[],phases:{},error:null,finished:false,journey:(params as {journey?:string}).journey===SINGLE_JOURNEY?SINGLE_JOURNEY:"staged",filmVersion:1};
+  const single=state.journey===SINGLE_JOURNEY;
   if(action.action==="resume"&&state.error){
    const saveRecovery=()=>saveCheckpoint(path.join(directory(id),"production.json"),state!,lock.assertOwned);
    state.background??=requestedBackground();state.background.supervision??=freshPipelineRecovery();
@@ -200,7 +210,102 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
   }
   const save=()=>saveCheckpoint(path.join(directory(id),"production.json"),state!,lock.assertOwned);
   const finishing=await readCheckpoint(path.join(directory(id),"finishing.json"),FinishingReviewSchema);
-  if(finishing&&!state.finished){
+  if(single&&finishing&&!state.finished&&!["review","approve","resume"].includes(action.action)){
+   // Single journey: the client reviews a complete finished version. Notes are locked, then one Apply all changes
+   // reads every note together (picture, motion and finishing), prices the next version and waits for approval.
+   const file=path.join(directory(id),"film-feedback.json");
+   let book=await readCheckpoint(file,FilmFeedbackSchema)??{version:1 as const,comments:[]};
+   const outstanding=pendingFilmComments(book.comments,finishing.target,finishing);
+   if(action.action==="film-comment"||action.action==="film-comment-remove"){
+    if(finishing.pending)throw new Error("Your next version is being prepared. Add feedback when it is ready.");
+    if(action.target!==finishing.target)throw new Error("This version changed. Reload before adding feedback.");
+    if(action.action==="film-comment"){
+     const existing=book.comments.some(c=>c.id===action.id);
+     const note={id:action.id,target:action.target,text:action.text,seconds:action.seconds,stage:"unreviewed" as const,actor,at:new Date().toISOString()};
+     book=action.replaces?replaceFilmComment(book,note,finishing.duration,action.replaces,outstanding.map(c=>c.id)):addFilmComment(book,note,finishing.duration);
+     if(!existing&&state.filmCorrection?.status==="quoted"){state.pendingQuote=null;state.pendingRetries=undefined;state.filmCorrection=undefined;await save();}
+    }else{
+     if(state.filmCorrection?.status==="quoted"&&correctionNoteIds(state.filmCorrection).includes(action.id)){state.pendingQuote=null;state.pendingRetries=undefined;state.filmCorrection=undefined;await save();}
+     book={...book,comments:book.comments.filter(c=>c.id!==action.id||!outstanding.some(o=>o.id===c.id))};
+    }
+    await saveCheckpoint(file,book,lock.assertOwned);return {advance:false};
+   }
+   if(action.action==="film-apply-all"||action.action==="film-apply"){
+    if(finishing.pending)throw new Error("Your next version is being prepared. Add feedback when it is ready.");
+    if(action.target!==finishing.target)throw new Error("This version changed. Reload before applying your feedback.");
+    if(state.filmCorrection?.status==="working")throw new Error("Your next version is already being prepared.");
+    const comments=selectFilmBatch(outstanding,action.action==="film-apply-all"?action.ids:[action.id]);
+    const batchNotes=comments.map(c=>({id:c.id,hash:filmNoteHash(c)}));
+    if(state.filmCorrection?.status==="quoted"&&JSON.stringify(state.filmCorrection.notes)===JSON.stringify(batchNotes)&&state.pendingQuote&&state.pendingQuote.expiresAt>Date.now())return {advance:false};
+    const feedback=await readCheckpoint(path.join(directory(id),"storyboard-feedback.json"),StoryboardFeedbackSchema)??emptyStoryboardFeedback();
+    const timeline=JSON.parse(await readFile(path.join(path.dirname(finishing.file),"editorial-timeline.json"),"utf8"));
+    const sheet=await currentStoryboard(id,params.aspectRatio);if(!sheet)throw new Error("The saved storyboard is unavailable.");
+    const notes=comments.map(c=>({id:c.id,text:c.text,scenes:c.seconds===null?sheet.panels.map(p=>p.scene):timeline.scenes.some((s:{startFrame:number;endFrame:number})=>c.seconds!*timeline.fps>=s.startFrame&&c.seconds!*timeline.fps<s.endFrame)?correctionScenes(c,timeline):[],seconds:c.seconds}));
+    const samples=[...new Set(notes.flatMap(n=>n.scenes))].map(scene=>{const span=timeline.scenes.find((s:{scene:number})=>s.scene===scene);return {scene,seconds:(span.startFrame+span.endFrame)/2/timeline.fps};});
+    const plan=scopeRepeatedFilmNotes(await director({jobId:id,target:action.target,phase:"version",script:job.script,panels:sheet.panels,notes,history:book,settings:finishing.settings,film:{file:finishing.file,sha256:finishing.sha256,samples}},lock.assertOwned),comments);
+    for(const decision of plan.decisions){const c=comments.find(c=>c.id===decision.id)!;c.stage=decision.stage;c.interpretation=decision.message;}
+    await saveCheckpoint(file,book,lock.assertOwned);
+    // A note with no executable request gets no quote and no charge: the client reads one precise sentence per note.
+    const clarify=plan.decisions.filter(d=>d.status==="clarify");
+    if(clarify.length)throw new Error(`${clarify.map(d=>d.message).join(" ")} Edit that note, then apply your feedback again. Your notes are kept.`);
+    assertCompatibleFilmEdits(plan);
+    const visual=plan.decisions.filter(d=>d.changes.length);
+    const finishingDecisions=plan.decisions.filter(d=>d.finishing).map(d=>({...d,stage:"finishing" as const,changes:[]}));
+    const settings=finishingDecisions.length?batchFinishingSettings(finishing.settings,{decisions:finishingDecisions}):finishing.settings;
+    const settingsChanged=JSON.stringify(settings)!==JSON.stringify(finishing.settings);
+    let directedFeedback={...structuredClone(feedback),globalEdits:{}};
+    const images:ReturnType<typeof applyDirectedStoryboard>["images"]={};
+    for(const decision of visual){
+     const c=comments.find(c=>c.id===decision.id)!;
+     const directed=applyDirectedStoryboard({...directedFeedback,globalComment:{text:c.text,actor,at:new Date().toISOString(),scenes:notes.find(n=>n.id===c.id)!.scenes,status:"locked",message:""}},{decisions:[{...decision,id:"global",stage:"visual",finishing:null}]});
+     directedFeedback=directed.feedback;
+     for(const [key,image] of Object.entries(directed.images))images[key]={...images[key],...image,instruction:[images[key]?.instruction,image.instruction].filter(Boolean).join("\n")};
+    }
+    const scenes=[...new Set(visual.flatMap(d=>d.changes.map(c=>c.scene)))],revisions:StoryboardFeedback["imageRevisions"]={};
+    for(const [key,image] of Object.entries(images))revisions[key]={...feedback.imageRevisions[key],note:image.instruction,globalNote:undefined,...(image.cast?{cast:image.cast}:{}),attempt:(state.retries?.[`scene-${key}-start`]??0)+1,animationContract:2,instructionContract:3};
+    const edits=directedFeedback.globalEdits;
+    const motionScenes=visual.flatMap(d=>d.changes.filter(c=>c.edit?.motion).map(c=>c.scene));
+    const visualWork=scenes.length>0;
+    if(!visualWork&&!settingsChanged)throw new Error(`${plan.decisions.map(d=>d.message).join(" ")} These notes do not change this version. Edit them, or approve this version to download it.`);
+    const board=planConcept(job.script,recipe,params.aspectRatio,params.sceneDirections,params.sceneNarrations);
+    applyImageRevisions(board,{...feedback.imageRevisions,...revisions});
+    applyStoryboardEdits(board,[],mergeStoryboardEdits(combinedStoryboardEdits(feedback),edits));
+    const receipts=await requestReceipts(path.join(directory(id),"requests"));
+    const comment=comments[0],summary=plan.decisions.map(d=>d.message).join(" ").slice(0,4000);
+    const base={source:action.target,comment:comment.id,commentHash:sha256(comment.text),notes:batchNotes,scenes,status:"quoted" as const,revisions,edits,completedInputs:Object.fromEntries(receipts.filter(r=>r.state==="complete"&&r.binding).map(r=>[r.binding!.operation,r.binding!.payloadSha256])),finishing:settings,summary,version:state.filmVersion+1};
+    const revisedPlan=generationPlan(job.script,params,board,placeholderTiming(board.shots.map(s=>s.narration)),references);
+    if(!Object.keys(revisions).length&&!motionScenes.length){
+     // Local edits or finishing only: no new media. The revision quote carries the approved lines under the edited plan;
+     // its price is the feedback allowance x2 (revisionPriceCents on a zero media delta).
+     const content={...state.quote!,plan:revisedPlan.fingerprint,createdAt:Date.now(),expiresAt:Date.now()+3600_000,id:undefined};
+     state.pendingQuote=CamQuoteSchema.parse({...content,id:sha256(JSON.stringify(content))});
+     state.pendingRetries=undefined;state.pendingRevision=null;
+     state.filmCorrection={...base,reuseOnly:true};
+     await save();return {advance:false};
+    }
+    const revisedScenes=[...new Set([...Object.keys(revisions).map(Number),...motionScenes])];
+    const lockedModels=selectedModels(state.quote!.lines);
+    const newOperations=revisedPlan.modelNeeds.filter(n=>!lockedModels[n.operation]&&revisedScenes.includes(n.scene)).map(n=>n.operation);
+    const priced=await getQuote(revisedPlan,{scope:"production",workflow:state.quote!.selection?.workflow??"whimsical",minimumResolution:state.quote!.selection?.minimumResolution??"1080p",lockedModels,newOperations});
+    const retries={...(state.retries??{})};
+    for(const scene of revisedScenes){
+     if(params.sceneMedia?.[scene])throw new Error("Imported footage cannot be regenerated with this control.");
+     const clipLine=priced.lines.find(l=>l.id===`scene-${scene}-clip`);
+     const localText=params.productionMethod==="whimsical-v1"&&board.shots.find(s=>s.index===scene)?.visualMode==="presenter-text";
+     // A complete version already holds every clip: a Seedance scene retires its draft and its completion, a native clip its clip.
+     const animationStages=localText||newOperations.includes(`scene-${scene}-clip`)?[]:priced.selection?.workflow==="whimsical"&&clipLine?.model===KLING_PRO?["clip"]:receipts.some(r=>r.binding?.operation===`scene-${scene}-clip`||r.binding?.operation?.startsWith(`scene-${scene}-clip-retry-`))?["draft","clip"]:["draft"];
+     const stages:string[]=[...(revisions[scene]?["start",...(board.shots.find(s=>s.index===scene)?.endImagePrompt?["end"]:[])]:[]),...animationStages];
+     for(const stage of stages){const key=`scene-${scene}-${stage}`;retries[key]=(retries[key]??0)+1;if(retries[key]>10)throw new Error("This scene has reached its revision limit.");}
+    }
+    const current=withImageRecovery(priced,retries);
+    state.pendingQuote=renewCamQuote({...state.quote!,plan:current.plan},current,new Set(receipts.map(r=>r.binding!.operation)));
+    state.pendingRetries=retries;state.pendingRevision=null;
+    state.filmCorrection=base;
+    await save();return {advance:false};
+   }
+   throw new Error("This version is complete. Use your feedback on it to request changes, or approve it to download it.");
+  }
+  if(finishing&&!state.finished&&!(single&&action.action==="approve")){
    const file=path.join(directory(id),"film-feedback.json");
    let feedback=await readCheckpoint(file,FilmFeedbackSchema)??{version:1 as const,comments:[]};
    const outstanding=pendingFilmComments(feedback.comments,finishing.target,finishing);
@@ -518,7 +623,8 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
    if(!state.approval)state.storyboardFirst=true;
    const sheet=await currentStoryboard(id,params.aspectRatio);
    const sheetDecision=sheet?await readCheckpoint(path.join(directory(id),"storyboard-reviews",`${sheet.target}.json`),StoryboardDecisionSchema):null;
-   const scope=creativeQuote||state.storyboardFirst&&sheetDecision?.decision!=="approved"?"storyboard":"production";
+   // Single journey: the first and only quote covers the complete version (images, voice, alignment, clips).
+   const scope=creativeQuote||!single&&state.storyboardFirst&&sheetDecision?.decision!=="approved"?"storyboard":"production";
    const priceBasis=!creativeQuote&&state.pendingQuote?.draftRecoveries?.length&&state.pendingRetries?state.pendingQuote:state.quote;
    const modelLocked=Boolean(state.approval&&priceBasis&&priceBasis.scope!=="storyboard");
    const editedPlan=generationPlan(job.script,params,board,placeholderTiming(board.shots.map(s=>s.narration)),references);
@@ -546,7 +652,8 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
   if(action.action==="approve"){
    const offered=state.pendingQuote??state.quote;
    if(!offered||offered.id!==action.quote)throw new Error("This quote changed. Review the current quote.");
-   if(!state.approval&&offered.scope!=="storyboard")throw new Error("Refresh the storyboard budget before continuing. Animation is quoted after you review the images.");
+   if(!state.approval&&offered.scope!=="storyboard"&&!single)throw new Error("Refresh the storyboard budget before continuing. Animation is quoted after you review the images.");
+   if(!state.approval&&single&&offered.scope!=="production")throw new Error("Refresh the estimate of your video before approving it.");
    if(offered.scope==="production"&&state.storyboardFirst&&!(["draft-first","whimsical"].includes(offered.selection?.workflow??"")))throw new Error("Refresh the budget to include the automatic draft and finishing stages.");
    const limits=workspaceProductionCaps();
    if(offered.caps.usd>limits.usd||offered.caps["higgsfield-credit"]>limits["higgsfield-credit"])throw new Error("This complete quote exceeds the workspace spending ceiling. Ask the administrator to review the ceiling ; no narration or animation has started.");
@@ -554,7 +661,8 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
    if(state.filmCorrection?.status==="quoted"){
     const correction=state.filmCorrection,book=await readCheckpoint(path.join(directory(id),"film-feedback.json"),FilmFeedbackSchema);
     const outcome=await readCheckpoint(path.join(directory(id),"state.json"),z.custom<FlowOutcome>());
-    if(!state.pendingQuote||!book||!correctionNotesMatch(correction,book.comments)||outcome?.review?.target!==correction.source)throw new Error("This correction changed. Prepare its price again.");
+    const sourceCurrent=single?finishing?.target===correction.source&&!finishing?.pending:outcome?.review?.target===correction.source;
+    if(!state.pendingQuote||!book||!correctionNotesMatch(correction,book.comments)||!sourceCurrent)throw new Error("This correction changed. Prepare its price again.");
    }
    if(state.pendingRevision){
     const pending=state.pendingRevision,feedback=await readCheckpoint(path.join(directory(id),"storyboard-feedback.json"),StoryboardFeedbackSchema)??emptyStoryboardFeedback();
@@ -570,14 +678,25 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
     if(state.filmCorrection?.status==="quoted"){
      const correction=state.filmCorrection;
      const archive=path.join(directory(id),"film-history",correction.source);
-     await mkdir(archive,{recursive:true});await cp(path.join(directory(id),"draft-montage"),path.join(archive,"montage"),{recursive:true});
-     for(const file of ["draft-film.json","state.json","storyboard-review.json"])await copyFile(path.join(directory(id),file),path.join(archive,file));
+     await mkdir(archive,{recursive:true});
+     const finishingOnly=single&&Boolean(finishing)&&!correction.scenes.length&&!Object.keys(correction.revisions).length&&!Object.keys(correction.edits??{}).length;
+     if(single&&finishing){
+      // The approved version stays on disk under its hash (finishing/<revision>/); its review files are archived with it.
+      for(const file of ["finishing.json","state.json","storyboard-review.json","film-feedback.json"])await copyFile(path.join(directory(id),file),path.join(archive,file)).catch(()=>{});
+      if(finishingOnly)await saveCheckpoint(path.join(directory(id),"finishing.json"),{...finishing,pending:correction.finishing??finishing.settings,pendingComments:correctionNoteIds(correction)},lock.assertOwned);
+      else{await lock.assertOwned();await rm(path.join(directory(id),"finishing.json"),{force:true});state.finishingSettings=correction.finishing??finishing.settings;}
+     }else{
+      await cp(path.join(directory(id),"draft-montage"),path.join(archive,"montage"),{recursive:true});
+      for(const file of ["draft-film.json","state.json","storyboard-review.json"])await copyFile(path.join(directory(id),file),path.join(archive,file));
+     }
      feedback.imageRevisions={...feedback.imageRevisions,...correction.revisions};
      feedback.edits=mergeStoryboardEdits(feedback.edits,correction.edits??{});
      const book=await readCheckpoint(path.join(directory(id),"film-feedback.json"),FilmFeedbackSchema);
      for(const scene of correction.scenes)feedback.comments[scene]={text:book!.comments.filter(c=>correctionNoteIds(correction).includes(c.id)).map(c=>c.text).join("\n").slice(0,2000),actor,at:new Date().toISOString(),status:"regenerating",message:"Preparing your corrected scene. The other plans are preserved."};
      await saveCheckpoint(path.join(directory(id),"storyboard-feedback.json"),feedback,lock.assertOwned);
-     state.filmCorrection={...correction,status:"working"};
+     state.filmCorrection={...correction,status:"working",...(finishingOnly?{reuseOnly:true}:{})};
+     if(single)state.filmVersion=correction.version??state.filmVersion+1;
+     if(finishingOnly)state.filmCorrection={...state.filmCorrection,scenes:[]};
     }
     if(Object.keys(feedback.pendingImageRevisions).length){
      const sheet=await currentStoryboard(id,params.aspectRatio);
@@ -587,7 +706,7 @@ export async function updateLiveProduction(id:string, action:z.infer<typeof Live
      feedback.imageRevisions={...feedback.imageRevisions,...feedback.pendingImageRevisions};feedback.pendingImageRevisions={};
      await saveCheckpoint(path.join(directory(id),"storyboard-feedback.json"),feedback,lock.assertOwned);
     }
-    if(state.filmCorrection?.status==="working")await saveCheckpoint(path.join(directory(id),"state.json"),{status:"pending",phase:"film-correction",events:[],paidGenerationAuthorized:true},lock.assertOwned);
+    if(state.filmCorrection?.status==="working"&&!(single&&await readCheckpoint(path.join(directory(id),"finishing.json"),FinishingReviewSchema)))await saveCheckpoint(path.join(directory(id),"state.json"),{status:"pending",phase:"film-correction",events:[],paidGenerationAuthorized:true},lock.assertOwned);
     state.history.push({quote:state.quote!,approval:state.approval!});
     state.quote=state.pendingQuote;state.pendingQuote=null;state.pendingRevision=null;if(state.pendingRetries){state.retries=state.pendingRetries;state.pendingRetries=undefined;}state.approval={quote:action.quote,actor,at:Date.now()};state.error=null;await save();
    }
@@ -639,7 +758,10 @@ async function agentProductionSnapshot(id:string){
 }
 
 const debugRun=(id:string,step:string)=>{if(process.env.CAM_DEBUG_RUN==="1")console.error(`[live-run] ${id.slice(0,8)} ${step}`);};
-export async function runLiveProduction(id:string, dependencies={providers:connectCamProviders,assets:connectCamAssets,budgetScope:"cam-provider-account"},options:{background?:boolean}={}){
+export type LiveProductionDependencies={providers:typeof connectCamProviders;assets:typeof connectCamAssets;budgetScope:string;
+ /** Read-only price reads for automatic replacements inside an approved single-journey version; never a submission. */
+ quote?:typeof fetchCamQuote};
+export async function runLiveProduction(id:string, dependencies:LiveProductionDependencies={providers:connectCamProviders,assets:connectCamAssets,budgetScope:"cam-provider-account"},options:{background?:boolean}={}){
  const lock=await acquireJobLock(id);if(!lock){debugRun(id,'lock busy');return;}
  let belongsToDatabase=false;
  try{await withCamExecution(id,async()=>{
@@ -675,7 +797,9 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
      const breaths=settings.pace==="natural"?undefined:Object.fromEntries(finishing.packet.board.shots.map(s=>[s.index,settings.pace==="brisk"?.25:.7]));
      const rendered=await renderProductionFlow(finishing.packet,path.join(directory(id),"finishing",revision),path.join(directory(id),"finishing-checkpoints"),lock.assertOwned,{hideTitles:false,reason:"Client finishing settings",reviewedBy:"client",...settings,breaths});
      const hash=sha256(await readFile(rendered.output));
-     await saveCheckpoint(path.join(directory(id),"finishing.json"),{...finishing,settings,pending:null,pendingComments:[],appliedComments:[...new Set([...finishing.appliedComments,...finishing.pendingComments])],file:rendered.output,sha256:hash,duration:rendered.duration,target:finishingTarget(finishing.packet.fingerprint,hash,settings)},lock.assertOwned);
+     const target=finishingTarget(finishing.packet.fingerprint,hash,settings);
+     await saveCheckpoint(path.join(directory(id),"finishing.json"),{...finishing,settings,pending:null,pendingComments:[],appliedComments:[...new Set([...finishing.appliedComments,...finishing.pendingComments])],file:rendered.output,sha256:hash,duration:rendered.duration,target},lock.assertOwned);
+     if(state.journey===SINGLE_JOURNEY&&state.filmCorrection?.status==="working")state.filmCorrection={...state.filmCorrection,status:"applied",result:target};
      state.error=null;await save();await lock.db.update(schema.jobs).set({error:null}).where(eq(schema.jobs.id,id));
     }catch(error){
      // Keep the last playable version and all unhandled feedback on local render failure.
@@ -685,6 +809,10 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
    return;
   }
   debugRun(id,'advancing flow');
+  const single=state.journey===SINGLE_JOURNEY;
+  // Single journey: every spend of the version stays inside the amount the client approved (the wallet hold).
+  const pricing=single?await customerPricing():null,hold=single?await creditHold(id):null;
+  if(single&&(!pricing||!hold||hold.state!=="reserved"))throw new Error("The approved price of this video is unavailable. No new request was sent.");
   const providers=await dependencies.providers("generation",{imagesOnly:state.quote.scope==="storyboard"});
   // The workspace ceiling is independent from each approved video's ceiling.
   // It is deliberately conservative; no client credit is fabricated or topped up.
@@ -705,7 +833,7 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
       state.retries={...(state.retries??{}),[`scene-${scene}-start`]:attempt+1,[`scene-${scene}-end`]:attempt+1};
       await saveCheckpoint(path.join(directory(id),"production.json"),state,lock.assertOwned);
       return {revision:next,attempt:attempt+1};
-     },reviewPolicy:"storyboard-first",videoWorkflow:state.quote.selection?.workflow,videoModels:state.quote.selection?selectedModels(state.quote.lines):undefined,assets:dependencies.assets(),allowPendingCost:true,
+     },reviewPolicy:single?"unattended":"storyboard-first",videoWorkflow:state.quote.selection?.workflow,videoModels:state.quote.selection?selectedModels(state.quote.lines):undefined,assets:dependencies.assets(),allowPendingCost:true,
      review:async request=>{
       const saved=state.decisions.find(d=>d.target===request.target) as FlowDecision??null;
       if(request.stage!=="storyboard"||!saved)return saved;
@@ -751,7 +879,12 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
       // Reservations of attempts the provider definitively refused are not spent: they do not count against the caps, so a reworked attempt fits the approved budget.
       const refused=new Set((await requestReceipts(path.join(directory(id),"requests"))).filter(r=>r.state==="failed").map(r=>r.fingerprint));
       const used={usd:0,"higgsfield-credit":0};for(const p of Object.values(state.phases))for(const l of p.quote.lines){if(refused.has(l.operation))continue;used[l.unit]+=l.maximum;}
-      if(used.usd+caps.usd>state.quote!.caps.usd||used["higgsfield-credit"]+caps["higgsfield-credit"]>state.quote!.caps["higgsfield-credit"])throw new Error("The approved production budget is exhausted.");
+      if(single){
+       // Every spend inside the approved price: the whole supplier reservation of all versions stays at or below the amount held.
+       const usedUsd=supplierCostUsd({caps:used},pricing!.higgsfieldCreditUsd),capUsd=supplierCostUsd({caps},pricing!.higgsfieldCreditUsd);
+       if(usedUsd+capUsd>hold!.amountCents/100)throw new Error("The approved price of this version is exhausted. No new request was sent.");
+      }
+      else if(used.usd+caps.usd>state.quote!.caps.usd||used["higgsfield-credit"]+caps["higgsfield-credit"]>state.quote!.caps["higgsfield-credit"])throw new Error("The approved production budget is exhausted.");
       const approval:BudgetApproval={id:randomUUID(),mode:"live",plan:plan.fingerprint,quote:quoteHash(quote),expiresAt:quote.expiresAt,caps};
       state.phases[plan.fingerprint]={quote,approval};await save();return {budget,quote,approval};
      },
@@ -775,15 +908,28 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
     if(book)await saveCheckpoint(path.join(directory(id),"film-feedback.json"),{...book,comments:book.comments.map(c=>c.target===state.filmCorrection!.source&&!correctionNoteIds(state.filmCorrection!).includes(c.id)?{...c,target:outcome.review!.target}:c)},lock.assertOwned);
     state.filmCorrection={...state.filmCorrection,status:"applied",result:outcome.review.target};
    }
-   state.error=outcome.status==="blocked-scenes"?`Scenes ${outcome.sceneFailures?.join(", ")} need a separately approved replacement. Other completed scenes are saved.`:outcome.status==="blocked-duration"?"One scene is longer than the supported 15-second animation. Create a version with shorter narration segments before generating its images.":null;if(options.background&&state.background)state.background=backgroundAfterAttempt(state.background,state.error);await save();if(state.error)await superviseClayFailure(id,state,save);
+   state.error=outcome.status==="blocked-scenes"?`Scenes ${outcome.sceneFailures?.join(", ")} need a separately approved replacement. Other completed scenes are saved.`:outcome.status==="blocked-duration"?"One scene is longer than the supported 15-second animation. Create a version with shorter narration segments before generating its images.":null;
+   if(single&&outcome.review?.stage==="storyboard"&&Object.keys(outcome.storyboardFailures??{}).length)state.error=`Scene image update failed inside the approved version: ${Object.entries(outcome.storyboardFailures!).map(([scene,reason])=>`scene ${scene}: ${reason}`).join("; ")}`;
+   if(single&&outcome.status==="blocked-scenes"){
+    // Failed drafts take the replacement route automatically, inside the approved price (Shimi, 2026-10-23). No client approval.
+    const replaced=await automaticReplacement(id,state,{script:job.script,params,recipe,references,quote:dependencies.quote??fetchCamQuote,pricing:pricing!,hold:hold!});
+    if(replaced.ok){state.error=null;state.background={...(state.background??requestedBackground()),kick:true};}
+    else state.error=`${state.error} Automatic replacement not applied: ${replaced.reason}`;
+   }
+   if(options.background&&state.background)state.background=backgroundAfterAttempt(state.background,state.error);await save();if(state.error)await superviseClayFailure(id,state,save);
    if(outcome.status==="rejected")await settleCredits(id,false);
    if(outcome.status==="rejected")await lock.db.update(schema.jobs).set({status:"failed",error:state.error??"Stopped following the scene review."}).where(eq(schema.jobs.id,id));
    if(outcome.status==="ready-to-render"&&outcome.render){
-    const settings=FinishingSettings.parse({}),revision=sha256(JSON.stringify({packet:outcome.render.fingerprint,settings}));
-    const rendered=await renderProductionFlow(outcome.render,path.join(directory(id),"finishing",revision),path.join(directory(id),"finishing-checkpoints"),lock.assertOwned);
+    // Default finishing (music balanced, captions on); a later version carries the settings its feedback asked for.
+    const settings=single&&state.finishingSettings?FinishingSettings.parse(state.finishingSettings):FinishingSettings.parse({}),revision=sha256(JSON.stringify({packet:outcome.render.fingerprint,settings}));
+    const breaths=settings.pace==="natural"?undefined:Object.fromEntries(outcome.render.board.shots.map(s=>[s.index,settings.pace==="brisk"?.25:.7]));
+    const rendered=await renderProductionFlow(outcome.render,path.join(directory(id),"finishing",revision),path.join(directory(id),"finishing-checkpoints"),lock.assertOwned,single&&state.finishingSettings?{hideTitles:false,reason:"Finishing settings carried from the client's feedback",reviewedBy:"client",...settings,breaths}:undefined);
     const hash=sha256(await readFile(rendered.output));
-    const finishing:FinishingReview={version:1,packet:outcome.render,settings,pending:null,file:rendered.output,sha256:hash,duration:rendered.duration,target:finishingTarget(outcome.render.fingerprint,hash,settings),appliedComments:[],pendingComments:[]};
+    const target=finishingTarget(outcome.render.fingerprint,hash,settings);
+    const applied=single&&state.filmCorrection?.status==="working"?correctionNoteIds(state.filmCorrection):[];
+    const finishing:FinishingReview={version:1,packet:outcome.render,settings,pending:null,file:rendered.output,sha256:hash,duration:rendered.duration,target,appliedComments:applied,pendingComments:[]};
     await saveCheckpoint(path.join(directory(id),"finishing.json"),finishing,lock.assertOwned);
+    if(single&&state.filmCorrection?.status==="working")state.filmCorrection={...state.filmCorrection,status:"applied",result:target};
     const book=await budget.snapshot(),usage=budgetUsage({...book,reservations:Object.fromEntries(Object.entries(book.reservations).filter(([,r])=>r.jobId===id))});
     await lock.db.update(schema.jobs).set({error:null,params:{...params,providerBudgetUsage:usage}}).where(eq(schema.jobs.id,id));
     state.error=null;await save();
@@ -801,6 +947,54 @@ export async function runLiveProduction(id:string, dependencies={providers:conne
  }
 }
 
+/** Single journey: a definitively failed animation takes the existing replacement route without a client decision
+ * (a failed Seedance draft becomes one native Kling clip; a failed native clip gets one more attempt), at most
+ * AUTOMATIC_REPLACEMENTS_PER_SCENE times per scene and only while the version's estimated supplier cost stays
+ * inside the price the client approved. Every failed request keeps its receipt and its cost; the customer price
+ * never changes. Beyond those bounds the admin sees the reason and the client a calm waiting state. */
+export async function automaticReplacement(id:string,state:z.infer<typeof stateSchema>,input:{script:string;params:ProductionParams;recipe:NonNullable<ReturnType<typeof getActiveRecipe>>;references:Awaited<ReturnType<typeof lockedAssets>>;quote:typeof fetchCamQuote;pricing:{higgsfieldCreditUsd:number};hold:{amountCents:number}}):Promise<{ok:true}|{ok:false;reason:string}>{
+ try{
+  if(!state.approval||!state.quote)return {ok:false,reason:"no approved quote"};
+  const receipts=await requestReceipts(path.join(directory(id),"requests"));
+  const retriesNow=state.retries??{};
+  const failures=receipts.filter(r=>/^scene-\d+-(draft|clip)(-retry-\d+)?$/.test(r.binding?.operation??"")&&recoverableRequest(r,retriesNow));
+  if(!failures.length)return {ok:false,reason:"no confirmed failed animation"};
+  const counts={...(state.automaticReplacements??{})};
+  for(const failed of failures){const base=imageBase(failed.binding!.operation);if((counts[base]??0)>=AUTOMATIC_REPLACEMENTS_PER_SCENE)return {ok:false,reason:`${base} already replaced ${AUTOMATIC_REPLACEMENTS_PER_SCENE} times`};}
+  const feedback=await readCheckpoint(path.join(directory(id),"storyboard-feedback.json"),StoryboardFeedbackSchema)??emptyStoryboardFeedback();
+  const board=planConcept(input.script,input.recipe,input.params.aspectRatio,input.params.sceneDirections,input.params.sceneNarrations);
+  applyImageRevisions(board,feedback.imageRevisions);applyStoryboardEdits(board,[],combinedStoryboardEdits(feedback));
+  const plan=generationPlan(input.script,input.params,board,placeholderTiming(board.shots.map(s=>s.narration)),input.references);
+  const workflow=state.quote.selection?.workflow??"whimsical",minimumResolution=state.quote.selection?.minimumResolution??"1080p";
+  const attempted=new Set(receipts.map(r=>r.binding!.operation));
+  const seedance=failures.filter(r=>r.binding?.model===HF_SEEDANCE&&/^scene-\d+-draft(-retry-\d+)?$/.test(r.binding.operation)),others=failures.filter(r=>!seedance.includes(r));
+  let replacement={quote:state.quote,retries:{...retriesNow}};
+  if(seedance.length){
+   const lockedModels:VideoModels={...selectedModels(state.quote.lines)};
+   for(const failed of seedance)lockedModels[imageBase(failed.binding!.operation).replace(/-draft$/,"-clip")]=KLING_PRO;
+   const current=await input.quote(plan,{scope:"production",workflow,minimumResolution,lockedModels});
+   for(const failed of seedance)replacement=quoteDraftFallback(replacement.quote,current,failed,receipts,replacement.retries);
+   replacement.quote=renewCamQuote(replacement.quote,withImageRecovery(current,replacement.retries),attempted);
+  }
+  if(others.length){
+   for(const failed of others){const base=imageBase(failed.binding!.operation);replacement.retries={...replacement.retries,[base]:imageAttempt(failed.binding!.operation)+1};}
+   const current=await input.quote(plan,{scope:"production",workflow,minimumResolution,lockedModels:selectedModels(replacement.quote.lines)});
+   replacement.quote=renewCamQuote({...replacement.quote,plan:current.plan},withImageRecovery(current,replacement.retries),attempted);
+  }
+  if(!withinApprovedPrice(replacement.quote,input.pricing.higgsfieldCreditUsd,input.hold.amountCents))return {ok:false,reason:`the replacement would exceed the approved price (${supplierCostUsd(replacement.quote,input.pricing.higgsfieldCreditUsd).toFixed(2)} USD estimated against ${(input.hold.amountCents/100).toFixed(2)} USD approved)`};
+  // The approved amount is bound to the renewed supplier quote: same hold, same price, new request identities.
+  const customer=await customerQuote(id,replacement.quote,{amountCents:input.hold.amountCents});
+  if(!customer)return {ok:false,reason:"customer pricing unavailable"};
+  await reserveCredits(id,customer.id,replacement.quote.id);
+  state.history.push({quote:state.quote,approval:state.approval});
+  state.quote=replacement.quote;state.retries=replacement.retries;state.pendingQuote=null;state.pendingRetries=undefined;state.pendingRevision=null;
+  state.approval={quote:replacement.quote.id,actor:"automatic-replacement",at:Date.now()};
+  for(const failed of failures){const base=imageBase(failed.binding!.operation);counts[base]=(counts[base]??0)+1;}
+  state.automaticReplacements=counts;
+  return {ok:true};
+ }catch(error){return {ok:false,reason:recoveryDiagnostic(error)};}
+}
+
 /** Only an explicit action or an already running authorized worker calls this; GET remains read-only. */
 async function superviseClayFailure(id:string,state:z.infer<typeof stateSchema>,save:()=>Promise<unknown>){
  if(!state.error)return;
@@ -810,7 +1004,8 @@ async function superviseClayFailure(id:string,state:z.infer<typeof stateSchema>,
  let receipts:Awaited<ReturnType<typeof requestReceipts>>|undefined;
  try{receipts=await requestReceipts(path.join(directory(id),'requests'));}catch(error){inspectionError=error instanceof Error?error.message:'Saved request journal could not be read.';}
  const requests=view?.requests.map(r=>({...r,operation:r.operation??'unknown'}))??receipts?.map(r=>({operation:r.binding?.operation??'unknown',state:r.state,requestId:r.requestId??null}))??[];
- const budgetValid=view?.phase==='finishing-film'||Boolean(state.approval&&state.quote&&state.approval.quote===state.quote.id&&state.quote.expiresAt>Date.now());
+ // An approved quote binds the client to caps, not to price freshness (2026-10-21): an approved production keeps its budget valid for recovery.
+ const budgetValid=view?.phase==='finishing-film'||Boolean(state.approval&&state.quote&&state.approval.quote===state.quote.id&&(state.quote.expiresAt>Date.now()||state.journey===SINGLE_JOURNEY));
  const r=state.background.supervision;
  const decision=await planPipelineRecovery(r,{jobId:id,category:'clay',workKey:state.inputHash+':'+(state.approval?.quote??'unapproved'),stage:view?.phase??'saved-state-read',error:state.error,requests,facts:{inspectionError,requestDiagnostics:receipts?.map(q=>({operation:q.binding?.operation,failureReason:q.failureReason,readRecovery:q.readRecovery})),quoteExpiresAt:state.quote?.expiresAt,approved:Boolean(state.approval),budgetValid,phase:view?.phase,review:view?.review?.stage,storyboardPending:view?.storyboardPending,finishing:view?.finishing,feedback:view?.filmComments},allowed:receipts?recoveryCapabilities(requests,budgetValid,Boolean(view?.recovery)):['needs-attention']},save);
  state.background.nextAt=r.nextAt;

@@ -1,6 +1,11 @@
 import path from 'node:path';
 import {supervisedStep,RecoveryStepError} from '@/lib/agent/recovery-step';
-import { customerPricingReady, customerQuote, walletTotals } from "@/lib/customer-wallet";
+import { customerPricingReady, customerQuote, walletTotals, customerPricing } from "@/lib/customer-wallet";
+import { clayBudgets } from "@/lib/concept/clay-budgets";
+import { SINGLE_JOURNEY, estimatedMinutes } from "@/lib/concept/single-journey";
+import { firstVersionPriceCents } from "@/lib/customer-price";
+import { planConcept } from "@/lib/concept/storyboard";
+import type { ProductionParams } from "@/lib/brain";
 import { initializeStoryboardLaunch } from "@/lib/concept/storyboard-launch-service";
 import { verifyStoryboardLaunch, assertStoryboardLaunchQuote, type StoryboardLaunchReceipt } from "@/lib/concept/storyboard-launch";
 import { liveView, updateLiveProduction } from "@/lib/concept/live-production";
@@ -96,6 +101,21 @@ async function handleSubmission(request: Request, data: z.infer<typeof bodySchem
     if (saved.live === true) {
       const actor = await actorFor(request);
       if (!actor || actor.local || saved.originActorId !== actor.id) return Response.json({ error: "This production request belongs to another session. Start a new video." }, { status: 409 });
+      if (saved.journey === SINGLE_JOURNEY) {
+        // Single journey (Shimi, 2026-10-23): the analysed script has ONE estimate, delay and price of the complete
+        // first version; approving it reserves that price and launches production. A replay refreshes an expired
+        // estimate without repeating the paid analysis; an approved film is simply reopened.
+        try {
+          const estimate = await singleVersionEstimate(job.id, actor.id, job.script, saved, assertOwned);
+          if (!estimate) return Response.json({ jobId: job.id, journey: SINGLE_JOURNEY, approved: true, replayed }, { status: 202 });
+          await db.update(schema.jobs).set({ error: null }).where(eq(schema.jobs.id, job.id));
+          return Response.json({ jobId: job.id, journey: SINGLE_JOURNEY, approved: false, estimate, replayed });
+        } catch (error) {
+          const message = error instanceof RecoveryStepError ? error.message : "Your script is saved, but its estimate could not be prepared. Retry this same video or contact support.";
+          await db.update(schema.jobs).set({ error: message }).where(eq(schema.jobs.id, job.id));
+          return Response.json({ error: message, jobId: job.id, replayed }, { status: 409 });
+        }
+      }
       let launch = saved.storyboardLaunch as { receipt: StoryboardLaunchReceipt; actorId: string; acceptedAt: number; tokenHash: string } | undefined;
       if (launch) {
         if (launch.actorId !== actor.id || launch.receipt.actorId !== actor.id) return Response.json({ error: "This preparation approval belongs to another account." }, { status: 403 });
@@ -175,13 +195,20 @@ async function handleSubmission(request: Request, data: z.infer<typeof bodySchem
     if (!requestId) return Response.json({error:"A production request identifier is required."},{status:400});
   }
   if(!isSimulation()&&!await customerPricingReady())return Response.json({error:"Bina must activate CAM credit pricing before you start a new video. Nothing has been charged."},{status:409});
+  // New Clay films follow the single journey when the workspace prices by the 2026-10-23 grid; the choice is saved with the job.
+  const single = !isSimulation() && previewSource === "planning" && (await customerPricing())?.mode === "tiers-v2";
   let launch: { receipt: StoryboardLaunchReceipt; actorId: string; acceptedAt: number; tokenHash: string } | undefined;
   let originActorId: string | undefined;
   if (!isSimulation()) {
     const actor = await actorFor(request);
     if (!actor || actor.local) return Response.json({ error: "Sign in to the connected workspace before producing." }, { status: 401 });
     originActorId = actor.id;
-    if (previewSource === "planning") {
+    if (single) {
+      // The estimate comes after the analysis; the analysis itself is an internal allowance of the version. Do not
+      // analyse for a wallet that could not approve even the lowest tier.
+      const wallet = await walletTotals();
+      if (Math.round(wallet.available * 100) < firstVersionPriceCents(0)) return Response.json({ error: `Your available balance is below the minimum video price of $${firstVersionPriceCents(0) / 100}. Open My credits to recharge, then start your video.` }, { status: 409 });
+    } else if (previewSource === "planning") {
       try {
         if (!storyboardLaunchToken) throw new Error("Refresh the storyboard preparation price before starting.");
         const receipt = verifyStoryboardLaunch(storyboardLaunchToken, { script, mode, overrides, previewSource }, actor.id);
@@ -219,6 +246,8 @@ async function handleSubmission(request: Request, data: z.infer<typeof bodySchem
     try { params = await step("semantic-direction",()=>withBrainRequest({requestId:jobId,conversationId}, () => directSemanticConcept(script,params,recipe))); }
     catch(error) { return Response.json({error:error instanceof RecoveryStepError?error.message:productionError(error)},{status:409}); }
   }
+  // After the semantic direction (which returns the director's params): the journey is saved with the job.
+  if (single && recipe.concept) params = { ...params, journey: SINGLE_JOURNEY } as ProductionParams & { journey?: string };
   let preparation = null;
   if (recipe.concept && previewSource === "planning") {
     try { preparation = await step("preparation",()=>prepareConcept(script, params, recipe, jobId)); }
@@ -258,6 +287,27 @@ async function handleSubmission(request: Request, data: z.infer<typeof bodySchem
     return { job, replayed: false };
   });
   return reply(created.job, created.replayed);
+}
+
+/** The single estimate of a complete first version: delay from the plan's scene count, price from the grid on the
+ * whole estimated supplier cost (images with character sheets and end images, voice, alignment, clips, local
+ * finishing, AI allowances). Null once the client approved. Read-only price fetches; no generation. */
+async function singleVersionEstimate(jobId: string, actorId: string, script: string, saved: Record<string, unknown>, assertOwned: () => void) {
+  assertOwned();
+  let view = await liveView(jobId);
+  if (view.approved || view.finished) return null;
+  if (!view.quote || view.quote.scope !== "production" || view.quote.expiresAt <= Date.now()) {
+    await updateLiveProduction(jobId, { action: "quote" }, actorId);
+    assertOwned();
+    view = await liveView(jobId);
+  }
+  if (!view.quote || view.quote.scope !== "production") throw new RecoveryStepError("The estimate of your video is unavailable. Your script is saved.");
+  const customer = await customerQuote(jobId, view.quote, { allowanceUsd: clayBudgets().firstVersionAllowanceUsd });
+  if (!customer) throw new RecoveryStepError("Pricing is unavailable. Your script is saved.");
+  const params = saved as unknown as ProductionParams;
+  const sceneCount = planConcept(script, getActiveRecipe(params.templateSlug)!, params.aspectRatio, params.sceneDirections, params.sceneNarrations).shots.length;
+  const wallet = await walletTotals();
+  return { quote: view.quote.id, customerQuote: customer.id, amountCents: customer.amountCents, expiresAt: Math.min(customer.expiresAt, view.quote.expiresAt), minutes: estimatedMinutes(sceneCount), sceneCount, availableCents: Math.round(wallet.available * 100) };
 }
 
 export const POST = withAccess(handlePOST);

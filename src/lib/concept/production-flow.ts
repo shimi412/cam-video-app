@@ -49,7 +49,9 @@ export type FlowServices = {
   mode: TransportMode; assets: AssetTransport;
   recoverAlignment?: (input: AlignmentRecoveryInput) => Promise<VoiceAlignment>;
   videoModels?: VideoModels; videoWorkflow?: VideoWorkflow;
-  reviewPolicy?: "storyboard-first";
+  /** `storyboard-first`: internal preparation reviews are automatic, the storyboard and the complete preview wait for the human.
+   * `unattended` (single journey, Shimi 2026-10-23): every review inside an approved version is automatic; the client reviews the finished version only. */
+  reviewPolicy?: "storyboard-first" | "unattended";
   storyboardBeforeVoice?: boolean; // New jobs prepare approved images before any narration/animation.
   imageRetries?:Record<string,number>;
   storyboardEdits?: StoryboardEdits;
@@ -100,7 +102,8 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
     if (stage === "storyboard") await saveCheckpoint(path.join(directory, "storyboard-review.json"), { version: 1, target: request.target, panels: details.storyboard, retrospective: false }, assertOwned);
     await assertOwned();
     const saved = await services.review(request);
-    const internal = services.reviewPolicy === "storyboard-first" && ["voice","direction","start","end"].includes(stage);
+    const internal = services.reviewPolicy === "storyboard-first" ? ["voice","direction","start","end"].includes(stage)
+      : services.reviewPolicy === "unattended" ? ["voice","direction","start","end","storyboard","draft","draft-film","clip"].includes(stage) : false;
     const value = saved ?? (internal ? {id:`${request.target.slice(0,8)}-${request.target.slice(8,12)}-5${request.target.slice(13,16)}-a${request.target.slice(17,20)}-${request.target.slice(20,32)}`,target:request.target,decision:"approved" as const,mode:services.mode,source:"automatic-preparation" as const} : null);
     if (!value) throw new Pause({ status: "awaiting-review", phase: stage, review: request });
     const decision = Decision.parse(value);
