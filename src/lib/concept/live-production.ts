@@ -827,7 +827,7 @@ export async function runLiveProduction(id:string, dependencies:LiveProductionDe
       const reworked=await withBrainRequest({jobId:id,requestId:`rework-${sha256(JSON.stringify({id,scene,attempt,reason}))}`},()=>reworkRefusedImageInstruction({narration,clientNote:feedback.comments[scene]?.text??revision.note,refusedInstruction:revision.note,reason,attempt}));
       if(!reworked)return null;
       // The prepared cast keeps its brief (its paid sheet identity depends on it); the rewritten composition goes to the image prompt only.
-      const next={...revision,note:reworked.instruction,attempt:attempt+1,...(revision.cast?{reworkedBrief:reworked.instruction}:{})};
+      const next={...revision,note:reworked.instruction,attempt:attempt+1,reworks:(revision.reworks??0)+1,...(revision.cast?{reworkedBrief:reworked.instruction}:{})};
       feedback.imageRevisions={...feedback.imageRevisions,[scene]:next};
       await saveCheckpoint(path.join(directory(id),"storyboard-feedback.json"),feedback,lock.assertOwned);
       state.retries={...(state.retries??{}),[`scene-${scene}-start`]:attempt+1,[`scene-${scene}-end`]:attempt+1};
@@ -893,7 +893,8 @@ export async function runLiveProduction(id:string, dependencies:LiveProductionDe
    if(outcome.review?.stage==="storyboard"){
     const failures=outcome.storyboardFailures??{},pending=outcome.storyboardPending??[];
     for(const [key,comment] of Object.entries(feedback.comments))if(comment.status==="regenerating"||comment.status==="failed"){
-     if(failures[key])feedback.comments[key]={...comment,status:"failed",message:"This scene could not be updated. Its previous images and feedback are kept. Edit and lock the request to include it in a new priced batch."};
+     // Shimi, 2026-10-23: after the bounded internal reworks, the scene keeps its previous image with a calm note, never an error.
+     if(failures[key])feedback.comments[key]={...comment,status:"failed",message:"We kept the previous image of this scene: the requested variant could not be produced safely. You can leave another note for it."};
      else if(!pending.includes(Number(key)))feedback.comments[key]={...comment,status:"applied",message:"Revised image ready. Review the updated scene before approving the storyboard."};
     }
     if(feedback.globalComment?.status==="regenerating"){

@@ -281,7 +281,7 @@ export async function advanceProductionFlow(input: FlowInput): Promise<FlowOutco
         if(!previous||!services.imageRevisions?.[shot.index])throw error;
         await assertOwned(); // Losing the job lock always aborts the whole worker.
         // A definitive provider refusal of a revised image is reworked by the director inside the same approved batch (Shimi, 2026-10-22): the client never sees it.
-        if(error instanceof DefinitiveRequestFailure&&services.reworkRefusedImage&&reworks<2){
+        if(error instanceof DefinitiveRequestFailure&&services.reworkRefusedImage&&reworks<2&&(services.imageRevisions[shot.index].reworks??0)<2){
          const refused=(await requestReceipts(path.join(directory,"requests"))).find(r=>r.fingerprint===error.fingerprint);
          const base=`scene-${shot.index}-start`,attempt=services.imageRetries?.[base]??0,current=services.imageRevisions[shot.index];
          const reworked=await services.reworkRefusedImage({scene:shot.index,narration:shot.narration,revision:current,reason:refused?.failureReason??"refused by the provider",attempt});
