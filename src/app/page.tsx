@@ -1,6 +1,7 @@
 "use client";
 
-import { VideoJourney } from "@/components/video-journey";
+import { VideoJourney, SINGLE_JOURNEY_STEPS } from "@/components/video-journey";
+import { InProgressDialog, type InProgressVideo } from "@/components/in-progress-dialog";
 import { WorkProgress } from "@/components/work-progress";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -107,6 +108,8 @@ export default function StudioPage() {
   const [preparationBusy, setPreparationBusy] = useState(false);
   const [requestsReady, setRequestsReady] = useState(false);
   const [restoring, setRestoring] = useState(true);
+  // A remembered video in progress is offered, never forced (Shimi, 2026-10-25).
+  const [inProgress, setInProgress] = useState<InProgressVideo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollEpoch = useRef(0);
@@ -149,7 +152,7 @@ export default function StudioPage() {
 
   useEffect(() => stopPolling, [stopPolling]);
 
-  const watchJob = useCallback((id: string) => {
+  const watchJob = useCallback((id: string, remembered = false) => {
     stopPolling();
     const epoch = pollEpoch.current;
     let pending = false;
@@ -170,7 +173,10 @@ export default function StudioPage() {
           throw new Error("Could not retrieve this production. Reload to try again.");
         }
         const next: JobState = await response.json();
-        if(next.live){router.push(`/production/${id}`);stopPolling();return;}
+        if(next.live){
+          if(remembered){setInProgress({id,title:next.title??null,status:next.status??"running",live:true,href:`/production/${id}`});setRestoring(false);stopPolling();return;}
+          router.push(`/production/${id}`);stopPolling();return;
+        }
         if (epoch !== pollEpoch.current) return;
         if (next.status === "estimated" && next.draft) { setFraming(next.draft); setJob(null); stopPolling(); }
         else setJob(next);
@@ -203,7 +209,7 @@ export default function StudioPage() {
         else if (id) localStorage.setItem("cam-last-job", id);
         else id = localStorage.getItem("cam-last-job");
       } catch { /* Explicit links also work without browser storage. */ }
-      if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) watchJob(id);
+      if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) watchJob(id, !query.get("job"));
       else setRestoring(false);
     }, 0);
     return () => { clearTimeout(restore); stopPolling(); };
@@ -337,7 +343,7 @@ export default function StudioPage() {
     setError(null);
   }
 
-  const inputDisabled = framing !== null || job !== null || estimate !== null || restoring || loading;
+  const inputDisabled = framing !== null || job !== null || estimate !== null || restoring || loading || inProgress !== null;
   const settingsDisabled = inputDisabled || previewSource === "existing";
   const framedTemplate = framing ? templates.find((t) => t.slug === framing.params.templateSlug) : undefined;
 
@@ -352,6 +358,7 @@ export default function StudioPage() {
         </p>
       </div>
 
+      {inProgress && <InProgressDialog video={inProgress} onKept={()=>{try{localStorage.removeItem("cam-last-job");}catch{/* Optional persistence. */}setInProgress(null);}} onDeleted={()=>{try{localStorage.removeItem("cam-last-job");}catch{/* Optional persistence. */}setInProgress(null);}} onError={message=>setError(message)}/>}
       {(framing?.conversationId || job?.conversationId) && <a href={`/conversations/${framing?.conversationId || job?.conversationId}`} className="inline-block text-accent text-sm">Open conversation, references and video versions</a>}
       {!job && !framing && <><label className="block text-sm font-medium">Video title<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={80} placeholder="Give your video a short name" className="block mt-2 w-full bg-surface border border-line rounded-xl p-3"/></label></>}
       {/* Step 1: script */}
@@ -380,7 +387,7 @@ export default function StudioPage() {
           New CAM video styles are being prepared. Production will be available once the first style is ready.
         </div>
       )}
-      <VideoJourney step={0}/>
+      <VideoJourney step={0} {...(single?{steps:SINGLE_JOURNEY_STEPS,hint:"Approve the estimate once. Your complete film is produced, then you watch it and ask for changes until you approve a version."}:{})}/>
       <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-medium">1. Your script</h2>

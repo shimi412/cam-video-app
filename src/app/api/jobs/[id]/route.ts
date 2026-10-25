@@ -7,6 +7,7 @@ import { jobWorkerActive } from "@/lib/job-lock";
 import { recoveryAllowed, recentlyQueued } from "@/lib/job-recovery";
 import { currentDraft } from "@/lib/concept/current-draft";
 import { storedVideoUrl } from "@/lib/stored-media";
+import { settleCredits } from "@/lib/customer-wallet";
 
 async function handleGET(
   _request: Request,
@@ -74,4 +75,20 @@ export const PATCH = withAccess(async (request, {params}: {params: Promise<{id:s
  }
  const changed=await db.update(schema.jobs).set(body.data).where(and(eq(schema.jobs.id,id),isNull(schema.jobs.deletedAt))).returning({id:schema.jobs.id,title:schema.jobs.title,savedToLibrary:schema.jobs.savedToLibrary});
  return changed.length?Response.json(changed[0]):Response.json({error:"Video not found."},{status:404});
+});
+
+/** The client deletes a video in progress from the home page (Shimi, 2026-10-25): soft delete, its reserved
+ * hold released, the worker stops at its next read (deleted jobs are never run). Spent holds stay spent. */
+export const DELETE = withAccess(async (request, {params}: {params: Promise<{id:string}>}) => {
+ const {id}=await params;
+ if(!z.uuid().safeParse(id).success) return Response.json({error:"Invalid production ID."},{status:400});
+ const [existing]=await db.select({id:schema.jobs.id,params:schema.jobs.params,status:schema.jobs.status}).from(schema.jobs).where(and(eq(schema.jobs.id,id),isNull(schema.jobs.deletedAt)));
+ if(!existing) return Response.json({error:"Video not found."},{status:404});
+ const filmType=(existing.params as {filmType?:string})?.filmType;
+ if(filmType==='comics'){try{const {getComic}=await import('@/lib/comics/store');await getComic(id,(await actorFor(request))!.id);}catch{return Response.json({error:'Video not found.'},{status:404});}}
+ if(filmType==='motion'){try{const {getMotion}=await import('@/lib/motion/store');await getMotion(id,(await actorFor(request))!.id);}catch{return Response.json({error:'Video not found.'},{status:404});}}
+ await settleCredits(id,false);
+ const ended=["succeeded","failed"].includes(existing.status);
+ await db.update(schema.jobs).set({deletedAt:new Date(),savedToLibrary:false,...(ended?{}:{status:"failed",error:"Deleted by the client."})}).where(eq(schema.jobs.id,id));
+ return Response.json({deleted:true});
 });
