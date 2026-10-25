@@ -313,3 +313,9 @@ Retour de Shimi sur « TEST FINAL ATTACK » (2399f947) : générations sloppy (p
 - En-tête : teinte bleue au survol des onglets (demande de Shimi).
 
 Ancien film 2399f947 supprimé à la demande de Shimi. Relance NON faite : Shimi ferme le Mac ; le script et le titre sont sauvegardés dans le scratchpad de session (`test-final-attack.json`) et dans la base (job supprimé, script conservé). À la reprise : créer « TEST FINAL ATTACK » avec le même script sous le compte de Shimi, approuver, surveiller, puis juger la qualité (aucun film payant n'a encore été produit avec la nouvelle méthode). Clay doit recevoir la même refonte ensuite.
+
+### 25 octobre, soir : deux films avec la nouvelle méthode Attack
+
+- **ff695062** (V1, supprimé) : contrôles d'images efficaces (7 reprises : refus fournisseur case 1, silhouettes et lettrage ajoutés cases 2, 4, 7, marges cases 2, 4, 5), mais les trois clips Kling sont revenus quasi figés (énergie 0,14 / 0,26 / 1,10) : l'image de fin verrouillée sur l'image de départ annulait l'action, et le seuil « figé » à 2 jetait aussi le clip vivant. Film livré entièrement en caméra locale. Corrections : plus d'`end_image` sur une action, seuil à 1 (commit 649de3f).
+- **b7aac988** (V1 prête, 52,5 s, −16,4 LUFS, logo, aucun flash) : 4 cases animées par Kling (3, 4, 5, 7) avec les prompts du directeur (750 à 890 caractères), énergies 1,89 / 4,86 / 4,74 / 15,23, aucun repli ; 3 cases en caméra locale ; une image reprise (case 3, refus fournisseur) ; aucun lettrage, aucune silhouette parasite, aucune bande. Sous-titres seuls. Coût réel environ 30 $ estimés. À juger par Shimi.
+- Leçon de méthode : la consigne « image de fin verrouillée par défaut » venait de moi, pas d'une décision commune ; toute règle de ce type est désormais soumise à Shimi avant d'entrer dans la pipeline.
