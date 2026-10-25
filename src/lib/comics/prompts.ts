@@ -11,7 +11,7 @@ export function imageParams(p:ComicPlan['panels'][number],sheet:string){return {
  * (no `motion` field) keep the template their clips were paid with. */
 export function clipParams(p:ComicPlan['panels'][number],image:string,duration:number){
  const base={model:'kling3_0',mode:'pro',sound:'off',duration:Math.max(3,Math.min(8,Math.ceil(duration))),aspect_ratio:'9:16',declined_preset_id:'24bae836-2c4a-48e0-89b6-49fcc0b21612'};
- if(panelMotion(p)==='generated'&&p.videoPrompt)return {...base,medias:[{value:image,role:'start_image'},...(p.lockEndFrame===false?[]:[{value:image,role:'end_image'}])],prompt:p.videoPrompt};
+ if(panelMotion(p)==='generated'&&p.videoPrompt)return {...base,medias:[{value:image,role:'start_image'}],prompt:p.videoPrompt};
  return {...base,medias:[{value:image,role:'start_image'}],prompt:`Stylized 2D cel animation in the exact flat graphic style of the approved frame: flat colours, hard-edged black shadow shapes, few contour lines, animated on twos, no 3D, no gradients. ${p.action}. ${p.camera}. Keep ${p.preserve} exactly as drawn. No added characters, symbols, lettering, cuts or unrequested actions. No real faces, victims or violence shown.`};
 }
 export const voiceParams=(script:string)=>({model:'text2speech_v2',variant:'elevenlabs',prompt:script,voice_type:'preset',voice_id:HARRISON,count:1,use_unlim:false});

@@ -270,7 +270,7 @@ Adapted to our case: the clip length is the panel's spoken phrase, rounded up, b
 
 The four motion layers, every time, even as "nothing": the named object · its secondary motion (a chain swings once and stops, dust from the gate hinge falls within 30 cm) · the environment (`the background wall, the sky and the lamp stay still`) · the camera (Part G).
 
-Durations and the end frame: 3 to 5 s for one small change (a key turns, a page lifts); 6 to 8 s for a change with a settle (a gate opens, light floods then holds). Lock the end frame (`lockEndFrame: true`, the default) when the panel must read as its drawing at the cut into the next panel; leave it unlocked only when the change must remain visible at the end (the gate stays open).
+Durations and the end frame: 3 to 5 s for one small change (a key turns, a page lifts); 6 to 8 s for a change with a settle (a gate opens, light floods then holds). Never lock the end frame on a generated panel (`lockEndFrame` stays false): telling the engine to end exactly on its first frame cancels the action (2026-10-25, three locked clips came back near static). The clip ends on its changed state; the cut to the next panel is the montage's job.
 
 ---
 

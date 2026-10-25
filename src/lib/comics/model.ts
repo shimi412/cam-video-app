@@ -16,7 +16,7 @@ export type CameraMove=z.infer<typeof CameraMove>;
  * ignored by the build: captions only, no narration titles. Saved plans without the new fields
  * still parse (defaults) and keep behaving as before (`panelMotion` reads them as `legacy`). */
 export const Panel=z.object({id:z.number().int().positive(),narration:z.string().min(1).max(1600),meaning:z.string().min(5).max(600),scene:z.string().min(10).max(1200),hero:z.enum(['absent','partial','full']).default('absent'),color:z.string().min(3).max(50),title:z.string().max(70).default(''),action:z.string().min(5).max(600),camera:z.string().min(5).max(200),preserve:z.string().min(5).max(400),
- motion:z.enum(['local','generated']).default('local'),cameraMove:CameraMove.default({kind:'hold',amount:'subtle'}),videoPrompt:z.string().max(1200).default(''),lockEndFrame:z.boolean().default(true)}).strict();
+ motion:z.enum(['local','generated']).default('local'),cameraMove:CameraMove.default({kind:'hold',amount:'subtle'}),videoPrompt:z.string().max(1200).default(''),lockEndFrame:z.boolean().default(false)}).strict();
 export const Plan=z.object({panels:z.array(Panel).min(3).max(24)}).strict();
 /** Saved plans may predate the 2026-10-25 fields (and the 2026-10-22 hero default): the state type is the schema's input shape; `validatePlan` returns the parsed shape with defaults applied. */
 export type ComicPlan=z.input<typeof Plan>;

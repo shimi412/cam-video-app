@@ -84,10 +84,10 @@ it('produces the complete first version with no human gate: voice, alignment, sh
  // Every spend stayed inside the approved estimate, by its own line.
  const q=s.approvedQuotes[0];for(const [key,op] of Object.entries(s.operations))expect(op.quotedCredits).toBeLessThanOrEqual(allowanceFor(s,q,key)!);
 });
-it('a generated panel sends the director\'s prompt verbatim with the approved still as start image and end image',async()=>{
+it('a generated panel sends the director\'s prompt verbatim with the approved still as start image only',async()=>{
  const d=deps();await produceV1(d);
  const call=(d.gateway.media as ReturnType<typeof vi.fn>).mock.calls.find(c=>(c[1] as {key:string}).key==='clip-2-0')!;const r=call[1] as {tool:string;params:{prompt:string;medias:{value:string;role:string}[];duration:number;sound:string}};
- expect(r.tool).toBe('generate_video');expect(r.params.prompt).toBe(prompt);expect(r.params.medias).toEqual([{value:'id-image-2-0',role:'start_image'},{value:'id-image-2-0',role:'end_image'}]);expect(r.params.duration).toBe(3);expect(r.params.sound).toBe('off');
+ expect(r.tool).toBe('generate_video');expect(r.params.prompt).toBe(prompt);expect(r.params.medias).toEqual([{value:'id-image-2-0',role:'start_image'}]);expect(r.params.duration).toBe(3);expect(r.params.sound).toBe('off');
  // An unlocked end frame sends the start image only; a camera-move change on a local panel needs no new clip.
  const unlocked={panels:panels.map(p=>p.id===2?{...p,lockEndFrame:false}:p)};state().plan=unlocked;delete state().clips[2];
  expect((mediaRequests(state(),'video')[0].params as {medias:unknown[]}).medias).toHaveLength(1);

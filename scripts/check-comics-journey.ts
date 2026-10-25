@@ -95,7 +95,7 @@ async function main(){await mkdir(evidence,{recursive:true});await setup.query(`
   s=await settled();assert.equal(s.phase,'review');assert.equal(s.filmVersion,1);assert.equal(s.work,'video'===s.work?'video':s.work);assertChecks(s.checks!);assert.equal(s.checks!.duration>50,true);assert.equal(recoveries,1,'The interrupted local build was retried from the saved clips.');
   assert.deepEqual([...calls.keys()].filter(k=>k.startsWith('clip-')).sort(),generated.map(n=>`clip-${n}-0`),'Only generated panels requested a clip.');assert.equal(s.plan!.panels.length,9);assert.equal(Object.keys(s.clips).length,9);
   // Generated panels send the director's prompt verbatim with the approved still as start and end image.
-  for(const n of generated){const p=videoParams.get(`clip-${n}-0`)!;assert.equal(p.prompt,f.plan.panels[n-1].videoPrompt);assert.deepEqual(p.medias.map(m=>m.role),['start_image','end_image']);assert.equal(p.medias[0].value,p.medias[1].value);}
+  for(const n of generated){const p=videoParams.get(`clip-${n}-0`)!;assert.equal(p.prompt,f.plan.panels[n-1].videoPrompt);assert.deepEqual(p.medias.map(m=>m.role),['start_image']);assert.equal(p.medias[0].value,p.medias[1].value);}
   // Local panels got a free loop of their still; the frozen reference clips (energy below the calibrated threshold) fell back to the local camera path, disclosed.
   for(const n of local){assert(s.clips[n].startsWith(`local-${n}-`),`Panel ${n} is a local clip.`);assert.equal(s.localClips?.[n],true);}
   const frozen=[...energies.entries()].filter(([,e])=>e<FROZEN_CLIP_ENERGY).map(([file])=>Number(file.split('-')[1])).sort();assert.deepEqual(frozen,[2,6,8],`Frozen reference clips: ${JSON.stringify([...energies])}`);

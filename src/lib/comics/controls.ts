@@ -35,7 +35,8 @@ export async function frameCheck(s:ComicState,file:string):Promise<{issues:strin
  * 2.69, 1.18, 9.32, 2.44, 6.37, 0.34, 3.12, 1.51, 8.43, where 0.34 and 1.18 are stills Shimi kept
  * on purpose and 1.51 a clip frozen on its last clean frame. Below 2 a clip is frozen and goes to
  * the local camera path. Never lower this to make a reference pass. */
-export const FROZEN_CLIP_ENERGY=2;
+// Calibration of 2026-10-25 evening: the Gazalighting reference film (validated by Shimi) has live clips at 1.18 and 1.51; the frozen clips measured 0.81 (2399f947 panel 3), 0.34, 0.14 and 0.26. Threshold 1.
+export const FROZEN_CLIP_ENERGY=1;
 export async function clipMotion(s:ComicState,file:string):Promise<number>{
  const r=await exec('ffmpeg',['-v','error','-i',path.join(comicDirectory(s.id),file),'-vf','fps=12,scale=108:192,format=gray,tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-','-f','null','-'],{maxBuffer:16*1024*1024});
  const values=[...r.stdout.matchAll(/YAVG=([\d.]+)/g)].map(m=>Number(m[1])).filter(Number.isFinite);

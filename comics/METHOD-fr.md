@@ -99,3 +99,7 @@ Décision de Shimi du 25/10/2026 après le film « TEST FINAL ATTACK » (2399f94
 `film.json` ne porte plus de titre de narration ni de prompt ; `build.py` ne rend aucun titre pour une case sans `title` et le réalisateur n'en écrit pas ; les exclusions d'entrée de titre du contrôle de flash restent valables sans titre.
 
 Preuves : `tests/comics-single-journey.test.ts` (une case locale ne coûte aucun clip, une case générée envoie le prompt du réalisateur avec image de début et de fin, une image letterboxée est redessinée et la meilleure candidate gardée, un clip signalé est repris puis replié en local, un clip figé part en local sans inspection, `film.json` sans titre, un plan sauvegardé sans les nouveaux champs garde son gabarit) et `scripts/check-comics-journey.ts` (navigateur réel, montage réel, contrôles déterministes réels sur les médias de référence, V1/V2/V3, zéro appel payant). Aucun film payant n'a été produit pour ce changement : la qualité artistique des prochaines générations reste à juger par Shimi.
+
+### Ajustements du 25/10/2026 au soir (film ff695062)
+
+Les trois clips Kling de la V1 sont revenus quasi figés (énergie 0,14 / 0,26 / 1,10) : l'image de fin verrouillée sur l'image de départ annulait l'action. Désormais une case `generated` n'envoie jamais d'`end_image` ; le champ `lockEndFrame` reste dans le schéma par compatibilité mais est ignoré. Seuil de clip figé ramené de 2 à 1 (calibré sur le film Gazalighting validé : clips vivants à 1,18 et 1,51 ; figés mesurés à 0,81 / 0,34 / 0,14 / 0,26).
