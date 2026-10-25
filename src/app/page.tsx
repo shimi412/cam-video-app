@@ -4,6 +4,7 @@ import { VideoJourney, SINGLE_JOURNEY_STEPS } from "@/components/video-journey";
 import { InProgressDialog, type InProgressVideo } from "@/components/in-progress-dialog";
 import { WorkProgress } from "@/components/work-progress";
 import Link from "next/link";
+import { CategoryCard } from "@/components/category-card";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PreparationReview } from "./preparation-review";
@@ -350,22 +351,27 @@ export default function StudioPage() {
   if(connected===null)return error?<p role="alert">{error}</p>:<WorkProgress title="Opening CAM" description="Loading your workspace."/>;
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Create a video</h1>
-        <nav aria-label="Video category" className="flex gap-3 mt-4"><span className="rounded-xl bg-accent text-white px-4 py-2">Clay animation</span><Link className="rounded-xl border border-line px-4 py-2 text-accent" href="/motion/new">Motion design</Link><Link className="rounded-xl border border-line px-4 py-2 text-accent" href="/comics/new">Attack video</Link></nav>
-        <p className="text-muted mt-1">
+      <div className="space-y-4">
+        <div><p className="kicker">Step 1 · Your script</p><h1 className="page-title">Create a video</h1>
+        <p className="text-muted mt-2">
           {single ? "Paste your script. You get one estimate, delay and price; approve it and your complete film is produced. Then watch it and ask for changes until you approve a version." : connected ? "Prepare your storyboard, review the images, then approve the animation price to create your film." : "Prepare your script, review the recording and scenes, then assemble a free preview. Paid generation is disabled in this version."}
-        </p>
+        </p></div>
+        {/* Category cards (Shimi, 2026-10-25): the illustrations are owner-provided PNGs; a gradient stands in while a file is missing. */}
+        <nav aria-label="Video category" className="cats">
+          <CategoryCard title="Clay animation" line="A narrator in a warm clay studio." image="/categories/clay.png" tone="clay" selected/>
+          <CategoryCard title="Motion design" line="Words and shapes in motion." image="/categories/motion.png" tone="motion" href="/motion/new"/>
+          <CategoryCard title="Attack video" line="Comics panels, bold and fast." image="/categories/attack.png" tone="attack" href="/comics/new"/>
+        </nav>
       </div>
 
       {inProgress && <InProgressDialog video={inProgress} onKept={()=>{try{localStorage.removeItem("cam-last-job");}catch{/* Optional persistence. */}setInProgress(null);}} onDeleted={()=>{try{localStorage.removeItem("cam-last-job");}catch{/* Optional persistence. */}setInProgress(null);}} onError={message=>setError(message)}/>}
       {(framing?.conversationId || job?.conversationId) && <a href={`/conversations/${framing?.conversationId || job?.conversationId}`} className="inline-block text-accent text-sm">Open conversation, references and video versions</a>}
-      {!job && !framing && <><label className="block text-sm font-medium">Video title<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={80} placeholder="Give your video a short name" className="block mt-2 w-full bg-surface border border-line rounded-xl p-3"/></label></>}
+      {!job && !framing && <><label className="block text-sm font-medium">Video title<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={80} placeholder="Give your video a short name" className="input block mt-2"/></label></>}
       {/* Step 1: script */}
-      {example && !connected && !framing && !job && !restoring && <section className="bg-surface border border-accent/40 rounded-xl p-5 space-y-3">
+      {example && !connected && !framing && !job && !restoring && <section className="card border-accent/40 space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="font-medium">Try the existing CAM film</h2>
+            <h2 className="section-title">Try the existing CAM film</h2>
             <p className="text-sm text-muted mt-1">12 animated clips, the original recording and timed subtitles. Rebuilt locally in 9:16, with no generation charge.</p>
           </div>
           <span className="text-accent font-mono whitespace-nowrap">$0.00</span>
@@ -378,19 +384,19 @@ export default function StudioPage() {
           {example.voiceUrl && <label className="text-xs text-muted space-y-1"><span className="block">Listen to original · existing recording</span><audio aria-label="Existing original voice recording" controls preload="none" src={example.voiceUrl} className="h-9 max-w-full" /></label>}
         </div>
         {example.available ? <div className="flex items-center gap-3">
-          <button disabled={previewSource === "existing"} onClick={() => { setScript(example.script); setPreviewSource("existing"); setAspectRatio("9:16"); setError(null); }} className="bg-accent text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50">{previewSource === "existing" ? "Existing film selected" : "Load CAM example"}</button>
-          {previewSource === "existing" && <button onClick={() => { setPreviewSource("planning"); setScript(""); }} className="text-muted hover:text-foreground text-sm">Use my own script</button>}
+          <button disabled={previewSource === "existing"} onClick={() => { setScript(example.script); setPreviewSource("existing"); setAspectRatio("9:16"); setError(null); }} className="btn btn-primary btn-sm">{previewSource === "existing" ? "Existing film selected" : "Load CAM example"}</button>
+          {previewSource === "existing" && <button onClick={() => { setPreviewSource("planning"); setScript(""); }} className="btn btn-ghost btn-sm">Use my own script</button>}
         </div> : <p role="status" className="text-sm text-muted">{example.reason}</p>}
       </section>}
       {templatesLoaded && templates.length === 0 && (
-        <div role="status" className="bg-surface border border-line rounded-xl p-5 text-sm text-muted">
+        <div role="status" className="card text-sm text-muted">
           New CAM video styles are being prepared. Production will be available once the first style is ready.
         </div>
       )}
       <VideoJourney step={0} {...(single?{steps:SINGLE_JOURNEY_STEPS,hint:"Approve the estimate once. Your complete film is produced, then you watch it and ask for changes until you approve a version."}:{})}/>
-      <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
+      <section className="card space-y-4 appear">
         <div className="flex items-center justify-between">
-          <h2 className="font-medium">1. Your script</h2>
+          <h2 className="section-title">1. Your script</h2>
 
         </div>
 
@@ -401,7 +407,7 @@ export default function StudioPage() {
               value={aspectRatio}
               disabled={settingsDisabled}
               onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-              className="w-full bg-surface-2 border border-line rounded-md px-2 py-1.5"
+              className="input"
             >
               {ASPECTS.map((a) => (
                 <option key={a.value} value={a.value}>{a.label}</option>
@@ -416,8 +422,9 @@ export default function StudioPage() {
           disabled={settingsDisabled}
           rows={7}
           placeholder="Paste the narration for your film…"
-          className="w-full bg-surface-2 border border-line rounded-lg p-3 text-sm placeholder:text-muted/60 focus:outline-none focus:border-accent disabled:opacity-60"
+          className="input"
         />
+        <p className="input-count">{script.length} characters</p>
         {connected && !single && !framing && !job && script.trim().length >= 40 && <div className="text-sm" aria-live="polite">
           {currentLaunchCost ? <><p>Storyboard preparation allowance: <strong>${currentLaunchCost.maximumAmountCents/100} USD</strong></p><p className="mt-1 text-xs text-muted">Starting analyses your script and prepares the storyboard within this amount. If its image needs cost more, you see the revised price first. Preparation is included in your final total.</p></> : launchCostError?.input===launchInput ? <p>{launchCostError.message} <button type="button" className="text-accent underline" onClick={()=>setCostRevision(value=>value+1)}>Check again</button></p> : <p role="status" className="text-muted">Checking preparation cost…</p>}
         </div>}
@@ -425,28 +432,28 @@ export default function StudioPage() {
           <button
             onClick={frame}
             disabled={loading || restoring || (connected&&(!pricingReady||(!single&&!currentLaunchCost))) || templates.length === 0 || script.trim().length < 40}
-            className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
+            className="btn btn-primary"
           >
             {loading ? <span className="inline-flex items-center gap-2"><span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white motion-safe:animate-spin"/>{single ? "Analysing your script…" : "Preparing storyboard…"}</span> : single ? "Get my estimate" : connected ? "Start my video" : previewSource === "existing" ? "Prepare existing film · $0" : "Frame my request"}
           </button>
         )}
       </section>
 
-      {estimate && <section aria-label="Your video estimate" className="rounded-xl border border-accent/40 bg-surface p-5 space-y-4">
-        <h2 className="text-xl font-semibold">Your video estimate</h2>
+      {estimate && <section aria-label="Your video estimate" className="card border-accent/40 space-y-4 appear">
+        <h2 className="section-title">Your video estimate</h2>
         <p className="text-sm text-muted">Your script is analysed: {estimate.sceneCount} scenes. Approving starts the whole film; you will watch the complete version and ask for changes from there.</p>
         <div className="grid sm:grid-cols-2 gap-4"><div className="rounded-lg border border-line p-4"><p className="text-sm text-muted">Estimated delay</p><p className="text-3xl font-semibold">about {estimate.minutes} minutes</p></div><div className="rounded-lg border border-line p-4"><p className="text-sm text-muted">Price of your film</p><p className="text-3xl font-semibold">${estimate.amountCents/100} USD</p><p className="text-xs text-muted mt-2">Reserved on approval, charged once you approve a version. Available: ${(estimate.availableCents/100).toFixed(2)} USD.</p></div></div>
         {estimate.availableCents < estimate.amountCents && <p role="status" className="text-sm">Your balance is too low for this film. <Link href="/credits" className="text-accent underline">View your balance</Link>, then approve.</p>}
         <div className="flex flex-wrap gap-4 items-center">
-          <button onClick={() => void approveEstimate()} disabled={loading || estimate.availableCents < estimate.amountCents} className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium">{loading ? "Starting your video…" : "Approve & start my video"}</button>
-          <button onClick={() => { setEstimate(null); void frame(); }} disabled={loading} className="text-sm text-accent">Refresh the estimate</button>
-          <button onClick={reset} disabled={loading} className="text-muted hover:text-foreground text-sm">Change my script</button>
+          <button onClick={() => void approveEstimate()} disabled={loading || estimate.availableCents < estimate.amountCents} className="btn btn-primary">{loading ? "Starting your video…" : "Approve & start my video"}</button>
+          <button onClick={() => { setEstimate(null); void frame(); }} disabled={loading} className="btn btn-ghost btn-sm">Refresh the estimate</button>
+          <button onClick={reset} disabled={loading} className="btn btn-ghost btn-sm">Change my script</button>
         </div>
       </section>}
 
       {loading && !estimate && <WorkProgress title={single ? "Analysing your script" : "Preparing your storyboard"} description={single ? "Reading your script scene by scene and pricing your film. Nothing is generated yet." : "Organizing your scenes and preparing the images. Your storyboard opens automatically."}/>}
 
-      {connected&&!pricingReady&&<p role="status" className="rounded-xl border border-line bg-surface p-4 text-sm">Your CAM credit pricing is being set up by Bina. You can write your script; production will be available once your price is configured.</p>}
+      {connected&&!pricingReady&&<p role="status" className="card text-sm">Your CAM credit pricing is being set up by Bina. You can write your script; production will be available once your price is configured.</p>}
 
       {error && (
         <div className="border border-danger/40 bg-danger/10 text-danger rounded-lg px-4 py-3 text-sm">
@@ -456,8 +463,8 @@ export default function StudioPage() {
 
       {/* Step 2: framing + estimate */}
       {framing && !job && (
-        <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
-          <h2 className="font-medium">{framing.preparation?.quote ? "2. Scene plan & quote preparation" : "2. Framing & price"}</h2>
+        <section className="card space-y-4 appear">
+          <h2 className="section-title">{framing.preparation?.quote ? "2. Scene plan & quote preparation" : "2. Framing & price"}</h2>
           {framing.simulation && <p className="text-sm text-muted">{framing.media ? "Existing animated characters and the original recording will be assembled locally. No new media will be generated. No credits will be deducted." : "Free local preview. Choose a test voice and add visuals below. The prices are provisional estimates for future generation; this preview costs $0."}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-surface-2 border border-line rounded-lg p-4 space-y-2 text-sm">
@@ -523,11 +530,11 @@ export default function StudioPage() {
             <button
               onClick={confirm}
               disabled={loading || preparationBusy || framing.preparation?.readiness?.canPreview === false || !framing.canConfirm || framing.preparation?.shots.some((shot) => shot.media && shot.review?.status !== "approved")}
-              className="bg-accent hover:bg-accent/90 disabled:opacity-40 text-white rounded-lg px-5 py-2 text-sm font-medium"
+              className="btn btn-primary"
             >
               {framing.media ? "Rebuild existing film · $0" : framing.simulation ? "Run free preview" : `Confirm & produce · $${framing.estimate.totalBilledUsd.toFixed(2)}`}
             </button>
-            <button onClick={reset} disabled={loading || preparationBusy} className="text-muted hover:text-foreground text-sm px-3">
+            <button onClick={reset} disabled={loading || preparationBusy} className="btn btn-ghost">
               Cancel
             </button>
           </div>
@@ -536,11 +543,11 @@ export default function StudioPage() {
 
       {/* Step 3: production progress + result */}
       {job && (
-        <section className="bg-surface border border-line rounded-xl p-5 space-y-4">
-          <h2 className="font-medium">3. Production</h2>
+        <section className="card space-y-4 appear">
+          <h2 className="section-title">3. Production</h2>
           {job.canResume && <div role="status" className="bg-surface-2 border border-accent/40 rounded-lg p-4 space-y-3">
             <p className="text-sm">{job.interrupted ? "This preview was interrupted. Resume it using the saved script and media." : "You can retry this local preview after fixing the issue below."} A completed render will be reused if its files are unchanged. No credits will be charged.</p>
-            <button onClick={resume} disabled={loading || !requestsReady} className="bg-accent text-white rounded-lg px-4 py-2 text-sm disabled:opacity-40">{loading ? "Resuming…" : "Resume free preview"}</button>
+            <button onClick={resume} disabled={loading || !requestsReady} className="btn btn-primary btn-sm">{loading ? "Resuming…" : "Resume free preview"}</button>
           </div>}
           {job.canResume && job.id && <RequestRecovery key={job.id} jobId={job.id} onReady={setRequestsReady} />}
           <ul className="space-y-2 text-sm">
@@ -571,11 +578,11 @@ export default function StudioPage() {
           {job.status === "succeeded" && job.outputUrl && (
             <div className="space-y-3">
               {job.renderReused && <p className="text-sm text-muted">The saved render was recovered and its quality checks completed.</p>}
-              <video
+              <div className="stage"><video
                 src={job.outputUrl}
                 controls
-                className="rounded-lg border border-line bg-black max-h-[60vh] max-w-full w-auto mx-auto"
-              />
+                className="max-h-[60vh] max-w-full w-auto mx-auto"
+              /></div>
               {job.simulation ? <p className="text-sm text-muted">{job.media ? "Film rebuilt from the existing CAM characters and original recording, with timed subtitles. No credits were deducted. A new script needs its own voice and scenes." : job.preparation?.narration?.selected ? "Preview assembled with the reviewed imported recording and supplied word timings. Missing scene visuals remain placeholders. No credits were deducted." : "Free preview complete. Added visuals and the selected test voice are included; empty scenes remain placeholders. Subtitle word positions are approximate. No credits were deducted."}</p> : <p className="text-sm text-muted">
                 Billed <span className="font-mono text-foreground">${job.billedUsd?.toFixed(2)}</span>
                 {" "}(estimate ${job.estimateUsd?.toFixed(2)}) — deducted from your credits.
@@ -602,22 +609,22 @@ export default function StudioPage() {
           {(job.status === "succeeded" || job.status === "failed" || job.interrupted) && (
             <button
               onClick={reset}
-              className="bg-surface-2 border border-line hover:border-accent rounded-lg px-5 py-2 text-sm"
+              className="btn btn-secondary"
             >
               New production
             </button>
           )}
         </section>
       )}
-      {job?.preparation && (job.status === "succeeded" ? <details className="border border-line rounded-xl p-5 space-y-4"><summary className="cursor-pointer font-medium">Review the scenes and recording used</summary><PreparationReview preparation={job.preparation} /></details> : <PreparationReview preparation={job.preparation} />)}
+      {job?.preparation && (job.status === "succeeded" ? <details className="card space-y-4"><summary className="cursor-pointer font-medium">Review the scenes and recording used</summary><PreparationReview preparation={job.preparation} /></details> : <PreparationReview preparation={job.preparation} />)}
 
       {/* Dry-run: production sheet (debug view of the exact fal.ai requests) */}
       {job?.status === "succeeded" && job.sheet && job.sheet.length > 0 && (
-        <details className="bg-surface border border-line rounded-xl p-5 space-y-4">
+        <details className="card space-y-4 appear">
           <summary className="cursor-pointer font-medium">Production notes and media sources</summary>
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-medium">{job.media ? "Reused media" : "Production sheet (dry-run)"}</h2>
+              <h2 className="section-title">{job.media ? "Reused media" : "Production sheet (dry-run)"}</h2>
               <p className="text-sm text-muted mt-1">
                 {job.media ? "Existing voice and clips used in this montage. Their file fingerprints are saved with the production." : "Planned prompts and references for review. No generation requests were sent. Voice selection and final images require validation."}
               </p>
@@ -662,7 +669,7 @@ export default function StudioPage() {
                   </pre>
                   <button
                     onClick={() => navigator.clipboard.writeText(e.prompt)}
-                    className="text-xs text-accent hover:underline"
+                    className="btn btn-ghost btn-sm"
                   >
                     Copy prompt
                   </button>

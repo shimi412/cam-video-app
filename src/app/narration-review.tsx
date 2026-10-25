@@ -40,8 +40,8 @@ export function NarrationReview({ preparation, jobId, editable, disabled, onChan
               <tbody>{voice.words.map((word, i) => <tr key={i}><td dir="auto">{i + 1}. {word.word}</td>
                 <td><input aria-label={`Word ${i + 1} start`} name={`start-${i}`} type="number" min="0" max={voice.duration} step="0.001" required defaultValue={word.start ?? ""} className="w-24 m-1 p-1 bg-surface border border-line rounded" /></td>
                 <td><input aria-label={`Word ${i + 1} end`} name={`end-${i}`} type="number" min="0.001" max={voice.duration} step="0.001" required defaultValue={word.end ?? ""} className="w-24 m-1 p-1 bg-surface border border-line rounded" /></td></tr>)}</tbody></table></div>
-            <button type="submit" className="text-accent">Save word timings</button>
-            {dirty && <button type="reset" className="ml-4 text-muted" onClick={() => { setDirty(false); onEditing(false); }}>Discard timing edits</button>}
+            <button type="submit" className="btn btn-secondary btn-sm">Save word timings</button>
+            {dirty && <button type="reset" className="btn btn-ghost btn-sm ml-4" onClick={() => { setDirty(false); onEditing(false); }}>Discard timing edits</button>}
           </fieldset>
         </form>
         <label className="block text-xs">Or import word timings as JSON
@@ -68,10 +68,10 @@ export function NarrationReview({ preparation, jobId, editable, disabled, onChan
         <label className="block"><input name="listened" type="checkbox" className="mr-2" />I listened to this entire recording.</label>
         <label className="block"><input name="checkedWords" type="checkbox" className="mr-2" />I checked every word and its timing against the audio.</label>
         <label className="block text-xs">Review note (required to reject)<input name="note" aria-label="Voice review note" maxLength={1000} className="block w-full mt-1 p-2 bg-surface border border-line rounded" /></label>
-        <div className="flex gap-4"><button value="approved" disabled={!voice.hasTiming} className="text-accent disabled:opacity-40">Approve recording and timing</button><button value="rejected" className="text-danger">Reject recording</button></div>
+        <div className="flex gap-4"><button value="approved" disabled={!voice.hasTiming} className="btn btn-primary btn-sm">Approve recording and timing</button><button value="rejected" className="btn btn-danger btn-sm">Reject recording</button></div>
       </fieldset></form>}
-      {editable && <div className="flex gap-4"><button disabled={disabled || dirty || !voice.canUse} onClick={() => void save({ action: "select", target: voice.target })} className="rounded bg-accent text-white px-3 py-2 disabled:opacity-40">Use reviewed recording in preview</button>
-        <button disabled={disabled || dirty} onClick={() => void save({ action: "remove", id: voice.id })} className="text-muted">Remove recording</button></div>}
+      {editable && <div className="flex gap-4"><button disabled={disabled || dirty || !voice.canUse} onClick={() => void save({ action: "select", target: voice.target })} className="btn btn-primary btn-sm">Use reviewed recording in preview</button>
+        <button disabled={disabled || dirty} onClick={() => void save({ action: "remove", id: voice.id })} className="btn btn-ghost btn-sm">Remove recording</button></div>}
       <p className="text-xs text-muted">The app checks the file and timing consistency. The speaker identity is declared by the uploader. This review does not enable paid generation.</p>
     </div>}
     {editable && <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); form.set("currentId", voice?.id ?? ""); void save(form); }}>
@@ -79,7 +79,7 @@ export function NarrationReview({ preparation, jobId, editable, disabled, onChan
         <label className="block text-xs">{voice ? "Replace recording" : "Audio file"} · mono/stereo · max. 64 MB, 10 min<input name="file" type="file" aria-label="Voice recording file" accept="audio/*" required className="block mt-2" /></label>
         <label className="block">Declared speaker<select name="speaker" aria-label="Declared speaker" defaultValue="test" className="block mt-1 p-2 bg-surface border border-line rounded"><option value="bram">Production recording</option><option value="test">Test voice</option><option value="other">Other voice</option></select></label>
         <label className="block text-xs">Where this recording came from<input name="sourceNote" aria-label="Recording source" maxLength={500} required className="block mt-1 p-2 w-full bg-surface border border-line rounded" /></label>
-        <button className="text-accent">Import recording</button>
+        <button className="btn btn-secondary btn-sm">Import recording</button>
       </fieldset>
     </form>}
     {dirty && <p role="status">Save or discard word timing edits before continuing.</p>}

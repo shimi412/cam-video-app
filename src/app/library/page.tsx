@@ -20,5 +20,5 @@ export default async function LibraryPage(){
   try{if(!shots)shots=JSON.parse(await readFile(path.join(process.cwd(),"storage/concepts",job.id,"storyboard.json"),"utf8")).shots;}catch{/* A draft can have only its saved preparation. */}
   return videoCharacters(job,shots);
  }));
- return <section className="space-y-6"><div><h1 className="text-2xl font-semibold">Characters by video</h1><p className="text-muted mt-2">Find the characters listed in each video&apos;s storyboard and their approved character sheets.</p></div><CharacterLibrary videos={videos}/></section>;
+ return <section className="space-y-6"><div><p className="kicker">Characters</p><h1 className="page-title">Characters by video</h1><p className="text-muted mt-2">Find the characters listed in each video&apos;s storyboard and their approved character sheets.</p></div><CharacterLibrary videos={videos}/></section>;
 }

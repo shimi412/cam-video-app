@@ -44,7 +44,7 @@ export function QuotePreparationPanel({ quote, jobId, editable, disabled, onChan
             <label className="text-xs">Planning ceiling · Higgsfield credits<input name="creditCap" aria-label="Higgsfield planning ceiling" inputMode="decimal" defaultValue={amount(quote.totals[1].cap)} className="block mt-1 w-full bg-surface border border-line rounded p-2" /></label>
           </div>
           <label className="block text-xs">Source or assumption (required for entered prices)<textarea name="note" aria-label="Estimate source or assumption" maxLength={1000} defaultValue={quote.note} className="block mt-1 w-full bg-surface border border-line rounded p-2" /></label>
-          {editable && <button type="submit" className="rounded bg-accent text-white px-3 py-2 disabled:opacity-40">Save planning estimate</button>}
+          {editable && <button type="submit" className="btn btn-primary btn-sm">Save planning estimate</button>}
         </fieldset>
       </form>
     </details>

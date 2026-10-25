@@ -33,36 +33,33 @@ export function Header() {
     return () => clearInterval(id);
   }, []);
 
+  // UI pass of 2026-10-25: the navigation is a segmented control (grey rail, white pill on the active item),
+  // the balance a blue pill, and the primary action sits on the right.
   return (
     <header className="border-b border-line bg-surface">
       <div className="max-w-5xl mx-auto px-6 py-3 min-h-14 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3 sm:gap-8 flex-wrap">
-          <Link href="/" className="font-semibold tracking-tight">
+        <div className="flex items-center gap-3 sm:gap-6 flex-wrap min-w-0">
+          <Link href="/" className="font-semibold tracking-tight shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/recipes/cam-clay/logo.png" alt="CAM · Combat Antisemitism Movement" className="w-32 h-14 object-contain" />
           </Link>
-          <nav aria-label="Main navigation" className="flex gap-1 flex-wrap">
+          <nav aria-label="Main navigation" className="seg">
             {NAV.filter((item) => item.href !== "/admin" || account?.role === "admin").map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 aria-current={pathname === item.href ? "page" : undefined}
-                className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
-                  pathname === item.href
-                    ? "bg-accent-soft text-foreground"
-                    : "text-muted hover:text-foreground"
-                }`}
+                className={pathname === item.href ? "on" : undefined}
               >
                 {item.label}
               </Link>
             ))}
           </nav>
         </div>
-        {account && <div className="flex items-center gap-3 text-sm">
-          {preview ? <span className="text-xs bg-accent-soft border border-line rounded-md px-3 py-1.5">{localDemo ? "Local demo · No charges" : "Preview workspace · No charges"}</span> : <><span className="text-muted">CAM credits</span><span className="font-mono font-medium bg-surface-2 border border-line rounded-md px-2.5 py-1">
-            {balance === null ? "…" : balance.toFixed(2)}
-          </span></>}
-          {!account.local && <button className="text-xs text-muted" onClick={() => void signOut({ callbackUrl: "/login" })}>Sign out</button>}
+        {account && <div className="flex items-center gap-3 text-sm flex-wrap">
+          {preview ? <span className="pill">{localDemo ? "Local demo · No charges" : "Preview workspace · No charges"}</span> : <span className="pill" aria-label="CAM credits balance"><span aria-hidden="true">◎</span><span className="font-mono">{balance === null ? "…" : balance.toFixed(2)}</span> CAM credits</span>}
+          <Link href="/?new=1" className="btn btn-primary btn-sm">+ Create video</Link>
+          {!account.local && <button className="btn btn-ghost btn-sm" onClick={() => void signOut({ callbackUrl: "/login" })}>Sign out</button>}
         </div>}
       </div>
     </header>

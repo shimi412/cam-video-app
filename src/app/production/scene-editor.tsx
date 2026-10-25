@@ -17,7 +17,7 @@ export function SceneEditor({scene,disabled,onSave,onDirty}:{scene:SceneDirectio
     <div className="flex gap-4 flex-wrap text-sm"><span>Characters</span>{(["narrator","monster","effigy"] as const).map(character=><label key={character} className="flex gap-2"><input type="checkbox" name="references" value={character} defaultChecked={scene.references.includes(character)}/>{character}</label>)}</div>
     <label className="block text-sm">On-screen text · required for presenter + text<ExpandingTextarea name="overlay" maxLength={100} defaultValue={scene.overlay??""} className="block w-full mt-2 bg-surface-2 border border-line rounded p-3"/></label>
     <label className="flex gap-2 text-sm"><input name="strike" type="checkbox" defaultChecked={scene.strike}/>Cross out the title</label>
-    <button className="text-sm text-accent">Save scene · no generation</button>
+    <button className="btn btn-secondary btn-sm">Save scene · no generation</button>
    </fieldset>
   </form>
  </details>;

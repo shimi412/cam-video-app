@@ -28,8 +28,8 @@ export function SceneWorkflowReview({ workflow, editable, disabled, save, onErro
         <fieldset disabled={disabled} className="space-y-2">
           <label className="block text-xs">Review note<input name="note" aria-label={`Scene ${workflow.scene} ${step.stage} review note`} maxLength={1000} className="block w-full bg-surface-2 border border-line rounded p-2 mt-1" /></label>
           <div className="flex gap-4 text-xs">
-            <button type="submit" value="approved" className="text-accent">Approve {names[step.stage].toLowerCase()} · scene {workflow.scene}</button>
-            <button type="submit" value="rejected" className="text-danger">Reject {names[step.stage].toLowerCase()} · scene {workflow.scene}</button>
+            <button type="submit" value="approved" className="btn btn-primary btn-sm">Approve {names[step.stage].toLowerCase()} · scene {workflow.scene}</button>
+            <button type="submit" value="rejected" className="btn btn-danger btn-sm">Reject {names[step.stage].toLowerCase()} · scene {workflow.scene}</button>
           </div>
         </fieldset>
       </form>}
@@ -40,7 +40,7 @@ export function SceneWorkflowReview({ workflow, editable, disabled, save, onErro
           const form = new FormData(); form.set("scene", String(workflow.scene)); form.set("stage", step.stage); form.set("target", step.uploadTarget!); form.set("file", file); void save(form);
         }} />
       </label>}
-      {editable && step.stage === "clip" && step.status === "approved" && <button disabled={disabled} onClick={() => void save({ useAnimation: workflow.scene, target: step.target })} className="rounded bg-accent text-white px-3 py-2 text-xs disabled:opacity-40">Use approved animation in preview · scene {workflow.scene}</button>}
+      {editable && step.stage === "clip" && step.status === "approved" && <button disabled={disabled} onClick={() => void save({ useAnimation: workflow.scene, target: step.target })} className="btn btn-primary btn-sm">Use approved animation in preview · scene {workflow.scene}</button>}
     </li>)}</ol>
     <p className="text-xs text-muted mt-3">Changing an earlier approval invalidates later steps and removes a selected animation from the preview. Animation review checks the visuals; synchronization still needs the final narration recording.</p>
   </details>;

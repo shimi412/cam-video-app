@@ -67,7 +67,7 @@ export function StoryboardProposal({ jobId, title, sheet, voice, descriptions }:
       {sheet.panels.map((panel, i) => {
         const presenter = panel.visualMode === "presenter-text";
         const image = presenter ? panel.start : panel.end ?? panel.start;
-        return <article key={panel.scene} className="rounded-2xl border border-line bg-surface overflow-hidden">
+        return <article key={panel.scene} className="card overflow-hidden p-0">
           <div className="px-4 pt-4 pb-3 min-h-24">
             <p className="text-xs text-muted">{String(i + 1).padStart(2, "0")} · {presenter ? "NOUVEAU PLAN" : "PLAN CONSERVÉ"}</p>
             <h2 className="font-semibold mt-1">{descriptions[i].title}</h2>
@@ -93,8 +93,8 @@ export function StoryboardProposal({ jobId, title, sheet, voice, descriptions }:
       <h2 className="font-semibold">Essayer le texte avec la narration</h2>
       <p className="text-sm text-muted">Le texte entre en fondu et monte légèrement, puis chaque mot passe au bleu au moment où il est prononcé. Le personnage reste fixe dans cet aperçu ; son léger geste sera animé après validation.</p>
       <div className="flex gap-4 items-center flex-wrap">
-        <button onClick={() => void play()} className="bg-accent text-white rounded-lg px-4 py-2">{playing ? "Rejouer" : "Lire le texte avec la narration"}</button>
-        <button onClick={() => { audio.current?.pause(); setPlaying(false); setTime(voice.phraseEnd + .4); }} className="text-sm text-accent">Revenir à la planche fixe</button>
+        <button onClick={() => void play()} className="btn btn-primary">{playing ? "Rejouer" : "Lire le texte avec la narration"}</button>
+        <button onClick={() => { audio.current?.pause(); setPlaying(false); setTime(voice.phraseEnd + .4); }} className="btn btn-ghost btn-sm">Revenir à la planche fixe</button>
       </div>
       <label className="text-xs text-muted block">Scruter l’animation du texte
         <input aria-label="Position de l’animation du texte" className="w-full mt-2" type="range" min={voice.phraseStart - .4} max={voice.phraseEnd + .8} step=".01" value={playing ? absoluteTime : time} onChange={e => { audio.current?.pause(); setPlaying(false); setTime(Number(e.target.value)); }} />
@@ -103,7 +103,7 @@ export function StoryboardProposal({ jobId, title, sheet, voice, descriptions }:
       <p className="text-xs text-muted">Aperçu d’environ {duration.toFixed(1).replace(".", ",")} secondes, avec un extrait de la narration déjà enregistrée.</p>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     </section>
-    <section className="rounded-2xl border border-line bg-surface p-5 flex items-center gap-6 flex-wrap">
+    <section className="card flex items-center gap-6 flex-wrap">
       <div className="rounded-xl bg-[#fff4dc] p-5 w-48 shrink-0">
         <Image unoptimized src="/recipes/cam-clay/logo.png" width={1200} height={630} alt="Logo original Combat Antisemitism Movement" style={{ mixBlendMode: "multiply" }} />
       </div>

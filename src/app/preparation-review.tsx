@@ -117,9 +117,9 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
               <label className="block text-xs">Title added during editing<input name="overlay" maxLength={100} defaultValue={shot.overlay ?? ""} className="block mt-1 w-full rounded bg-surface border border-line p-2" /></label>
               <label className="block text-xs"><input type="checkbox" name="strike" defaultChecked={shot.strike} className="mr-1" />Cross out this title</label>
               <div className="flex gap-4 text-xs">
-                <button disabled={busy} type="submit" className="rounded bg-accent text-white px-3 py-2 disabled:opacity-40">Save direction</button>
+                <button disabled={busy} type="submit" className="btn btn-primary btn-sm">Save direction</button>
                 <button disabled={busy} type="button" onClick={() => setEditing(null)}>Cancel edit</button>
-                {shot.editorialStatus === "edited-draft" && <button disabled={busy} type="button" onClick={async () => { if (await save({ resetDirection: shot.index })) setEditing(null); }} className="text-accent">Restore suggestion</button>}
+                {shot.editorialStatus === "edited-draft" && <button disabled={busy} type="button" onClick={async () => { if (await save({ resetDirection: shot.index })) setEditing(null); }} className="btn btn-ghost btn-sm">Restore suggestion</button>}
               </div>
             </fieldset>
           </form>}
@@ -147,8 +147,8 @@ export function PreparationReview({ preparation, jobId, disabled, onChange, onBu
                 <fieldset disabled={busy || disabled || editing !== null} className="space-y-2">
                   <label className="block text-xs">Review note (required for rejection)<input name="note" aria-label={`Review note for scene ${shot.index}`} maxLength={1000} className="block mt-1 w-full rounded bg-surface border border-line p-2" /></label>
                   <div className="flex gap-4 text-xs">
-                    <button type="submit" value="approved" className="rounded bg-accent text-white px-3 py-2 disabled:opacity-40">Approve visual for scene {shot.index}</button>
-                    <button type="submit" value="rejected" className="text-danger">Reject visual for scene {shot.index}</button>
+                    <button type="submit" value="approved" className="btn btn-primary btn-sm">Approve visual for scene {shot.index}</button>
+                    <button type="submit" value="rejected" className="btn btn-danger btn-sm">Reject visual for scene {shot.index}</button>
                   </div>
                 </fieldset>
               </form>}
