@@ -32,7 +32,7 @@ export function RequestRecovery({ jobId, onReady }: { jobId: string; onReady: (r
       <p className="font-medium">{r.operation} · {r.state === "submitting" ? "Acceptance unknown" : r.state === "submitted" ? "Original request found · ready to resume" : "Failed · new attempt blocked"}</p>
       {r.requestId && <p className="text-xs text-muted break-all">Original ID: {r.requestId}</p>}
       {r.reconciled && <p className="text-accent">Original acceptance verified. Nothing resubmitted.</p>}
-      {r.canReconcile && <button disabled={busy} onClick={() => void reconcile(r.fingerprint)} className="text-accent disabled:opacity-40">Check saved receipt for {r.operation}</button>}
+      {r.canReconcile && <button disabled={busy} onClick={() => void reconcile(r.fingerprint)} className="btn btn-secondary btn-sm">Check saved receipt for {r.operation}</button>}
       {r.state === "submitting" && !r.canReconcile && <p className="text-muted">This older request has no verifiable acceptance. Manual investigation required; automatic retries are blocked.</p>}
     </li>)}</ul>
     <p className="text-xs text-muted">Simulation records only. Paid recovery and paid generation remain disabled.</p>
