@@ -44,6 +44,15 @@ describe('persistent CAM agent',()=>{
   });
   const result=await runAgent(f.input,{store:f.store,transport,readSkill:f.skill});expect(result.title).toBe('Answered in order');expect(transport).toHaveBeenCalledTimes(2);
  });
+ it('loads several packaged skills into one turn, the first one required (Attack reads comics-method and attack-prompting, 2026-10-25)',async()=>{
+  const f=fixture();
+  const transport:AgentTransport=vi.fn(async input=>{expect(input.system).toContain('Required skill cam-direction:');expect(input.system).toContain('Required skill cam-feedback:');expect(input.system).toContain('cam-direction and cam-feedback skills are loaded');return f.call('submit_plan',{title:'Both skills read'});});
+  const result=await runAgent({...f.input,skills:['cam-direction','cam-feedback']},{store:f.store,transport,readSkill:f.skill});
+  expect(result.title).toBe('Both skills read');expect(f.skill).toHaveBeenCalledWith('cam-direction');expect(f.skill).toHaveBeenCalledWith('cam-feedback');expect(transport).toHaveBeenCalledTimes(1);
+  expect((f.events.find(e=>e.kind==='request')!.content as {skills:string[]}).skills).toEqual(['cam-direction','cam-feedback']);
+  // A different skill list is a different turn identity: the saved two-skill answer is never served to a single-skill request.
+  const single=vi.fn(async()=>f.call('submit_plan',{title:'One skill'}));await expect(runAgent({...f.input},{store:f.store,transport:single,readSkill:f.skill})).rejects.toThrow('Input changed');expect(single).not.toHaveBeenCalled();
+ });
  it('resumes a saved assistant tool after a crash without another paid request',async()=>{
   const f=fixture(),original=f.store.put;let puts=0;
   f.store.put=async(...args)=>{await original(...args);if(++puts===2)throw Error('Process stopped after receipt');};

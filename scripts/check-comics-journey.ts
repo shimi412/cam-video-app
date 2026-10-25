@@ -1,10 +1,15 @@
 /** Attack single journey (Shimi, 2026-10-23) rehearsed end to end: real browser, controllers, database
  * and renderer; only paid boundaries are injected. Script -> one estimate (delay and price) -> complete
  * V1 produced with no human gate -> feedback on the complete version -> revision quote -> V2 -> finishing
- * note -> V3 -> approval -> download. Zero external call, zero paid call. */
+ * note -> V3 -> approval -> download. Zero external call, zero paid call.
+ * Since 2026-10-25 the rehearsal also proves the Attack method: local camera panels cost no clip and get
+ * a free loop of their still, generated panels send the director's prompt with the still as start and
+ * end image, the real sandboxed frame check redraws a barred still (the Gazalighting reference still of
+ * panel 3 ends on a straight black band, a known detector hit), the real motion-energy check sends the
+ * frozen reference clips (panels 2, 6, 8) to the local camera path, and film.json carries no title. */
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {readFile,writeFile,mkdir,readdir,rm,cp} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,readdir,rm,cp,realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {spawn,type ChildProcess} from 'node:child_process';
 import http from 'node:http';
@@ -12,7 +17,7 @@ import {Pool} from 'pg';
 import puppeteer,{type Browser} from 'puppeteer-core';
 import sharp from 'sharp';
 import {comicsFixture} from '../comics/runtime/fixture';
-import {hash,validatePlan,assertChecks,estimatedMinutes} from '../src/lib/comics/model';
+import {hash,validatePlan,assertChecks,estimatedMinutes,panelMotion} from '../src/lib/comics/model';
 import type {ComicDependencies} from '../src/lib/comics/service';
 const root=process.cwd(),origin='http://127.0.0.1:3122',actor='local',isolation=`comics_qa_${randomUUID().replaceAll('-','')}`;
 const url=new URL(process.env.DATABASE_URL??'postgres://cam@127.0.0.1:55439/cam_video_app'),setup=new Pool({connectionString:url.href});url.searchParams.set('options',`-c search_path=${isolation}`);process.env.DATABASE_URL=url.href;process.env.PROVIDER_MODE='dryrun';
@@ -24,15 +29,21 @@ async function main(){await mkdir(evidence,{recursive:true});await setup.query(`
  let recoveries=0;recoveryDependencies.diagnose=async input=>{recoveries++;assert(input.allowed.includes('retry-saved'));return {action:'retry-saved',reason:'Retry the local assembly using the completed saved clips.'};};
  const {deliveryReviewDependencies}=await import('../src/lib/agent/delivery-review');
  deliveryReviewDependencies.review=async input=>({mediaHash:input.mediaHash,ready:true,reason:'Offline injected Claude delivery decision for isolated QA.',corrections:[]});
+ // Imported after the isolated search_path is set: controls.ts reaches the store, which opens the database pool at import time.
+ const {frameCheck,clipMotion,localClip,FROZEN_CLIP_ENERGY}=await import('../src/lib/comics/controls');
  const {pool}=await import('../src/db'),{prepareComic,actComic,runComic}=await import('../src/lib/comics/service'),{getComic,comicDirectory}=await import('../src/lib/comics/store'),{publicComic}=await import('../src/lib/comics/model'),{buildComic}=await import('../src/lib/comics/render'),{priceComic}=await import('../src/lib/comics/pricing');
  try{
   assert.equal((await pool.query('SELECT current_schema() AS name')).rows[0].name,isolation);
   for(const f of(await readdir('migrations')).filter(f=>f.endsWith('.sql')).sort())await pool.query(await readFile(`migrations/${f}`,'utf8'));
   await pool.query("INSERT INTO credit_ledger(delta_usd,kind,note,wallet) VALUES(300,'topup','Isolated Attack rehearsal','customer')");await pool.query("INSERT INTO settings(key,value) VALUES('customer_pricing',$1)",[JSON.stringify({mode:'tiers-v2',multiplier:2,higgsfieldCreditUsd:.1})]);
-  const f=await comicsFixture();let directions=0,finishings=0,builds=0,preflights=0;
+  const f=await comicsFixture();let directions=0,finishings=0,builds=0,preflights=0;const frameChecks=new Map<string,string[]>(),energies=new Map<string,number>(),videoParams=new Map<string,{prompt:string;medias:{value:string;role:string}[]}>();
+  const generated=f.plan.panels.filter(p=>panelMotion(p)==='generated').map(p=>p.id),local=f.plan.panels.filter(p=>panelMotion(p)==='local').map(p=>p.id);
+  assert.deepEqual(generated,[2,4,6,7,8]);assert.deepEqual(local,[1,3,5,9]);
   const deps:ComicDependencies={
-   // Injected director: a "Remove this title" note is a local change (no new media), a "Redraw" note changes the scene (new image and clip), a sound note is deferred to finishing.
-   direct:async(s,notes=[])=>{directions++;if(!notes.length)return {plan:f.plan,deferred:[]};const plan=structuredClone(s.plan!),deferred:string[]=[];for(const n of notes){if(/music|sound/i.test(n.text)){deferred.push(n.id);continue;}for(const target of n.targets){if(/^Redraw/.test(n.text))plan.panels[target-1].scene=`A calmer flat comic object for panel ${target}, after the client note.`;else plan.panels[target-1].title='';}}return {plan:validatePlan(s.script,plan,s.plan,notes.filter(n=>!deferred.includes(n.id)).flatMap(n=>n.targets)),deferred};},
+   // Injected director: a "Push in" note on a local panel is a camera move (free, applied by the montage), a "Redraw" note changes the scene (new image and clip), a sound note is deferred to finishing.
+   direct:async(s,notes=[])=>{directions++;if(!notes.length)return {plan:f.plan,deferred:[]};const plan=structuredClone(s.plan!),deferred:string[]=[];for(const n of notes){if(/music|sound/i.test(n.text)){deferred.push(n.id);continue;}for(const target of n.targets){if(/^Redraw/.test(n.text))plan.panels[target-1].scene=`A calmer flat comic object for panel ${target}, after the client note.`;else plan.panels[target-1].cameraMove={kind:'push',amount:'medium'};}}return {plan:validatePlan(s.script,plan,s.plan,notes.filter(n=>!deferred.includes(n.id)).flatMap(n=>n.targets)),deferred};},
+   // Real deterministic controls: the sandboxed frame check, the ffmpeg motion energy, the local still loop.
+   frameCheck:async(s,file)=>{const r=await frameCheck(s,file);frameChecks.set(file,r.issues);return r;},clipMotion:async(s,file)=>{const e=await clipMotion(s,file);energies.set(file,e);return e;},localClip,
    finishing:async(s,notes)=>{finishings++;return {settings:{...s.settings,music:'quiet'},applied:notes.map(n=>n.id),unresolved:[]};},
    price:priceComic,
    gateway:{cost:async r=>r.tool==='generate_video'?4:r.tool==='generate_audio'?1:2,media:async(s,r,allowance,save)=>{
@@ -41,6 +52,7 @@ async function main(){await mkdir(evidence,{recursive:true});await setup.query(`
     const dir=comicDirectory(s.id);await mkdir(dir,{recursive:true});calls.set(r.key,(calls.get(r.key)??0)+1);
     const file=`${r.key}.${r.extension}`;s.operations[r.key]={fingerprint:hash(r),state:'accepted',requestId:`fixture-${r.key}`,quotedCredits:allowance,actualCredits:0,sentAt:Date.now()};await save();
     const panel=Number(r.key.split('-')[1]);
+    if(r.tool==='generate_video'){assert(generated.includes(panel),`Only a generated panel requests a clip (${r.key}).`);videoParams.set(r.key,r.params as {prompt:string;medias:{value:string;role:string}[]});}
     if(r.tool==='generate_video')await cp(`storage/cam-attack-gazalighting/montage/assets/clips/case-${String(panel).padStart(2,'0')}.mp4`,path.join(dir,file));
     else if(r.tool==='generate_audio')await cp(f.voice,path.join(dir,file));
     else if(r.key.startsWith('sheet'))await sharp('comics/reference/storyboard-gazalighting.jpg').png().toFile(path.join(dir,file));
@@ -48,7 +60,7 @@ async function main(){await mkdir(evidence,{recursive:true});await setup.query(`
     Object.assign(s.operations[r.key],{state:'complete',file});await save();return {file,requestId:`fixture-${r.key}`};
    }},
    align:async(dir,source)=>{await mkdir(dir,{recursive:true});const voice=path.join(dir,'voice.wav');await cp(source,voice);return {voice,timing:{...f.timing,estimated:false},audioReview:{endingNeedsListening:false,tailPaddingSeconds:0}};},
-   inspect:async()=>({sha:'reference-fixture',description:'Already approved reference media, injected for orchestration only.',sampledFrames:1,issues:[]}),
+   inspect:async()=>({sha:'reference-fixture',description:'Already approved reference media, injected for orchestration only.',sampledFrames:1,issues:[],flags:[]}),
    preflight:async()=>{preflights++;},
    rework:async(_s,panel,reason)=>({scene:`Reworked panel ${panel} after: ${reason}`,action:'A slow calm movement over the objects.',preserve:'the main object'}),
    build:async s=>{builds++;if(builds===1)throw Error('Offline fixture local render interruption');return buildComic(s);},authorize:async<T,>(_id:string,work:()=>Promise<T>)=>work()
@@ -56,7 +68,9 @@ async function main(){await mkdir(evidence,{recursive:true});await setup.query(`
   const cleared=Object.fromEntries((await readFile('.env','utf8').catch(()=>'' )).split('\n').map(l=>l.match(/^([A-Za-z_][A-Za-z0-9_]*)=/)?.[1]).filter((k):k is string=>Boolean(k)).map(k=>[k,'']));
   const env:NodeJS.ProcessEnv={...cleared,PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,NODE_ENV:'development',DATABASE_URL:url.href,CAM_AUTH_MODE:'local',PROVIDER_MODE:'dryrun',BRAIN_MODE:'mock',CAM_RELEASE:'preview',CAM_LOCAL_DEMO:'1',CAM_NEXT_DIR:'.next-comics-qa',CAM_TS_CONFIG:'tsconfig.comics-qa.json',NEXT_TELEMETRY_DISABLED:'1'};
   const config=JSON.parse(await readFile('tsconfig.json','utf8'));config.include=['next-env.d.ts','src/**/*.ts','src/**/*.tsx','.next-comics-qa/dev/types/**/*.ts'];config.exclude=['node_modules','.next','.next-connected','.next-demo'];await writeFile('tsconfig.comics-qa.json',JSON.stringify(config));
-  server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','--port','3122'],{cwd:root,env,stdio:['ignore','pipe','pipe']});let log='';server.stdout?.on('data',d=>log+=String(d));server.stderr?.on('data',d=>log+=String(d));
+  // A git worktree links node_modules outside its root, which Turbopack refuses; webpack serves the same pages there.
+  const linkedModules=!(await realpath('node_modules')).startsWith(root+path.sep);
+  server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev',...(linkedModules?['--webpack']:[]),'--hostname','127.0.0.1','--port','3122'],{cwd:root,env,stdio:['ignore','pipe','pipe']});let log='';server.stdout?.on('data',d=>log+=String(d));server.stderr?.on('data',d=>log+=String(d));
   for(let i=0;i<120;i++){const ready=await new Promise<boolean>(resolve=>{const r=http.get(origin+'/login',r=>{r.resume();resolve(r.statusCode===200);});r.on('error',()=>resolve(false));});if(ready)break;if(i===119)throw Error(log);await new Promise(r=>setTimeout(r,500));}
   browser=await puppeteer.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--disable-background-networking','--disable-component-update','--no-first-run']});const page=await browser.newPage();await page.setViewport({width:1280,height:900});page.setDefaultTimeout(240000);const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
   await page.setRequestInterception(true);page.on('request',req=>{void(async()=>{const u=new URL(req.url());if(u.origin!==origin){if(['data:','blob:'].includes(u.protocol))return req.continue();externalCalls++;return req.abort();}const reply=(v:unknown,status=200)=>req.respond({status,contentType:'application/json',body:JSON.stringify(v)});try{
@@ -79,18 +93,33 @@ async function main(){await mkdir(evidence,{recursive:true});await setup.query(`
   // 2. One approval, then the complete first version with no human gate. The browser leaves during production.
   await click('Approve & start production');await page.goto('about:blank');
   s=await settled();assert.equal(s.phase,'review');assert.equal(s.filmVersion,1);assert.equal(s.work,'video'===s.work?'video':s.work);assertChecks(s.checks!);assert.equal(s.checks!.duration>50,true);assert.equal(recoveries,1,'The interrupted local build was retried from the saved clips.');
-  assert.deepEqual([...calls.keys()].filter(k=>k.startsWith('clip-')).length,9);assert.equal(s.plan!.panels.length,9);assert.equal(Object.keys(s.clips).length,9);
+  assert.deepEqual([...calls.keys()].filter(k=>k.startsWith('clip-')).sort(),generated.map(n=>`clip-${n}-0`),'Only generated panels requested a clip.');assert.equal(s.plan!.panels.length,9);assert.equal(Object.keys(s.clips).length,9);
+  // Generated panels send the director's prompt verbatim with the approved still as start and end image.
+  for(const n of generated){const p=videoParams.get(`clip-${n}-0`)!;assert.equal(p.prompt,f.plan.panels[n-1].videoPrompt);assert.deepEqual(p.medias.map(m=>m.role),['start_image','end_image']);assert.equal(p.medias[0].value,p.medias[1].value);}
+  // Local panels got a free loop of their still; the frozen reference clips (energy below the calibrated threshold) fell back to the local camera path, disclosed.
+  for(const n of local){assert(s.clips[n].startsWith(`local-${n}-`),`Panel ${n} is a local clip.`);assert.equal(s.localClips?.[n],true);}
+  const frozen=[...energies.entries()].filter(([,e])=>e<FROZEN_CLIP_ENERGY).map(([file])=>Number(file.split('-')[1])).sort();assert.deepEqual(frozen,[2,6,8],`Frozen reference clips: ${JSON.stringify([...energies])}`);
+  assert.deepEqual(s.clipFallbacks,{2:'frozen',6:'frozen',8:'frozen'});assert.deepEqual(s.fallbacks,[2,6,8]);for(const n of frozen)assert(s.clips[n].startsWith(`local-${n}-`));
+  // The real sandboxed frame check ran on every still; the reference still of panel 3 (straight black band at the bottom) was redrawn twice under the allowance and the best candidate kept.
+  assert.equal(frameChecks.size,11,`Frame checks: ${JSON.stringify([...frameChecks])}`);assert.deepEqual([...frameChecks.entries()].filter(([,i])=>i.length).map(([file])=>file).sort(),['image-3-0-rw1.png','image-3-0-rw2.png','image-3-0.png']);
+  assert.equal(s.reworks![3].length,2);assert(s.reworks![3].every(w=>w.reason.startsWith('Automatic image control: letterbox bar')));assert.equal(s.images[3],'image-3-0-rw2.png');assert.equal(s.controls!['image-3-0-rw2.png'].pass,false);
+  // Captions only: film.json carries no narration title; local panels carry their camera move for the build.
+  const film=JSON.parse(await readFile(path.join(comicDirectory(id),s.media!.replace(/final\.mp4$/,'film.json')),'utf8')) as {panels:Record<string,unknown>[]};
+  assert(film.panels.every(p=>!('title' in p)&&!('videoPrompt' in p)));assert.deepEqual(film.panels.map(p=>p.motion),f.plan.panels.map(p=>local.includes(p.id)||frozen.includes(p.id)?'local':'generated'));assert.deepEqual(film.panels[0].cameraMove,{kind:'push',amount:'subtle'});assert.deepEqual(film.panels[1].cameraMove,{kind:'hold',amount:'subtle'});
+  const audit=JSON.parse(await readFile(path.join(comicDirectory(id),s.media!.replace(/final\.mp4$/,'build-audit.json')),'utf8')) as {localMoves:{panel:number}[];titleEntrances:number[]};assert.deepEqual(audit.localMoves.map(m=>m.panel),[1,3,5]);assert.deepEqual(audit.titleEntrances,[]);
   await page.goto(`${origin}/comics/${id}`);await text('Version 1');assert.equal(await page.$('a[download]'),null);assert(!/Claude|Higgsfield|ElevenLabs|Nano Banana|Kling/.test(await body()));
   assert.equal(await page.evaluate(async u=>(await fetch(u)).status,`/api/comics/${id}/media/download`),403);
   await page.screenshot({path:path.join(evidence,'version-1.png'),fullPage:true});
   // 3. Feedback on the complete version: one local change (title) and one redraw (new image and clip), one additional price, V2 unattended.
   await openDetails();const lockPanel=async(n:number,note:string)=>{await page.type(`textarea[aria-label="Panel ${n} feedback"]`,note);await page.$eval(`textarea[aria-label="Panel ${n} feedback"]`,el=>el.parentElement!.parentElement!.querySelector('button')!.click());await page.waitForFunction(n=>{const el=document.querySelector(`textarea[aria-label="Panel ${n} feedback"]`);return (el as HTMLTextAreaElement|null)?.readOnly;},{},n);};
-  await lockPanel(2,'Remove this title.');await lockPanel(8,'Redraw this panel with a calmer object.');assert.equal(directions,1);assert.equal((await getComic(id,actor)).notes.filter(n=>n.status==='locked').length,2);
+  await lockPanel(3,'Push in slowly on this panel.');await lockPanel(8,'Redraw this panel with a calmer object.');assert.equal(directions,1);assert.equal((await getComic(id,actor)).notes.filter(n=>n.status==='locked').length,2);
   await page.reload();await text('Apply feedback');await click('Apply feedback');await text('Approve & produce version 2');assert.equal(directions,2);
   s=await getComic(id,actor);assert.equal(s.quote!.kind,'revision');assert.equal(s.quote!.additionalUsd,4,'2 + 4 credits, two inspections, direction: $1.60 x 2 rounded up.');assert.equal(s.quote!.totalUsd,34);assert((await body()).includes('$4 additional'));
   const before=new Map(calls);await click('Approve & produce version 2');await page.waitForSelector('[data-review-version="2"][data-review-phase="review"]');await text('Version 2');
-  s=await getComic(id,actor);assert.equal(s.filmVersion,2);assert.equal(s.plan!.panels[1].title,'');assert.equal(s.plan!.panels[7].scene,'A calmer flat comic object for panel 8, after the client note.');assert.equal(s.plan!.panels[0].title,f.plan.panels[0].title);
-  const added=[...calls.keys()].filter(k=>!before.has(k));assert.deepEqual(added.map(k=>k.replace(/-[0-9a-f]{8}$/,'')).sort(),['clip-8-1','image-8-1'],'Only the redrawn panel costs new media; the title change is local.');assert([...calls.values()].every(n=>n===1));
+  s=await getComic(id,actor);assert.equal(s.filmVersion,2);assert.deepEqual(s.plan!.panels[2].cameraMove,{kind:'push',amount:'medium'});assert.equal(s.plan!.panels[7].scene,'A calmer flat comic object for panel 8, after the client note.');assert.deepEqual(s.plan!.panels[0],f.plan.panels[0]);
+  const added=[...calls.keys()].filter(k=>!before.has(k));assert.deepEqual(added.map(k=>k.replace(/-[0-9a-f]{8}$/,'')).sort(),['clip-8-1','image-8-1'],'Only the redrawn panel costs new media; the camera move change is local.');assert([...calls.values()].every(n=>n===1));
+  assert.equal(s.clipFallbacks?.[8],'frozen','The redrawn panel\'s reference clip is frozen again and fell back locally.');assert(s.clips[3].startsWith('local-3-'));
+  const film2=JSON.parse(await readFile(path.join(comicDirectory(id),s.media!.replace(/final\.mp4$/,'film.json')),'utf8')) as {panels:Record<string,unknown>[]};assert.deepEqual(film2.panels[2].cameraMove,{kind:'push',amount:'medium'});
   assert(s.notes.every(n=>n.status==='applied'));
   // 4. A finishing instruction goes through the same feedback box and the finishing director: no media, V3 rebuilt quieter.
   await page.type('textarea[aria-label="Whole video feedback"]','Lower the music.');await click('Lock feedback');await click('Apply feedback');await text('Approve & produce version 3');assert.equal(finishings,1);
@@ -104,7 +133,7 @@ async function main(){await mkdir(evidence,{recursive:true});await setup.query(`
   s=await getComic(id,actor);assert.equal(s.phase,'complete');assert.equal(s.approvedQuotes.map(q=>q.totalUsd).join(','),'30,34,36');
   assert.equal((await pool.query("SELECT state,amount_cents FROM credit_holds WHERE job_id=$1",[id])).rows[0].amount_cents,3600);
   assert.equal(recoveries,1);assert.equal(preflights,1);assert.equal(externalCalls,0);assert.deepEqual(errors,[]);assert([...calls.values()].every(n=>n===1));
-  await writeFile(path.join(evidence,'proof.json'),JSON.stringify({id,journey:'single',externalCalls,paidCalls:0,recoveries,directions,finishings,builds,versions:s.filmVersion,approvedPrices:s.approvedQuotes.map(q=>({kind:q.kind,totalUsd:q.totalUsd,additionalUsd:q.additionalUsd,additionalCostUsd:q.additionalCostUsd})),downloadBytes:result.bytes,media:s.media,mediaHash:s.mediaHash,fallbacks:s.fallbacks,checks:s.checks,browserClosedDuringProduction:true,operations:Object.fromEntries(calls)},null,2));console.log('PASS: Attack single journey in the browser, real comic montage, one estimate, V1/V2/V3 unattended, zero paid calls.');
+  await writeFile(path.join(evidence,'proof.json'),JSON.stringify({id,journey:'single',method:'attack-prompting-2026-10-25',externalCalls,paidCalls:0,recoveries,directions,finishings,builds,versions:s.filmVersion,localPanels:local,generatedPanels:generated,clipFallbacks:s.clipFallbacks,energies:Object.fromEntries(energies),frameChecks:Object.fromEntries(frameChecks),frozenThreshold:FROZEN_CLIP_ENERGY,approvedPrices:s.approvedQuotes.map(q=>({kind:q.kind,totalUsd:q.totalUsd,additionalUsd:q.additionalUsd,additionalCostUsd:q.additionalCostUsd})),downloadBytes:result.bytes,media:s.media,mediaHash:s.mediaHash,fallbacks:s.fallbacks,checks:s.checks,browserClosedDuringProduction:true,operations:Object.fromEntries(calls)},null,2));console.log('PASS: Attack single journey in the browser, real comic montage, local camera panels, generated prompts, acting controls, one estimate, V1/V2/V3 unattended, zero paid calls.');
  }finally{if(worker)clearInterval(worker);while(running)await new Promise(r=>setTimeout(r,250));await browser?.close();server?.kill('SIGTERM');await pool.end();await setup.query(`DROP SCHEMA ${isolation} CASCADE`);await setup.end();await rm('tsconfig.comics-qa.json',{force:true});}
 }
 main().then(()=>process.exit(0)).catch(e=>{console.error(e);process.exit(1);});

@@ -3,14 +3,15 @@ import {pool} from '@/db';
 import {CustomerPricingSchema} from '../customer-wallet';
 import {customerPriceCents,firstVersionPriceCents,revisionPriceCents} from '../customer-price';
 import {sheetParams,imageParams,clipParams,voiceParams,STYLE} from './prompts';
-import {hash,quoteHash,singleJourney,type ComicState,type Quote} from './model';
+import {hash,quoteHash,singleJourney,panelMotion,type ComicState,type Quote} from './model';
 import {comicsGateway,type ComicGateway,type MediaRequest} from './provider';
 import {comicsBudgets} from './budgets';
 export const needsImage=(a:ComicState['plan'],b:ComicState['plan'],id:number)=>{const keys=['scene','hero','color'] as const;return keys.some(k=>a?.panels[id-1]?.[k]!==b?.panels[id-1]?.[k]);};
-export const needsClip=(a:ComicState['plan'],b:ComicState['plan'],id:number)=>needsImage(a,b,id)||(['action','camera','preserve'] as const).some(k=>a?.panels[id-1]?.[k]!==b?.panels[id-1]?.[k]);
+/** A changed panel needs a new clip when its image changes, when its motion kind changes, or (generated and legacy panels) when its animation direction changes. A local panel's clip is a free loop of its still: only a new image needs a new one; a camera move change costs nothing (the build applies it). */
+export const needsClip=(a:ComicState['plan'],b:ComicState['plan'],id:number)=>{const pa=a?.panels[id-1],pb=b?.panels[id-1];if(needsImage(a,b,id))return true;if(panelMotion(pa??{})!==panelMotion(pb??{}))return true;if(panelMotion(pb??{})==='local')return false;return (['action','camera','preserve','videoPrompt','lockEndFrame'] as const).some(k=>pa?.[k]!==pb?.[k]);};
 /** A panel whose generation request was refused carries a director overlay for the next attempt;
  * the approved plan, its hashes and the storyboard text are unchanged (Shimi, 2026-10-22). */
-export const reworked=(s:ComicState,panel:NonNullable<ComicState['plan']>['panels'][number])=>{const o=s.reworkedPanels?.[panel.id];return o?{...panel,scene:o.scene,action:o.action,preserve:o.preserve}:panel;};
+export const reworked=(s:ComicState,panel:NonNullable<ComicState['plan']>['panels'][number])=>{const o=s.reworkedPanels?.[panel.id];return o?{...panel,scene:o.scene,action:o.action,preserve:o.preserve,...(o.videoPrompt?{videoPrompt:o.videoPrompt}:{})}:panel;};
 export const reworkSuffix=(s:ComicState,panel:number)=>{const n=s.reworks?.[panel]?.length??0;return n?`-rw${n}`:'';};
 /** Clip length estimated from the narration before the recording exists (single-journey V1
  * estimate): about 2.2 words per second plus a short settle, within Kling's 3 to 8 s. The real
@@ -36,9 +37,11 @@ export function mediaRequests(s:ComicState,kind:Quote['kind'],options:RequestOpt
   if(!singleJourney(s)||!options.estimate)return images;
   return [...images,...p.panels.filter(panel=>s.targets.includes(panel.id)&&needsClip(s.plan,p,panel.id)).flatMap(panel=>{const r=clipRequest(s,panel,revision,'estimate');return r?[r]:[];})];
  }
- return p.panels.filter(panel=>!s.clips[panel.id]).map(panel=>clipRequest(s,panel,revision,'throw')!).filter(r=>!reusableClip(s,r));
+ return p.panels.filter(panel=>!s.clips[panel.id]).flatMap(panel=>{const r=clipRequest(s,panel,revision,'throw');return r&&!reusableClip(s,r)?[r]:[];});
 }
 function clipRequest(s:ComicState,panel:NonNullable<ComicState['plan']>['panels'][number],revision:number,missing:'throw'|'skip'|'estimate'):MediaRequest|null{
+ // A local panel (Shimi, 2026-10-25) never reaches the provider: its clip is a free loop of the approved still, no line in any estimate or quote.
+ if(panelMotion(panel)==='local')return null;
  let image=Object.values(s.operations).find(o=>o.file===s.images[panel.id])?.requestId;const t=s.timing?.phrases.find(t=>t.phrase===panel.id);let seconds=t?t.end-t.start:undefined;
  if(!image||seconds===undefined){
   if(missing==='throw')throw Error(image?'Panel timing missing.':'An approved panel has no saved media identity.');
@@ -47,11 +50,12 @@ function clipRequest(s:ComicState,panel:NonNullable<ComicState['plan']>['panels'
  }
  return {key:`clip-${panel.id}-${revision}${reworkSuffix(s,panel.id)}`,tool:'generate_video',params:clipParams(reworked(s,panel),image,seconds),extension:'mp4'};
 }
-/** A completed clip of an earlier revision whose exact request (same image, action,
- * camera, duration) equals the current one is reused by its panel key, never re-paid. */
+/** A completed clip of an earlier revision whose exact request (same image, prompt, duration)
+ * equals the current one is reused by its panel key, never re-paid. A clip the automatic controls
+ * rejected (frozen, flagged) is never reused: its rework must produce a different request. */
 export function reusableClip(s:ComicState,r:MediaRequest){
  const panel=r.key.split('-')[1];
- return Object.entries(s.operations).find(([key,o])=>key.startsWith(`clip-${panel}-`)&&key!==r.key&&o.state==='complete'&&!!o.file&&o.fingerprint===hash({...r,key}))?.[1];
+ return Object.entries(s.operations).find(([key,o])=>key.startsWith(`clip-${panel}-`)&&key!==r.key&&o.state==='complete'&&!!o.file&&o.fingerprint===hash({...r,key})&&s.controls?.[o.file]?.pass!==false)?.[1];
 }
 export function adoptReusableClips(s:ComicState){
  const p=s.plan;if(!p)return [];const adopted:number[]=[];
