@@ -301,3 +301,15 @@ Shimi a validé les propositions de la page `cam-ui-propositions-2026-10-25.html
 - Cartes de catégorie illustrées : trois images Nano Banana Pro 2K (narrateur en référence pour Clay, planche de style maison pour Attack, texte seul pour Motion), 6 crédits, bonnes du premier coup ; versions 1200 px dans `public/categories/`.
 
 Vérification : tsc et eslint propres, 787 tests verts (un test de flux de fichier instable passé seul), pile redémarrée, captures de l'accueil, de la page de revue et de My videos conformes. Non porté : l'onde de clic en JavaScript de la démo et « about N scenes » sous le script.
+
+### 25 octobre, 11:30 : méthode Attack refaite (skills, caméra locale, contrôles), pause avant relance
+
+Retour de Shimi sur « TEST FINAL ATTACK » (2399f947) : générations sloppy (personnages qui apparaissent, image figée, texte dessiné), narration affichée deux fois (titres en code + sous-titres), et constat que les skills du coffre n'étaient pas la méthode de l'app : prompts gabarits, inspections sans effet. Décisions et livraison (fusion 674953c, 795 tests verts, `check-comics-journey` PASS hors ligne) :
+
+- `comics/skills/attack-prompting.md` (extrait fidèle de `cinema-director-v3` et JBoogx, 26 714 caractères) lu par le directeur et les reprises ; sources conservées dans `comics/skills/`.
+- Par case : `motion` local ou generated, `cameraMove`, `videoPrompt` écrit par le directeur (200 à 900 caractères, ligne `Avoid:`, ce qui reste fixe), `lockEndFrame` (image de fin = image de départ). Kling seulement pour une vraie action ; les mouvements de caméra sont faits dans le montage (`build.py`), sans ligne de clip facturée.
+- Contrôles qui agissent : `frame-check.py` (bandes, marges, bloc vide) et inspection à drapeaux (`lettering`, `added-figure`, `added-symbol`, `padded-frame`, `hero`, `frozen`) ; image reprise sous franchise (2 max), clip repris une fois puis repli caméra locale ; clip figé mesuré par énergie de mouvement (seuil 2 ; la case 3 du film mesurait 0,81).
+- Sous-titres seuls : plus de titres de narration.
+- En-tête : teinte bleue au survol des onglets (demande de Shimi).
+
+Ancien film 2399f947 supprimé à la demande de Shimi. Relance NON faite : Shimi ferme le Mac ; le script et le titre sont sauvegardés dans le scratchpad de session (`test-final-attack.json`) et dans la base (job supprimé, script conservé). À la reprise : créer « TEST FINAL ATTACK » avec le même script sous le compte de Shimi, approuver, surveiller, puis juger la qualité (aucun film payant n'a encore été produit avec la nouvelle méthode). Clay doit recevoir la même refonte ensuite.
