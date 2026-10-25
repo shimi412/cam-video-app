@@ -262,7 +262,9 @@ button:not(:disabled), a, select { cursor: pointer; }
     white-space: nowrap;
     transition: background-color .15s, color .15s, box-shadow .15s;
   }
-  .seg a:hover { color: var(--foreground); }
+  /* Shimi, 2026-10-25: a hovered tab takes a slightly darker blue tint (ergonomics). */
+  .seg a:hover { color: var(--accent-deep, #174f85); background: #d3e3f5; }
+  .seg a.on:hover { background: #fff; color: var(--foreground); }
   .seg a.on { background: #fff; color: var(--foreground); box-shadow: var(--shadow-1); font-weight: 600; }
   .pill {
     display: inline-flex;
