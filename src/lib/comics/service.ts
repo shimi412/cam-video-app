@@ -15,14 +15,17 @@ import {ComicStop,MediaFailed} from './errors';
 import {comicsBudgets} from './budgets';
 import {directComic,directComicFinishing,comicsReady,reworkComicPanel} from './director';
 import {comicsGateway,type ComicGateway} from './provider';
-import {mediaRequests,priceComic,needsClip,adoptReusableClips,allowanceFor} from './pricing';
+import {mediaRequests,priceComic,needsClip,adoptReusableClips,allowanceFor,reworked} from './pricing';
 import {alignComicVoice} from './voice';
 import {inspectComicMedia} from './inspection';
+import {frameCheck,clipMotion,localClip,FROZEN_CLIP_ENERGY} from './controls';
 import {buildComic} from './render';
 import {createComic,getComic,saveComic,lockComic,holdComic,comicDirectory} from './store';
-import {hash,boardHash,quoteHash,publicComic,assertChecks,panelNotes,singleJourney,type ComicState,type Note,type Quote,type Inspection} from './model';
+import {hash,boardHash,quoteHash,publicComic,assertChecks,panelNotes,singleJourney,panelMotion,IMAGE_REDRAW_FLAGS,CLIP_REWORK_FLAGS,type ComicState,type Note,type Quote,type Inspection} from './model';
 import type {MediaRequest} from './provider';
-export const comicDependencies={direct:directComic,finishing:directComicFinishing,gateway:comicsGateway,price:priceComic,align:alignComicVoice,inspect:inspectComicMedia,build:buildComic,authorize:withCamExecution,preflight:comicsReady,rework:reworkComicPanel};
+export const comicDependencies={direct:directComic,finishing:directComicFinishing,gateway:comicsGateway,price:priceComic,align:alignComicVoice,inspect:inspectComicMedia,build:buildComic,authorize:withCamExecution,preflight:comicsReady,rework:reworkComicPanel,
+ /** 2026-10-25: deterministic still check (sandboxed Python), clip motion energy (ffmpeg) and the free local clip of a still. */
+ frameCheck,clipMotion,localClip};
 export type ComicDependencies=typeof comicDependencies;
 function supervisedComicDependencies(deps:ComicDependencies):ComicDependencies{
  const step=<T>(s:ComicState,stage:string,inputs:unknown,execute:()=>Promise<T>)=>supervisedStep({jobId:s.id,category:'comics',stage,inputs,directory:comicDirectory(s.id),assertOwned:async()=>{},execute});
@@ -186,13 +189,53 @@ async function obtain(s:ComicState,kind:Quote['kind'],gateway:ComicGateway,only:
  if(failed.length||errors.length){s.progress='Preserving completed work while the remaining accepted requests finish';await saveComic(s);}
  return {ready:!pending,failed,errors};
 }
-/** Consultative review of one file, cached by file name: issues become notes, never a stop. */
+/** Consultative review of one file, cached by file name: issues become notes, never a stop. The
+ * inspected panel is the one actually generated (a rework overlay included). */
 async function review(deps:ComicDependencies,s:ComicState,plan:NonNullable<ComicState['plan']>,panel:number,file:string,kind:Inspection['kind']){
  if(s.inspections?.[file])return;
  let note:Inspection;
- try{const r=await deps.inspect({...s,plan},panel,file);note={panel,kind,issues:r.issues??[],description:r.description};}
+ try{const r=await deps.inspect({...s,plan:{panels:plan.panels.map(p=>reworked(s,p))}},panel,file);note={panel,kind,issues:r.issues??[],description:r.description,flags:r.flags??[]};}
  catch(e){if(e instanceof AIHttpTransient)throw e;note={panel,kind,issues:[],unavailable:true};}
  s.inspections={...s.inspections,[file]:note};await saveComic(s);
+}
+/** Director rework queued by an automatic control (image redraw or clip rework), under the allowance of the request it replaces. */
+async function queueRework(s:ComicState,deps:ComicDependencies,panel:number,key:string,reason:string,kind:'image'|'clip'){
+ const overlay=await deps.rework(s,panel,reason,kind);
+ s.reworkedPanels={...s.reworkedPanels,[panel]:overlay};s.reworks={...s.reworks,[panel]:[...(s.reworks?.[panel]??[]),{key,reason,at:Date.now()}]};
+}
+const CONTROL_PREFIX={image:'Automatic image control',clip:'Automatic clip control'} as const;
+/** Among the candidates of one request line (the base key and its `-rwK` reworks), the latest
+ * passing file, else the file with the fewest control issues (latest on a tie). */
+function bestCandidate(s:ComicState,key:string,fallback:string){
+ const base=key.replace(/-rw\d+$/,'');
+ const candidates=Object.entries(s.operations).filter(([k,o])=>(k===base||k.startsWith(`${base}-rw`))&&o.state==='complete'&&o.file).sort(([,a],[,b])=>(a.sentAt??0)-(b.sentAt??0)).map(([,o])=>o.file!);
+ if(!candidates.length)return fallback;
+ const score=(file:string)=>{const c=s.controls?.[file];return c?c.pass?-1:c.issues.length:Number.MAX_SAFE_INTEGER;};
+ return candidates.reduce((best,file)=>score(file)<=score(best)?file:best,candidates[0]);
+}
+/** Shimi, 2026-10-25: controls act. Every new still passes the deterministic frame check (bars,
+ * empty block) and the consultative inspection; a still flagged lettering, padded-frame, hero or
+ * added-figure is redrawn through the director's rework (at most two per panel, inside the
+ * approved allowance), and the best remaining candidate is kept. Returns true when a redraw was queued. */
+async function controlImages(s:ComicState,deps:ComicDependencies,plan:NonNullable<ComicState['plan']>,requests:MediaRequest[],save:()=>Promise<unknown>){
+ let queued=false;
+ for(const r of requests){
+  const op=s.operations[r.key];if(!op?.file)throw Error('Panel image missing.');const panel=panelOf(r.key),file=op.file;
+  if(!s.controls?.[file]){
+   const frame=await deps.frameCheck(s,file);
+   await review(deps,s,plan,panel,file,'image');
+   const flags=(s.inspections?.[file]?.flags??[]).filter(f=>IMAGE_REDRAW_FLAGS.includes(f));
+   const issues=[...frame.issues,...flags.map(f=>`automatic review: ${f}`)];
+   s.controls={...s.controls,[file]:{panel,kind:'image',pass:!issues.length,issues}};await save();
+  }
+  const c=s.controls[file];
+  if(!c.pass&&(s.reworks?.[panel]?.length??0)<2){
+   await queueRework(s,deps,panel,r.key,`${CONTROL_PREFIX.image}: ${c.issues.join('; ')}. ${(s.inspections?.[file]?.issues??[]).join(' ')}`.trim(),'image');queued=true;await save();continue;
+  }
+  s.images[panel]=bestCandidate(s,r.key,file);await save();
+ }
+ if(queued){s.progress=singleJourney(s)?'Drawing your panels':'Preparing your storyboard images';s.queued=true;await save();}
+ return queued;
 }
 /** Shimi, 2026-10-22: a provider's definitive refusal never reaches the client. The director
  * reworks the refused panels (at most twice each) and the worker resubmits them under the same
@@ -235,7 +278,7 @@ async function runSingle(s:ComicState,deps:ComicDependencies,save:()=>Promise<un
    const got=await obtain(s,'film',deps.gateway,r=>r.key.startsWith('sheet-')||r.key.startsWith('image-'));if(!got.ready)return;
    if(got.failed.length){if(await reworkRefused(s,deps,got.failed,'image',save))return;throw new ComicStop('needs-attention',`Panel${got.failed.length>1?'s':''} ${list(got.failed)} could not be drawn after several attempts. Your work is saved and our team has the details.`,detail(s,got.failed));}
    if(got.errors.length)throw got.errors[0];
-   for(const r of mediaRequests(s,'film').filter(r=>r.key.startsWith('image-'))){const op=s.operations[r.key];if(!op?.file)throw Error('Panel image missing.');const panel=panelOf(r.key);await review(deps,s,plan,panel,op.file,'image');s.images[panel]=op.file;await save();}
+   if(await controlImages(s,deps,plan,mediaRequests(s,'film').filter(r=>r.key.startsWith('image-')),save))return;
   }
   if(!await clipsStage(s,deps,save,'film'))return;
   await completeVersion(s,deps);return;
@@ -247,8 +290,8 @@ async function runSingle(s:ComicState,deps:ComicDependencies,save:()=>Promise<un
    const got=await obtain(s,'revision',deps.gateway);if(!got.ready)return;
    if(got.failed.length){if(await reworkRefused(s,deps,got.failed,'image',save))return;throw new ComicStop('needs-attention',`Panel${got.failed.length>1?'s':''} ${list(got.failed)} could not be redrawn after several attempts. Your current version is saved and our team has the details.`,detail(s,got.failed));}
    if(got.errors.length)throw got.errors[0];
-   for(const r of mediaRequests(s,'revision')){const op=s.operations[r.key];if(!op?.file)throw Error('Panel image missing.');const panel=panelOf(r.key);await review(deps,s,plan,panel,op.file,'image');s.images[panel]=op.file;await save();}
-   for(const target of s.targets){if(needsClip(s.plan,plan,target))delete s.clips[target];s.votes[target]=false;}
+   if(await controlImages(s,deps,plan,mediaRequests(s,'revision'),save))return;
+   for(const target of s.targets){if(needsClip(s.plan,plan,target)){delete s.clips[target];if(s.localClips)delete s.localClips[target];if(s.clipFallbacks)delete s.clipFallbacks[target];}s.votes[target]=false;}
    s.plan=plan;s.proposal=undefined;s.revision++;
   }
   // The same approved quote carries the clips and the build: the work continues as its `video` stage.
@@ -256,12 +299,38 @@ async function runSingle(s:ComicState,deps:ComicDependencies,save:()=>Promise<un
  }
  if(s.work==='video'){if(!await clipsStage(s,deps,save,'video'))return;await completeVersion(s,deps);}
 }
-/** Clips of every panel without one, reused by fingerprint when identical, inspected as they arrive. */
+/** The free local camera path of one panel: a loop of the approved still, the build applies the camera move. */
+async function adoptLocalClip(s:ComicState,deps:ComicDependencies,panel:number,why?:'frozen'|'flagged'){
+ s.clips[panel]=await deps.localClip(s,panel);s.localClips={...s.localClips,[panel]:true};
+ if(why)s.clipFallbacks={...s.clipFallbacks,[panel]:why};else if(s.clipFallbacks)delete s.clipFallbacks[panel];
+}
+/** Clips of every panel without one. Local panels (Shimi, 2026-10-25) get a free loop of their
+ * approved still, no request. Generated clips are reused by fingerprint when identical and
+ * controlled as they arrive: a frozen clip (motion energy below the calibrated threshold) goes to
+ * the local camera path; a clip flagged lettering, added-figure, added-symbol or hero is reworked
+ * once by the director under the same allowance, then replaced by the local camera path when still
+ * flagged. Every fallback is disclosed to the client in the film notes. */
 async function clipsStage(s:ComicState,deps:ComicDependencies,save:()=>Promise<unknown>,kind:'film'|'video'){
  adoptReusableClips(s);
- if(s.plan!.panels.some(p=>!s.clips[p.id])){s.progress='Animating your scenes';await save();}
+ const plan=s.plan!;
+ for(const p of plan.panels){if(s.clips[p.id]||panelMotion(p)!=='local')continue;await adoptLocalClip(s,deps,p.id);await save();}
+ if(plan.panels.some(p=>!s.clips[p.id])){s.progress='Animating your scenes';await save();}
  const got=await obtain(s,kind,deps.gateway,r=>r.key.startsWith('clip-'));
- for(const r of mediaRequests(s,kind).filter(r=>r.key.startsWith('clip-'))){const op=s.operations[r.key];if(op?.state!=='complete'||!op.file)continue;const panel=panelOf(r.key);await review(deps,s,s.plan!,panel,op.file,'clip');s.clips[panel]=op.file;await save();}
+ let queued=false;
+ for(const r of mediaRequests(s,kind).filter(r=>r.key.startsWith('clip-'))){const op=s.operations[r.key];if(op?.state!=='complete'||!op.file)continue;const panel=panelOf(r.key),file=op.file;
+  if(!s.controls?.[file]){
+   const energy=await deps.clipMotion(s,file);let issues:string[]=[];
+   if(energy<FROZEN_CLIP_ENERGY)issues=[`frozen clip: motion energy ${energy.toFixed(2)} below ${FROZEN_CLIP_ENERGY}`];
+   else{await review(deps,s,plan,panel,file,'clip');issues=(s.inspections?.[file]?.flags??[]).filter(f=>CLIP_REWORK_FLAGS.includes(f)).map(f=>`automatic review: ${f}`);}
+   s.controls={...s.controls,[file]:{panel,kind:'clip',pass:!issues.length,issues,energy}};await save();
+  }
+  const c=s.controls[file];
+  if(c.pass){s.clips[panel]=file;if(s.localClips)delete s.localClips[panel];if(s.clipFallbacks)delete s.clipFallbacks[panel];await save();continue;}
+  const frozen=c.issues.some(i=>i.startsWith('frozen')),controlReworks=(s.reworks?.[panel]??[]).filter(w=>w.reason.startsWith(CONTROL_PREFIX.clip)).length;
+  if(!frozen&&controlReworks<1&&(s.reworks?.[panel]?.length??0)<2){await queueRework(s,deps,panel,r.key,`${CONTROL_PREFIX.clip}: ${c.issues.join('; ')}. ${(s.inspections?.[file]?.issues??[]).join(' ')}`.trim(),'clip');queued=true;await save();continue;}
+  await adoptLocalClip(s,deps,panel,frozen?'frozen':'flagged');await save();
+ }
+ if(queued){s.progress='Animating your scenes';s.queued=true;await save();return false;}
  if(!got.ready)return false;
  if(got.failed.length){if(await reworkRefused(s,deps,got.failed,'clip',save))return false;throw new ComicStop('replace-failed',`Scene${got.failed.length>1?'s':''} ${list(got.failed)} could not be animated after several attempts. Your other scenes are saved; review the updated price to finish this version.`,detail(s,got.failed));}
  if(got.errors.length)throw got.errors[0];
@@ -334,7 +403,10 @@ export async function failComic(s:ComicState,e:unknown,save:()=>Promise<unknown>
  }
  s.error=recoveryDiagnostic(e);await save();await superviseComicFailure(s,save);
 }
-async function finish(s:ComicState,deps:ComicDependencies){s.progress='Assembling and checking your complete film';await saveComic(s);const built=await deps.build(s);assertChecks(built.checks);s.media=built.media;s.checks=built.checks;s.fallbacks=built.fallbacks;s.mediaHash=hash((await readFile(path.join(comicDirectory(s.id),built.media))).toString('base64'));}
+async function finish(s:ComicState,deps:ComicDependencies){s.progress='Assembling and checking your complete film';await saveComic(s);const built=await deps.build(s);assertChecks(built.checks);s.media=built.media;s.checks=built.checks;
+ // Still fallbacks disclosed for review: the build's flash corrections and the clips replaced by the local camera path (frozen or flagged, 2026-10-25).
+ s.fallbacks=[...new Set([...built.fallbacks,...Object.keys(s.clipFallbacks??{}).map(Number)])].sort((a,b)=>a-b);s.checks.stillFallbacks=s.fallbacks;
+ s.mediaHash=hash((await readFile(path.join(comicDirectory(s.id),built.media))).toString('base64'));}
 export async function runQueuedComics(){const rows=(await pool.query("SELECT job_id,actor_id FROM comics_runs c JOIN jobs j ON j.id=c.job_id WHERE state->>'queued'='true' AND j.deleted_at IS NULL ORDER BY c.updated_at LIMIT 4")).rows;for(const r of rows)await runComic(r.job_id,r.actor_id);}
 
 async function superviseComicFailure(s:ComicState,save:()=>Promise<unknown>){

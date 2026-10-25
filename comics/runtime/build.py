@@ -220,16 +220,49 @@ for c in order:
     before = P / f"assets/stills/case-{c:02d}-debut.jpg"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(f), "-frames:v", "1", "-q:v", "2", str(before)], check=True)
     fit = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover"
-    inner = (f'<img src="assets/stills/case-{c:02d}-debut.jpg" style="{fit}">'
+    inner = (f'<div id="inner{c}" style="position:absolute;inset:0">'
+             f'<img src="assets/stills/case-{c:02d}-debut.jpg" style="{fit}">'
              f'<img id="fin{c}" src="assets/stills/case-{c:02d}-fin.jpg" style="{fit};opacity:0">'
              f'<video id="shot{c}" class="clip" data-start="{vin:.3f}" data-duration="{win:.3f}" data-track-index="{1 + (c % 2)}" '
              f'src="assets/clips/case-{c:02d}-timed.mp4" data-media-start="0"{f" data-playback-rate={chr(34)}{rate}{chr(34)}" if rate != 1 else ""} '
-             f'muted playsinline style="{fit}"></video>')
+             f'muted playsinline style="{fit}"></video></div>')
     page_nodes.append(f'<div id="case{c}" style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px;overflow:hidden;'
                       f'background:{INK};outline:{BORDER}px solid {INK}">{inner}</div>')
     if vout < DUR:
         mv(f'tl.set("#fin{c}",{{opacity:1}},{vout - 0.02:.3f});')
     cues["shots"][c].append(rate)
+
+
+# ---------------------------------------------------------------- caméra locale dans la case (Shimi, 25/10/2026)
+# Une case « local » est l'image validée en boucle : son mouvement se fait ici, en plus de la caméra de planche.
+# push : échelle 1.00 -> 1.06 (subtle) / 1.12 (medium) ; pull : l'inverse ; pans et tilts : translation de 4 % / 8 %
+# du cadre avec une légère échelle pour qu'aucun bord n'apparaisse ; hold : rien. Un clip généré garde le comportement existant.
+LOCAL_MOVES = []
+for c in order:
+    p = PANELS[c - 1]
+    if p.get("motion") != "local":
+        continue
+    move = p.get("cameraMove") or {}
+    kind, amount = move.get("kind", "hold"), move.get("amount", "subtle")
+    if kind == "hold":
+        continue
+    x, y, w, h = rect(c)
+    vin, vout = cues["transitions"][c]
+    zoom = 1.06 if amount == "subtle" else 1.12
+    shift = 0.04 if amount == "subtle" else 0.08
+    if kind == "push":
+        a, b = {"scale": 1.0}, {"scale": zoom}
+    elif kind == "pull":
+        a, b = {"scale": zoom}, {"scale": 1.0}
+    else:
+        s = round(1 + shift * 1.3, 3)
+        dx, dy = round(w * shift / 2, 1), round(h * shift / 2, 1)
+        # La caméra tourne vers la gauche : l'image glisse vers la droite ; vers le haut : l'image descend.
+        a, b = {"pan-left": ({"scale": s, "x": -dx}, {"scale": s, "x": dx}), "pan-right": ({"scale": s, "x": dx}, {"scale": s, "x": -dx}),
+                "tilt-up": ({"scale": s, "y": -dy}, {"scale": s, "y": dy}), "tilt-down": ({"scale": s, "y": dy}, {"scale": s, "y": -dy})}[kind]
+    mv(f'tl.fromTo("#inner{c}",{json.dumps(a)},{{...{json.dumps(b)},duration:{vout - vin:.3f},ease:"sine.inOut"}},{vin:.3f});')
+    LOCAL_MOVES.append({"panel": c, "kind": kind, "amount": amount, "from": vin, "to": vout})
+cues["localMoves"] = LOCAL_MOVES
 
 
 # ---------------------------------------------------------------- caméra
@@ -302,6 +335,8 @@ def ends_before(c, margin=0.25):
 
 
 # Data-driven titles and captions. All text is escaped; no generated code or arbitrary HTML.
+# Captions only since 2026-10-25 (Shimi): film.json carries no narration title any more, so this
+# loop renders nothing for new films; it stays for a panel that still carries a title.
 # A title too short to read (< MIN_VISIBLE fully visible) is repaired here without Claude
 # (2026-10-21): carried through the transition up to just before the next title enters, or
 # dropped when even that cannot hold it. Every repair is recorded and disclosed for review.
@@ -310,7 +345,7 @@ TITLE_REPAIRS = []
 ENTRANCES = []
 for c in order:
     p = PANELS[c-1]
-    if not p["title"]:
+    if not p.get("title"):
         continue
     txt = p["title"]
     words = txt.split()
@@ -326,7 +361,7 @@ for c in order:
     if t_out - t_in - TITLE_IN - TITLE_FADE < MIN_VISIBLE:
         if c == len(PANELS):
             limit = CARD
-        elif PANELS[c]["title"]:
+        elif PANELS[c].get("title"):
             limit = starts[c + 1] + .05
         else:
             limit = ends_before(c + 1, 0)
@@ -424,7 +459,7 @@ doc = f'''<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name=
 (P / "index.html").write_text(doc)
 (P / "visibility.json").write_text(json.dumps(VISIBLE))
 bad = [(n, a, b - a) for n, a, b in VISIBLE if b - a < MIN_VISIBLE]
-(P / "build-audit.json").write_text(json.dumps({"duration":DUR,"logoAt":CARD,"panels":len(PANELS),"titleRepairs":TITLE_REPAIRS,"titleEntrances":ENTRANCES,"briefItems":[f"{n} ({d:.2f} s at {a:.2f} s)" for n, a, d in bad]}))
+(P / "build-audit.json").write_text(json.dumps({"duration":DUR,"logoAt":CARD,"panels":len(PANELS),"titleRepairs":TITLE_REPAIRS,"titleEntrances":ENTRANCES,"localMoves":LOCAL_MOVES,"briefItems":[f"{n} ({d:.2f} s at {a:.2f} s)" for n, a, d in bad]}))
 print(f"contrôle durée d'affichage (≥ {MIN_VISIBLE} s) :", len(VISIBLE), "apparitions,", len(bad), "trop courtes,", len(TITLE_REPAIRS), "titres réparés")
 for n, a, d in bad:
     print(f"  ⚠ {a:6.2f} s  {d:.2f} s  {n}")

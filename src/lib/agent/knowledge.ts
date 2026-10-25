@@ -8,6 +8,7 @@ export const skillCatalog=[
  {id:'cam-finishing',description:'Sound, editing, subtitles and final review',file:'agent/skills/cam-finishing/SKILL.md'},
  {id:'motion-method',description:'Authoritative method for typographic motion in code',file:'motion/METHOD-fr.md'},
  {id:'comics-method',description:'Validated Attack comic film method, universe before hero',file:'comics/METHOD-fr.md'},
+ {id:'attack-prompting',description:'Attack clip prompting: local camera or one generated clip per panel, the complete Kling prompt grammar (write the visible, locked order, no text, reference handling, one camera axis, avoid line)',file:'comics/skills/attack-prompting.md'},
 ] as const;
 export async function readSkill(id:string,root=process.cwd()){
  const skill=skillCatalog.find(s=>s.id===id);if(!skill)throw Error('Unknown CAM skill. Arbitrary paths are not available.');
