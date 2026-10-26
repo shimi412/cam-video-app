@@ -31,7 +31,8 @@ async function run(m:StudioMission){
  await writeFile(path.join(dir,'mission.json'),JSON.stringify(m,null,1));
  const prompt=await executorPrompt(m,dir);
  const claude=process.env.CAM_STUDIO_CLAUDE??'claude';
- const base=['--output-format','json','--max-turns',process.env.CAM_STUDIO_MAX_TURNS??'300','--dangerously-skip-permissions','--add-dir',repo,...(process.env.CAM_STUDIO_MODEL?['--model',process.env.CAM_STUDIO_MODEL]:[])];
+ // Shimi, 2026-10-26: Opus for the executor (Fable costs more for the same method), a dollar ceiling per pass, fewer turns (the skill waits with one sleep per batch). `--bare` is impossible with the account login (it needs an API key).
+ const base=['--output-format','json','--max-turns',process.env.CAM_STUDIO_MAX_TURNS??'200','--max-budget-usd',process.env.CAM_STUDIO_MAX_USD_PER_PASS??'6','--dangerously-skip-permissions','--add-dir',repo,'--model',process.env.CAM_STUDIO_MODEL??'claude-opus-5-5'];
  const invoke=(cli:string[])=>new Promise<{code:number|null;out:string}>(resolve=>{
   const child=spawn('caffeinate',['-i',claude,...cli],{cwd:workspace,env:{...process.env,CLAUDECODE:undefined,CLAUDE_CODE_SESSION_ID:undefined,CLAUDE_CODE_CHILD_SESSION:undefined},stdio:['ignore','pipe','pipe']});
   let out='';child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{out+=d;});
