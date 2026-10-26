@@ -15,17 +15,21 @@ import {ComicStop,MediaFailed} from './errors';
 import {comicsBudgets} from './budgets';
 import {directComic,directComicFinishing,comicsReady,reworkComicPanel} from './director';
 import {comicsGateway,type ComicGateway} from './provider';
-import {mediaRequests,priceComic,needsClip,adoptReusableClips,allowanceFor,reworked} from './pricing';
+import {mediaRequests,priceComic,priceStudioComic,needsClip,adoptReusableClips,allowanceFor,reworked} from './pricing';
 import {alignComicVoice} from './voice';
 import {inspectComicMedia} from './inspection';
 import {frameCheck,clipMotion,localClip,FROZEN_CLIP_ENERGY} from './controls';
 import {buildComic} from './render';
-import {createComic,getComic,saveComic,lockComic,holdComic,comicDirectory} from './store';
-import {hash,boardHash,quoteHash,publicComic,assertChecks,panelNotes,singleJourney,panelMotion,IMAGE_REDRAW_FLAGS,CLIP_REWORK_FLAGS,type ComicState,type Note,type Quote,type Inspection} from './model';
+import {createComic,getComic,saveComic,lockComic,holdComic,comicDirectory,comicFile,comicActor} from './store';
+import {hash,boardHash,quoteHash,publicComic,assertChecks,panelNotes,singleJourney,studioFulfilment,panelMotion,IMAGE_REDRAW_FLAGS,CLIP_REWORK_FLAGS,type ComicState,type Note,type Quote,type Inspection} from './model';
 import type {MediaRequest} from './provider';
+import {fulfilmentMode,createMission,missionById} from '../studio/missions';
+import {countPanels} from '../studio/pricing';
 export const comicDependencies={direct:directComic,finishing:directComicFinishing,gateway:comicsGateway,price:priceComic,align:alignComicVoice,inspect:inspectComicMedia,build:buildComic,authorize:withCamExecution,preflight:comicsReady,rework:reworkComicPanel,
  /** 2026-10-25: deterministic still check (sandboxed Python), clip motion energy (ffmpeg) and the free local clip of a still. */
- frameCheck,clipMotion,localClip};
+ frameCheck,clipMotion,localClip,
+ /** 2026-10-26, studio mode: the admin fulfilment setting read at creation, the mission handed to the local executor, and the delivered mission read back. */
+ fulfilment:fulfilmentMode,mission:createMission,loadMission:missionById};
 export type ComicDependencies=typeof comicDependencies;
 function supervisedComicDependencies(deps:ComicDependencies):ComicDependencies{
  const step=<T>(s:ComicState,stage:string,inputs:unknown,execute:()=>Promise<T>)=>supervisedStep({jobId:s.id,category:'comics',stage,inputs,directory:comicDirectory(s.id),assertOwned:async()=>{},execute});
@@ -34,7 +38,11 @@ function supervisedComicDependencies(deps:ComicDependencies):ComicDependencies{
 const Start=z.object({requestId:z.uuid(),title:z.string().trim().min(1).max(80),script:z.string().trim().min(20).max(12000)}).strict();
 export async function prepareComic(actor:string,input:unknown,deps:ComicDependencies=comicDependencies){
  deps=supervisedComicDependencies(deps);const p=Start.parse(input);await createComic(actor,p.requestId,p.title,p.script);
- return lockComic(p.requestId,async()=>{const s=await getComic(p.requestId,actor);if(s.plan&&s.quote)return publicComic(s);if(!s.plan){await deps.preflight();const directed=await deps.direct(s);s.plan=directed.plan;await saveComic(s);}
+ return lockComic(p.requestId,async()=>{const s=await getComic(p.requestId,actor);if(s.plan&&s.quote)return publicComic(s);
+  // Studio mode (Shimi, 2026-10-26): the mode is fixed at creation; the estimate is local (no director, no provider), the versions come from the local executor.
+  if(!s.plan&&!s.quote&&!s.fulfilment&&singleJourney(s))s.fulfilment=await deps.fulfilment('comics');
+  if(studioFulfilment(s)){if(s.quote)return publicComic(s);s.panelCount=countPanels(s.script);s.quote=await priceStudioComic(s,'film');s.phase='estimate';s.progress='Your estimate is ready';await saveComic(s);return publicComic(s);}
+  if(!s.plan){await deps.preflight();const directed=await deps.direct(s);s.plan=directed.plan;await saveComic(s);}
   // Single journey (Shimi, 2026-10-23): one estimate for the complete first version (delay from the panel count, price by the common grid on the whole estimated supplier cost), then V1 without any intermediate gate.
   if(singleJourney(s)){s.quote=await deps.price(s,'film',deps.gateway);s.phase='estimate';s.progress='Your estimate is ready';}
   else{s.quote=await deps.price(s,'prepare',deps.gateway);s.phase='preparation-price';s.progress='Your storyboard preparation price is ready';}
@@ -56,17 +64,25 @@ const Action=z.discriminatedUnion('type',[
 export async function actComic(id:string,actor:string,input:unknown,deps:ComicDependencies=comicDependencies){
  const a=Action.parse(input);deps=supervisedComicDependencies(deps);
  return lockComic(id,async()=>{
-  const s=await getComic(id,actor),plan=s.plan,single=singleJourney(s);
+  const s=await getComic(id,actor),plan=s.plan,single=singleJourney(s),studio=studioFulfilment(s);
   if(a.type==='save'){await pool.query('UPDATE jobs SET saved_to_library=true WHERE id=$1',[id]);s.saved=true;}
   else if(a.type==='lock-feedback'||a.type==='remove-feedback'){
    if(s.queued||!['board','visuals','finishing','blocked','review'].includes(s.phase))throw Error('Wait for the current change to finish before editing feedback.');
    if(a.type==='lock-feedback'){
-    if(a.targets.some(n=>!plan?.panels.some(p=>p.id===n)))throw Error('Choose valid panels.');
+    // A studio film has no plan: its panels are numbered 1..panelCount (the estimate's count, the executor's cut follows the same sentences).
+    if(a.targets.some(n=>studio?!(n>=1&&n<=(s.panelCount??0)):!plan?.panels.some(p=>p.id===n)))throw Error('Choose valid panels.');
     const note:Note={id:a.id,text:a.text,targets:[...new Set(a.targets)],stage:a.stage,status:a.stage==='finishing'?'deferred':'locked'};
     const previous=s.notes.find(n=>n.id===a.id);if(previous?.status==='applied')throw Error('Add a new note for another correction.');
     s.notes=s.notes.filter(n=>n.id!==a.id).concat(note);
    }else s.notes=s.notes.filter(n=>n.id!==a.id||n.status==='applied');
    if(s.quote?.kind==='revision'){s.quote=undefined;s.proposal=undefined;if(single){s.pendingSettings=undefined;s.pendingResolved=undefined;s.unresolved=undefined;s.targets=[];}}s.error=undefined;
+  }else if(a.type==='apply-feedback'&&studio){
+   // Studio mode: no director reads the notes; they go verbatim to the executor with the next mission. The quote is the documented studio revision cost x2.
+   if(s.queued||s.phase!=='review')throw Error('Feedback can be applied once the current version is ready.');
+   if(!s.notes.some(n=>n.status==='locked'))throw Error('Lock at least one note first.');
+   if(s.quote?.kind==='revision'&&s.quote.inputHash===quoteHash(s,'revision'))return publicComic(s);
+   s.targets=[];s.proposal=undefined;s.pendingSettings=undefined;s.pendingResolved=undefined;s.unresolved=undefined;
+   s.quote=await priceStudioComic(s,'revision');s.progress='Review the price of your next version';
   }else if(a.type==='apply-feedback'&&single){
    // One batch over the complete version: the director interprets every locked note (visual notes
    // change panels, finishing notes go to the finishing director), then one revision quote shows
@@ -100,11 +116,19 @@ export async function actComic(id:string,actor:string,input:unknown,deps:ComicDe
    else{s.proposal=directed.plan;s.quote=await deps.price(s,'revision',deps.gateway);s.progress='Review the additional price before applying your changes';}
   }else if(a.type==='refresh-price'){
    if(s.queued||!s.quote||s.phase==='blocked')throw Error('Review the saved work before refreshing its price.');
-   s.quote=await deps.price(s,s.quote.kind,deps.gateway);s.progress='Your updated price is ready';
+   s.quote=studio&&(s.quote.kind==='film'||s.quote.kind==='revision')?await priceStudioComic(s,s.quote.kind):await deps.price(s,s.quote.kind,deps.gateway);s.progress='Your updated price is ready';
   }else if(a.type==='approve-price'){
    const q=s.quote;if(!q||q.id!==a.quoteId||q.expires<Date.now()||q.inputHash!==quoteHash(s,q.kind))throw Error('Review the current price before continuing.');
    if(s.approvedQuotes.some(old=>old.id===q.id))return publicComic(s);
    if(s.queued)throw Error('Work is already running.');
+   if(studio){
+    // Studio mode: credits are reserved as for the engine, then the version is a mission for the local executor. The film is never queued for the engine worker.
+    if(s.phase==='working')throw Error('Work is already running.');
+    await holdComic(s,q);s.approvedQuotes.push(q);s.workQuote=q.id;s.work=q.kind==='film'?'film':'revision';s.queued=false;s.phase='working';s.error=undefined;s.stop=undefined;
+    const version=(s.filmVersion??0)+1,locked=s.notes.filter(n=>n.status==='locked');s.progress=`Version ${version} in production`;
+    await deps.mission({jobId:s.id,category:'comics',version,title:s.title,script:s.script,feedback:locked.map(n=>({text:n.text,...(n.targets.length===1?{scene:n.targets[0]}:{})})),priceCents:Math.round(q.additionalUsd*100)});
+    await saveComic(s);return publicComic(s);
+   }
    if(q.kind==='video'&&!single&&s.approved.board!==boardHash(s))throw Error('Approve the current storyboard first.');
    await holdComic(s,q);s.recovery=freshPipelineRecovery();s.stop=undefined;s.transientRetries=0;s.approvedQuotes.push(q);s.work=q.kind==='prepare'?'prepare':q.kind==='video'?'video':q.kind==='film'?'film':'revision';s.workQuote=q.id;s.queued=true;s.phase='working';s.error=undefined;
    s.progress=single?q.kind==='film'?'Recording your narration':q.kind==='video'?'Animating the remaining scenes':'Preparing your next version':q.kind==='video'?'Preparing all video scenes':'Preparing your storyboard images';
@@ -113,10 +137,11 @@ export async function actComic(id:string,actor:string,input:unknown,deps:ComicDe
    if(s.notes.some(n=>n.status==='locked'))throw Error('Review your locked notes: apply or remove them before approving this version.');
    if(s.notes.some(n=>n.status==='deferred'&&!a.resolved.includes(n.id)))throw Error('Review your saved notes before approving.');
    for(const n of s.notes)if(n.status==='deferred')n.status='applied';
-   const bytes=await readFile(path.join(comicDirectory(id),s.media!));if(hash(bytes.toString('base64'))!==s.mediaHash)throw Error('The reviewed file changed.');
+   const file=studio?comicFile(id,s.media!):path.join(comicDirectory(id),s.media!),bytes=await readFile(file);if(hash(bytes.toString('base64'))!==s.mediaHash)throw Error('The reviewed file changed.');
    // As for the legacy final approval: the client's explicit approval releases the download; the delivery review is consultative.
-   try{await reviewDelivery({jobId:id,category:'comics',mediaHash:createHash('sha256').update(bytes).digest('hex'),file:path.join(comicDirectory(id),s.media!),script:s.script,facts:{humanApproval:`This approval of version ${s.filmVersion??1}`,version:s.filmVersion,checks:s.checks,settings:s.settings,notes:s.notes,unresolved:s.unresolved,stillFallbacks:s.fallbacks,consultativeNotes:Object.fromEntries((s.plan?.panels??[]).map(p=>[p.id,panelNotes(s,p.id)])),audioReview:s.audioReview}});s.deliveryNotes=undefined;}
-   catch(error){const message=error instanceof Error?error.message:String(error);if(!message.startsWith('Final review:'))throw error;s.deliveryNotes=message.slice('Final review:'.length).trim();}
+   // A studio version was reviewed by its executor before delivery (notes kept as the version's review notes): no second paid review.
+   if(!studio){try{await reviewDelivery({jobId:id,category:'comics',mediaHash:createHash('sha256').update(bytes).digest('hex'),file,script:s.script,facts:{humanApproval:`This approval of version ${s.filmVersion??1}`,version:s.filmVersion,checks:s.checks,settings:s.settings,notes:s.notes,unresolved:s.unresolved,stillFallbacks:s.fallbacks,consultativeNotes:Object.fromEntries((s.plan?.panels??[]).map(p=>[p.id,panelNotes(s,p.id)])),audioReview:s.audioReview}});s.deliveryNotes=undefined;}
+   catch(error){const message=error instanceof Error?error.message:String(error);if(!message.startsWith('Final review:'))throw error;s.deliveryNotes=message.slice('Final review:'.length).trim();}}
    s.approved={visuals:s.mediaHash,final:s.mediaHash};s.phase='complete';s.progress='Your approved film is ready';await settleCredits(id,true);
   }else if(a.type==='approve-board'){
    if(s.phase!=='board'||a.boardHash!==boardHash(s)||s.notes.some(n=>n.status==='locked')||!plan||plan.panels.some(p=>!s.images[p.id]||a.votes[p.id]!==true))throw Error('Review and approve every current storyboard panel first.');
@@ -348,7 +373,10 @@ async function completeVersion(s:ComicState,deps:ComicDependencies){
 }
 export async function runComic(id:string,actor:string,deps:ComicDependencies=comicDependencies){
  return lockComic(id,async()=>{
-  const s=await getComic(id,actor);if(!s.queued||Date.now()<(s.recovery?.nextAt??0))return;const save=()=>saveComic(s);
+  const s=await getComic(id,actor);
+  // A studio film is produced by the local executor through its missions, never by this worker (Shimi, 2026-10-26).
+  if(studioFulfilment(s))return;
+  if(!s.queued||Date.now()<(s.recovery?.nextAt??0))return;const save=()=>saveComic(s);
   if(s.error){await superviseComicFailure(s,save);if(s.recovery?.current?.decision?.action!=='retry-saved'||s.recovery.exhausted)return;consumeRecovery(s.recovery);s.error=undefined;s.resumeRequested=undefined;await save();}
   try{
    approvedWork(s);s.phase='working';await save();
@@ -407,7 +435,27 @@ async function finish(s:ComicState,deps:ComicDependencies){s.progress='Assemblin
  // Still fallbacks disclosed for review: the build's flash corrections and the clips replaced by the local camera path (frozen or flagged, 2026-10-25).
  s.fallbacks=[...new Set([...built.fallbacks,...Object.keys(s.clipFallbacks??{}).map(Number)])].sort((a,b)=>a-b);s.checks.stillFallbacks=s.fallbacks;
  s.mediaHash=hash((await readFile(path.join(comicDirectory(s.id),built.media))).toString('base64'));}
-export async function runQueuedComics(){const rows=(await pool.query("SELECT job_id,actor_id FROM comics_runs c JOIN jobs j ON j.id=c.job_id WHERE state->>'queued'='true' AND j.deleted_at IS NULL ORDER BY c.updated_at LIMIT 4")).rows;for(const r of rows)await runComic(r.job_id,r.actor_id);}
+export async function runQueuedComics(){const rows=(await pool.query("SELECT job_id,actor_id FROM comics_runs c JOIN jobs j ON j.id=c.job_id WHERE state->>'queued'='true' AND coalesce(state->>'fulfilment','engine')<>'studio' AND j.deleted_at IS NULL ORDER BY c.updated_at LIMIT 4")).rows;for(const r of rows)await runComic(r.job_id,r.actor_id);}
+/** Studio delivery (Shimi, 2026-10-26): called after `deliverMission` (admin upload or the executor's
+ * `scripts/studio-deliver.ts`). The delivered file becomes the client's version N: preview and final are the
+ * same file, served by the media route from storage/studio/<job>/; the executor's notes are the version's
+ * review notes. The locked notes that produced this version are applied. */
+export async function applyStudioDelivery(missionId:string,deps:ComicDependencies=comicDependencies){
+ const m=await deps.loadMission(missionId);if(!m||m.category!=='comics')throw Error('Unknown Attack mission.');
+ if(m.state!=='delivered'||!m.mediaPath)throw Error('Deliver the film first.');
+ const mediaPath=m.mediaPath,actor=await comicActor(m.jobId);
+ return lockComic(m.jobId,async()=>{
+  const s=await getComic(m.jobId,actor);if(!studioFulfilment(s))throw Error('This video is not produced in studio mode.');
+  if(s.phase==='complete')throw Error('This video is already approved and delivered.');
+  if(m.version<(s.filmVersion??0))throw Error(`Version ${s.filmVersion} is already with the client.`);
+  const bytes=await readFile(comicFile(s.id,mediaPath));
+  s.media=mediaPath;s.mediaHash=hash(bytes.toString('base64'));s.filmVersion=m.version;s.phase='review';s.progress=`Version ${m.version} is ready for your review`;
+  s.work=undefined;s.workQuote=undefined;s.queued=false;s.quote=undefined;s.error=undefined;s.stop=undefined;s.approved={};s.targets=[];s.transientRetries=0;
+  s.deliveryNotes=m.notes??undefined;
+  for(const n of s.notes)if(n.status==='locked')n.status='applied';
+  await saveComic(s);await observeVideo(s.id,async()=>({category:'comics',action:'studio-delivery',version:m.version,mission:m.id,phase:s.phase}));return publicComic(s);
+ });
+}
 
 async function superviseComicFailure(s:ComicState,save:()=>Promise<unknown>){
  if(!s.error)return;

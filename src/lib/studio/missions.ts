@@ -3,14 +3,21 @@ import {mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {z} from 'zod';
 import {pool} from '@/db';
-import {getSetting} from '../settings';
+import {setSetting} from '../settings';
 /** Studio mode (plan B, Shimi 2026-10-23): the client uses the same screens, Shimi produces each
  * version on his machine and uploads it here. The client never reads "automatic" or "manual":
  * only "in production" and "ready". See docs/studio-mode-plan-b-2026-10-23.md. */
 export type Category='clay'|'motion'|'comics';
 export type FulfilmentMode='engine'|'studio';
-const Fulfilment=z.object({clay:z.enum(['engine','studio']).default('engine'),motion:z.enum(['engine','studio']).default('engine'),comics:z.enum(['engine','studio']).default('engine')});
-export async function fulfilmentMode(category:Category):Promise<FulfilmentMode>{const parsed=Fulfilment.safeParse(await getSetting('fulfilment')??{});return parsed.success?parsed.data[category]:'engine';}
+export const CATEGORIES:Category[]=['clay','motion','comics'];
+export const Fulfilment=z.object({clay:z.enum(['engine','studio']).default('engine'),motion:z.enum(['engine','studio']).default('engine'),comics:z.enum(['engine','studio']).default('engine')});
+export type FulfilmentSettings=z.infer<typeof Fulfilment>;
+/** The admin setting `fulfilment` (key per category); a missing or invalid setting reads as engine everywhere.
+ * Read through the pool like `customer_pricing` (the comics pricing and tests inject the pool, not the ORM). */
+export async function fulfilmentSettings():Promise<FulfilmentSettings>{const parsed=Fulfilment.safeParse((await pool.query("SELECT value FROM settings WHERE key='fulfilment'")).rows[0]?.value??{});return parsed.success?parsed.data:Fulfilment.parse({});}
+export async function fulfilmentMode(category:Category):Promise<FulfilmentMode>{return (await fulfilmentSettings())[category];}
+/** Switches one category (Shimi, 2026-10-26: Attack first); the other categories keep their saved mode. A running film never changes mode: `fulfilment` is saved in its state at creation. */
+export async function setFulfilmentMode(category:Category,mode:FulfilmentMode){const next=Fulfilment.parse({...await fulfilmentSettings(),[category]:mode});await setSetting('fulfilment',next);return next;}
 export const Mission=z.object({id:z.uuid(),jobId:z.uuid(),category:z.enum(['clay','motion','comics']),version:z.number().int().positive(),title:z.string(),script:z.string(),feedback:z.array(z.object({text:z.string(),scene:z.number().int().positive().optional(),seconds:z.number().optional()})),priceCents:z.number().int().nonnegative(),state:z.enum(['queued','in-production','delivered']),mediaPath:z.string().nullable(),mediaSha256:z.string().nullable(),notes:z.string().nullable(),createdAt:z.string(),deliveredAt:z.string().nullable()});
 export type StudioMission=z.infer<typeof Mission>;
 const row=(r:Record<string,unknown>):StudioMission=>Mission.parse({id:r.id,jobId:r.job_id,category:r.category,version:r.version,title:r.title,script:r.script,feedback:r.feedback??[],priceCents:r.price_cents,state:r.state,mediaPath:r.media_path??null,mediaSha256:r.media_sha256??null,notes:r.notes??null,createdAt:new Date(r.created_at as string).toISOString(),deliveredAt:r.delivered_at?new Date(r.delivered_at as string).toISOString():null});
@@ -22,6 +29,7 @@ export async function createMission(input:{jobId:string;category:Category;versio
 }
 export async function listMissions(filter:{open?:boolean}={}){const r=await pool.query(`SELECT * FROM studio_missions ${filter.open?"WHERE state<>'delivered'":''} ORDER BY created_at DESC LIMIT 200`);return r.rows.map(row);}
 export async function missionsForJob(jobId:string){const r=await pool.query("SELECT * FROM studio_missions WHERE job_id=$1 ORDER BY version",[jobId]);return r.rows.map(row);}
+export async function missionById(id:string){const r=await pool.query("SELECT * FROM studio_missions WHERE id=$1",[z.uuid().parse(id)]);return r.rows[0]?row(r.rows[0]):null;}
 export const studioDirectory=(jobId:string)=>path.join(process.cwd(),'storage','studio',jobId);
 /** The delivered film is stored by hash under storage/studio/<job>/; the client review page serves it. */
 export async function deliverMission(id:string,file:{bytes:Uint8Array;contentType:string},notes?:string){
