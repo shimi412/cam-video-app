@@ -41,7 +41,7 @@ async function main(){await mkdir(evidence,{recursive:true});await setup.query(`
   assert.deepEqual(generated,[2,4,6,7,8]);assert.deepEqual(local,[1,3,5,9]);
   const deps:ComicDependencies={
    // Engine rehearsal: the studio mode (2026-10-26) is off, no mission is ever created.
-   fulfilment:async()=>'engine' as const,mission:async()=>{throw Error('No studio mission in the engine rehearsal.');},loadMission:async()=>null,
+   fulfilment:async()=>'engine' as const,mission:async()=>{throw Error('No studio mission in the engine rehearsal.');},loadMission:async()=>null,notify:async()=>{},
    // Injected director: a "Push in" note on a local panel is a camera move (free, applied by the montage), a "Redraw" note changes the scene (new image and clip), a sound note is deferred to finishing.
    direct:async(s,notes=[])=>{directions++;if(!notes.length)return {plan:f.plan,deferred:[]};const plan=structuredClone(s.plan!),deferred:string[]=[];for(const n of notes){if(/music|sound/i.test(n.text)){deferred.push(n.id);continue;}for(const target of n.targets){if(/^Redraw/.test(n.text))plan.panels[target-1].scene=`A calmer flat comic object for panel ${target}, after the client note.`;else plan.panels[target-1].cameraMove={kind:'push',amount:'medium'};}}return {plan:validatePlan(s.script,plan,s.plan,notes.filter(n=>!deferred.includes(n.id)).flatMap(n=>n.targets)),deferred};},
    // Real deterministic controls: the sandboxed frame check, the ffmpeg motion energy, the local still loop.

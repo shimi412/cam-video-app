@@ -106,6 +106,7 @@ export default function StudioPage() {
   const [framing, setFraming] = useState<Framing | null>(null);
   const [job, setJob] = useState<JobState | null>(null);
   const [loading, setLoading] = useState(false);
+  const [categoryHref, setCategoryHref] = useState<{clay?:string|null;motion?:string|null;comics?:string|null}>({});
   const [preparationBusy, setPreparationBusy] = useState(false);
   const [requestsReady, setRequestsReady] = useState(false);
   const [restoring, setRestoring] = useState(true);
@@ -225,6 +226,8 @@ export default function StudioPage() {
 
   useEffect(() => {
 
+    // Option C (2026-10-26): each card leads where its category is produced; the response is a path per category only.
+    fetch("/api/categories").then((r) => r.ok ? r.json() : null).then((d) => { if (d?.href) setCategoryHref(d.href); }).catch(() => {});
     fetch("/api/examples/cam-clay").then((r) => {
       if (!r.ok) throw new Error("Could not check existing media");
       return r.json();
@@ -358,9 +361,9 @@ export default function StudioPage() {
         </p></div>
         {/* Category cards (Shimi, 2026-10-25): the illustrations are owner-provided PNGs; a gradient stands in while a file is missing. */}
         <nav aria-label="Video category" className="cats">
-          <CategoryCard title="Clay animation" line="A narrator in a warm clay studio." image="/categories/clay.png" tone="clay" selected/>
-          <CategoryCard title="Motion design" line="Words and shapes in motion." image="/categories/motion.png" tone="motion" href="/motion/new"/>
-          <CategoryCard title="Attack video" line="Comics panels, bold and fast." image="/categories/attack.png" tone="attack" href="/comics/new"/>
+          <CategoryCard title="Clay animation" line="A narrator in a warm clay studio." image="/categories/clay.png" tone="clay" href={categoryHref.clay??undefined} selected={!categoryHref.clay}/>
+          <CategoryCard title="Motion design" line="Words and shapes in motion." image="/categories/motion.png" tone="motion" href={categoryHref.motion??"/motion/new"}/>
+          <CategoryCard title="Attack video" line="Comics panels, bold and fast." image="/categories/attack.png" tone="attack" href={categoryHref.comics??"/comics/new"}/>
         </nav>
       </div>
 

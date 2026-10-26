@@ -48,6 +48,12 @@ export function studioNotificationText(m:StudioMission,origin=process.env.APP_UR
  return `CAM studio : nouvelle mission ${m.category} V${m.version}\nTitre : ${m.title}\nPrix approuvé : ${(m.priceCents/100).toFixed(0)} $\n${origin}/admin/studio\n\nScript :\n${m.script}${feedback}`.slice(0,3900);
 }
 export async function notifyStudio(m:StudioMission,send:(text:string)=>Promise<void>=sendTelegram){await send(studioNotificationText(m));}
+/** Option C (2026-10-26): the client's locked notes on version N, sent to Shimi so he sets the price and delay of version N+1 on /admin/studio. */
+export function studioFeedbackText(film:{id:string;title:string;category:Category;version:number},notes:{text:string;targets:number[]}[],origin=process.env.APP_URL??'http://127.0.0.1:3108'){
+ const list=notes.map(n=>`- ${n.targets.length===1?`scène ${n.targets[0]} : `:''}${n.text}`).join('\n');
+ return `CAM studio : retours client sur ${film.category} V${film.version}, prix de la V${film.version+1} à fixer\nTitre : ${film.title}\n${origin}/admin/studio\n\nRetours :\n${list}`.slice(0,3900);
+}
+export async function sendStudioMessage(text:string){await sendTelegram(text);}
 async function sendTelegram(text:string){
  const token=process.env.CAM_STUDIO_TELEGRAM_BOT_TOKEN,chat=process.env.CAM_STUDIO_TELEGRAM_CHAT_ID;if(!token||!chat)return;
  const response=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chat,text,disable_web_page_preview:true})});

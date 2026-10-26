@@ -10,7 +10,7 @@ import {reviewDelivery} from '../src/lib/agent/delivery-review';
 vi.mock('../src/lib/agent/delivery-review',()=>({reviewDelivery:vi.fn(async()=>({ready:true}))}));
 import {beforeEach,afterAll,it,expect,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import {hash,publicComic,estimatedMinutes,type ComicState} from '../src/lib/comics/model';
+import {hash,publicComic,type ComicState} from '../src/lib/comics/model';
 import type {StudioMission} from '../src/lib/studio/missions';
 const f=vi.hoisted(()=>({state:null as unknown,holds:[] as number[],dir:'',pricing:{mode:'tiers-v2',multiplier:2,higgsfieldCreditUsd:.1},sql:[] as string[]}));
 vi.mock('../src/lib/comics/store',()=>({getComic:async()=>structuredClone(f.state),saveComic:async(s:unknown)=>{f.state=structuredClone(s);},lockComic:async(_id:string,work:()=>Promise<unknown>)=>work(),holdComic:async(_s:unknown,q:{totalUsd:number})=>{f.holds.push(q.totalUsd);},comicDirectory:()=>f.dir,comicFile:(_id:string,file:string)=>path.join(f.dir,file),comicActor:async()=>'local',createComic:vi.fn(async()=>structuredClone(f.state))}));
@@ -18,9 +18,10 @@ vi.mock('../src/lib/agent/observations',()=>({observeVideo:async()=>{}}));
 vi.mock('../src/lib/customer-wallet',()=>({settleCredits:vi.fn(),CustomerPricingSchema:{parse:()=>f.pricing}}));
 vi.mock('../src/db',()=>({pool:{query:vi.fn(async(sql:string)=>{f.sql.push(sql);return sql.includes('customer_pricing')?{rows:[{value:f.pricing}]}:{rows:[],rowCount:0};})}}));
 vi.mock('../src/lib/access',()=>({withAccess:(h:unknown)=>h,actorFor:async()=>({id:'local',role:'client'})}));
-import {prepareComic,actComic,runComic,runQueuedComics,applyStudioDelivery,comicDependencies,type ComicDependencies} from '../src/lib/comics/service';
+import {prepareComic,actComic,runComic,runQueuedComics,applyStudioDelivery,quoteStudioRevision,comicDependencies,type ComicDependencies} from '../src/lib/comics/service';
 import {GET as media} from '../src/app/api/comics/[id]/media/[...file]/route';
-import {countPanels,studioFirstVersionCost} from '../src/lib/studio/pricing';
+import {countPanels,studioFirstVersionCost,studioEstimateUsd,studioDelayLabel,STUDIO_ESTIMATE_MINUTES} from '../src/lib/studio/pricing';
+import {studioFeedbackText} from '../src/lib/studio/missions';
 const state=()=>f.state as ComicState;
 const script='Sentence number 1 of the film. Sentence number 2 of the film! Sentence number 3 of the film?';
 function fresh():ComicState{return {version:1,journey:'single',id:randomUUID(),title:'Studio',script,phase:'planning',revision:0,queued:false,progress:'',approvedQuotes:[],operations:{},notes:[],votes:{},approved:{},images:{},clips:{},settings:{music:'normal',captions:true},targets:[]};}
@@ -31,7 +32,7 @@ const deps=():ComicDependencies=>({...comicDependencies,
  price:vi.fn(async()=>{throw Error('The engine pricing must not be called in studio mode.');}),
  gateway:{cost:vi.fn(async()=>{throw Error('No provider pricing in studio mode.');}),media:vi.fn(async()=>{throw Error('No provider media in studio mode.');})},
  authorize:async<T,>(_id:string,work:()=>Promise<T>)=>work(),build:vi.fn(async()=>{throw Error('No engine build in studio mode.');}),
- fulfilment:vi.fn(async()=>'studio' as const),
+ fulfilment:vi.fn(async()=>'studio' as const),notify:vi.fn(async()=>{}),
  mission:vi.fn(async input=>{const m:StudioMission={id:randomUUID(),jobId:input.jobId,category:input.category,version:input.version,title:input.title,script:input.script,feedback:input.feedback??[],priceCents:input.priceCents,state:'queued',mediaPath:null,mediaSha256:null,notes:null,createdAt:new Date().toISOString(),deliveredAt:null};missions.push(m);return m;}),
  loadMission:vi.fn(async id=>missions.find(m=>m.id===id)??null)});
 /** What `deliverMission` does on the executor's side: the file under storage/studio/<job>/, the row delivered with the notes. */
@@ -48,27 +49,40 @@ it('counts the panels from the script sentences and estimates the first version 
  // Ten panels, five clips: 3 + 2 + 20 + 40 = 65 credits at $0.10, 15 inspections at $0.25, $0.50 direction: $10.75, first tier.
  const ten=studioFirstVersionCost(10,.1,{directionUsd:.5,inspectionUsd:.25});expect(ten.credits).toBe(65);expect(ten.costUsd).toBeCloseTo(10.75,6);
 });
-it('estimates without any director or provider call: phase estimate, quote film, $30, delay from the panel count',async()=>{
- const d=deps();const v=(await prepareComic('local',{requestId:state().id,title:'Studio',script},d))!;
- expect(d.fulfilment).toHaveBeenCalledWith('comics');expect(d.preflight).not.toHaveBeenCalled();expect(d.direct).not.toHaveBeenCalled();expect(d.gateway.cost).not.toHaveBeenCalled();expect(d.price).not.toHaveBeenCalled();
- const s=state();expect(s.fulfilment).toBe('studio');expect(s.panelCount).toBe(3);expect(s.plan).toBeUndefined();
- expect(v.phase).toBe('estimate');expect(v.journey).toBe('single');expect(v.studio).toBe(true);expect(v.panelCount).toBe(3);expect(v.estimateMinutes).toBe(estimatedMinutes(3));
- const q=s.quote!;expect(q.kind).toBe('film');expect(q.items).toEqual({});expect(q.totalUsd).toBe(30);expect(q.additionalUsd).toBe(30);expect(q.credits).toBe(3+2+6+16);
- expect(f.holds).toEqual([]);expect(missions).toEqual([]);
- // Idempotent re-entry keeps the saved estimate and reads the setting once: the mode is fixed at creation.
- await prepareComic('local',{requestId:state().id,title:'Studio',script},d);expect(d.fulfilment).toHaveBeenCalledTimes(1);expect(state().quote!.id).toBe(q.id);
+it('option C: the estimate price is a whole dollar between 26 and 34, more likely near 30, and the delay reads about 1 h 30',()=>{
+ expect(studioEstimateUsd(()=>0)).toBe(26);expect(studioEstimateUsd(()=>0.999999)).toBe(34);expect(studioEstimateUsd(()=>0.5)).toBe(30);
+ const counts:Record<number,number>=Object.fromEntries(Array.from({length:9},(_,i)=>[26+i,0]));let sum=0;
+ for(let i=0;i<20000;i++){const p=studioEstimateUsd();expect(Number.isInteger(p)).toBe(true);expect(p).toBeGreaterThanOrEqual(26);expect(p).toBeLessThanOrEqual(34);counts[p]++;sum+=p;}
+ expect(sum/20000).toBeGreaterThan(29.5);expect(sum/20000).toBeLessThan(30.5);
+ expect(counts[30]).toBeGreaterThan(counts[27]);expect(counts[30]).toBeGreaterThan(counts[33]);expect(counts[27]).toBeGreaterThan(counts[26]*2);expect(counts[33]).toBeGreaterThan(counts[34]*2);
+ expect(studioDelayLabel(STUDIO_ESTIMATE_MINUTES)).toBe('about 1 h 30');expect(studioDelayLabel(45)).toBe('about 45 min');expect(studioDelayLabel(120)).toBe('about 2 h');
 });
-async function approveV1(d:ComicDependencies){
- await prepareComic('local',{requestId:state().id,title:'Studio',script},d);
+it('estimates without any director or provider call: phase estimate, quote film, a drawn whole-dollar price kept on refresh, delay 90 minutes',async()=>{
+ const d=deps();const v=(await prepareComic('local',{requestId:state().id,title:'Studio',script,category:'clay'},d))!;
+ expect(d.fulfilment).toHaveBeenCalledWith('clay');expect(d.preflight).not.toHaveBeenCalled();expect(d.direct).not.toHaveBeenCalled();expect(d.gateway.cost).not.toHaveBeenCalled();expect(d.price).not.toHaveBeenCalled();
+ const s=state();expect(s.fulfilment).toBe('studio');expect(s.category).toBe('clay');expect(s.panelCount).toBe(3);expect(s.plan).toBeUndefined();
+ expect(v.phase).toBe('estimate');expect(v.journey).toBe('single');expect(v.studio).toBe(true);expect(v.category).toBe('clay');expect(v.panelCount).toBe(3);expect(v.estimateMinutes).toBe(90);expect(v.pendingStudioQuote).toBe(false);
+ const q=s.quote!;expect(q.kind).toBe('film');expect(q.items).toEqual({});expect(Number.isInteger(q.totalUsd)).toBe(true);expect(q.totalUsd).toBeGreaterThanOrEqual(26);expect(q.totalUsd).toBeLessThanOrEqual(34);expect(q.additionalUsd).toBe(q.totalUsd);expect(q.credits).toBe(0);expect(q.costUsd).toBe(0);
+ expect(v.quote).toMatchObject({kind:'film',totalUsd:q.totalUsd});expect(f.holds).toEqual([]);expect(missions).toEqual([]);
+ // Idempotent re-entry keeps the saved estimate and reads the setting once: the mode is fixed at creation.
+ await prepareComic('local',{requestId:state().id,title:'Studio',script,category:'clay'},d);expect(d.fulfilment).toHaveBeenCalledTimes(1);expect(state().quote!.id).toBe(q.id);
+ // A refresh of the expired estimate keeps the drawn price: the client sees the same price at the approval.
+ state().quote!.expires=0;await actComic(s.id,'local',{type:'refresh-price'},d);expect(state().quote!.totalUsd).toBe(q.totalUsd);expect(state().quote!.id).not.toBe(q.id);
+ // Without a category the film is an Attack film.
+ f.state=fresh();await prepareComic('local',{requestId:state().id,title:'Studio',script},d);expect(state().category).toBe('comics');expect(d.fulfilment).toHaveBeenLastCalledWith('comics');
+});
+async function approveV1(d:ComicDependencies,category:'clay'|'motion'|'comics'='comics'){
+ await prepareComic('local',{requestId:state().id,title:'Studio',script,category},d);
  await actComic(state().id,'local',{type:'approve-price',quoteId:state().quote!.id},d);
 }
 it('approving the estimate reserves the credits and creates mission V1 for the executor; nothing is queued for the engine',async()=>{
- const d=deps();await approveV1(d);
- const s=state();expect(f.holds).toEqual([30]);expect(s.phase).toBe('working');expect(s.queued).toBe(false);expect(s.work).toBe('film');expect(s.progress).toBe('Version 1 in production');expect(s.approvedQuotes).toHaveLength(1);expect(s.workQuote).toBe(s.approvedQuotes[0].id);
- expect(d.mission).toHaveBeenCalledTimes(1);expect(missions[0]).toMatchObject({jobId:s.id,category:'comics',version:1,title:'Studio',script,feedback:[],priceCents:3000,state:'queued'});
+ const d=deps();await approveV1(d,'motion');
+ const s=state(),price=s.approvedQuotes[0].totalUsd;expect(f.holds).toEqual([price]);expect(s.phase).toBe('working');expect(s.queued).toBe(false);expect(s.work).toBe('film');expect(s.progress).toBe('Version 1 in production');expect(s.approvedQuotes).toHaveLength(1);expect(s.workQuote).toBe(s.approvedQuotes[0].id);
+ // The mission says the real category (the Telegram message reads it), the price is the drawn estimate.
+ expect(d.mission).toHaveBeenCalledTimes(1);expect(missions[0]).toMatchObject({jobId:s.id,category:'motion',version:1,title:'Studio',script,feedback:[],priceCents:price*100,state:'queued'});
  const v=publicComic(s);expect(v.queued).toBe(false);expect(v.quote).toBeNull();expect(v.preview).toBeNull();
  // A second approval of the same quote is idempotent.
- await actComic(s.id,'local',{type:'approve-price',quoteId:s.approvedQuotes[0].id},d);expect(d.mission).toHaveBeenCalledTimes(1);expect(f.holds).toEqual([30]);
+ await actComic(s.id,'local',{type:'approve-price',quoteId:s.approvedQuotes[0].id},d);expect(d.mission).toHaveBeenCalledTimes(1);expect(f.holds).toEqual([price]);
  // The engine worker ignores the film even if a queued flag slipped in.
  state().queued=true;await runComic(s.id,'local',d);expect(d.gateway.media).not.toHaveBeenCalled();expect(d.build).not.toHaveBeenCalled();expect(state().phase).toBe('working');expect(state().progress).toBe('Version 1 in production');
  await runQueuedComics();expect(f.sql.at(-1)).toContain("coalesce(state->>'fulfilment','engine')<>'studio'");
@@ -85,25 +99,43 @@ it('the executor\'s delivery makes V1 reviewable: same file as preview and final
  const early=await media(new Request('http://localhost'),{params:Promise.resolve({id:s.id,file:['download']})});expect(early.status).toBe(403);
  expect(d.gateway.media).not.toHaveBeenCalled();expect(d.build).not.toHaveBeenCalled();
 });
-it('feedback on V1 quotes the documented studio revision price without a director, then V2 is a mission carrying the notes verbatim',async()=>{
+it('option C: feedback on V1 prices nothing, tells Shimi by Telegram and waits; the admin quote shows the revision card; approval makes mission V2 with the notes',async()=>{
  const d=deps();await approveV1(d);await deliver(missions[0],'studio film one','');await applyStudioDelivery(missions[0].id,d);
  const whole=randomUUID(),panel=randomUUID();
  await expect(actComic(state().id,'local',{type:'lock-feedback',id:whole,text:'Warmer colours overall.',targets:[1,2,3,4],stage:'visuals'},d)).rejects.toThrow('Choose valid panels.');
  await actComic(state().id,'local',{type:'lock-feedback',id:whole,text:'Warmer colours overall.',targets:[1,2,3],stage:'visuals'},d);
  await actComic(state().id,'local',{type:'lock-feedback',id:panel,text:'The gate should open, not close.',targets:[2],stage:'visuals'},d);
+ // Nothing can be quoted by the admin before the client applies the notes.
+ await expect(quoteStudioRevision(state().id,{priceUsd:4,delayMinutes:45})).resolves.toBeTruthy();state().quote=undefined;state().studioDelayMinutes=undefined;
  await actComic(state().id,'local',{type:'apply-feedback'},d);
  let s=state();expect(d.direct).not.toHaveBeenCalled();expect(d.finishing).not.toHaveBeenCalled();expect(d.price).not.toHaveBeenCalled();
- const q=s.quote!;expect(q.kind).toBe('revision');expect(q.items).toEqual({});expect(q.additionalCostUsd).toBe(1.5);expect(q.additionalUsd).toBe(3);expect(q.totalUsd).toBe(33);expect(s.progress).toBe('Review the price of your next version');expect(s.phase).toBe('review');
- // Editing a note invalidates the quote; the new quote is a fresh identity.
- await actComic(s.id,'local',{type:'lock-feedback',id:panel,text:'The gate should open wide.',targets:[2],stage:'visuals'},d);expect(state().quote).toBeUndefined();
- await actComic(s.id,'local',{type:'apply-feedback'},d);const q2=state().quote!;expect(q2.id).not.toBe(q.id);
+ expect(s.quote).toBeUndefined();expect(s.pendingStudioQuote).toBe(true);expect(s.phase).toBe('review');expect(s.progress).toBe('Reviewing your notes. The price and delay of the next version will appear here shortly.');
+ expect(s.notes.every(n=>n.status==='locked')).toBe(true);
+ let v=publicComic(s);expect(v.quote).toBeNull();expect(v.pendingStudioQuote).toBe(true);expect(v.notes).toHaveLength(2);
+ expect(d.notify).toHaveBeenCalledTimes(1);const text=vi.mocked(d.notify).mock.calls[0][0];expect(text).toContain('retours client sur comics V1');expect(text).toContain('/admin/studio');expect(text).toContain('- Warmer colours overall.');expect(text).toContain('- scène 2 : The gate should open, not close.');
+ expect(studioFeedbackText({id:s.id,title:'T',category:'clay',version:2},[{text:'Plus doux.',targets:[1,2]}],'https://cam.example')).toContain('clay V2, prix de la V3');
+ // Applying again while waiting sends nothing more; editing a note cancels the wait, applying again tells Shimi again.
+ await actComic(s.id,'local',{type:'apply-feedback'},d);expect(d.notify).toHaveBeenCalledTimes(1);
+ await actComic(s.id,'local',{type:'lock-feedback',id:panel,text:'The gate should open wide.',targets:[2],stage:'visuals'},d);expect(state().pendingStudioQuote).toBeUndefined();expect(state().progress).toBe('Version 1 is ready for your review');
+ await actComic(s.id,'local',{type:'apply-feedback'},d);expect(d.notify).toHaveBeenCalledTimes(2);
+ // The admin sets the price and delay of V2: the client sees the revision card with that price and the delay.
+ await expect(quoteStudioRevision(s.id,{priceUsd:4.4,delayMinutes:45})).rejects.toThrow('whole-dollar');
+ await quoteStudioRevision(s.id,{priceUsd:4,delayMinutes:45});
+ s=state();const q=s.quote!;expect(q.kind).toBe('revision');expect(q.additionalUsd).toBe(4);expect(q.totalUsd).toBe(s.approvedQuotes[0].totalUsd+4);expect(q.items).toEqual({});expect(s.studioDelayMinutes).toBe(45);expect(s.pendingStudioQuote).toBeUndefined();expect(s.progress).toBe('Review the price of your next version');
+ v=publicComic(s);expect(v.quote).toMatchObject({kind:'revision',additionalUsd:4});expect(v.estimateMinutes).toBe(45);expect(v.pendingStudioQuote).toBe(false);
+ // A refresh keeps the admin's price; an edited note invalidates the quote and the client must apply again.
+ state().quote!.expires=0;await actComic(s.id,'local',{type:'refresh-price'},d);expect(state().quote!.additionalUsd).toBe(4);
+ await actComic(s.id,'local',{type:'lock-feedback',id:panel,text:'The gate should open very wide.',targets:[2],stage:'visuals'},d);expect(state().quote).toBeUndefined();
+ await actComic(s.id,'local',{type:'apply-feedback'},d);expect(d.notify).toHaveBeenCalledTimes(3);await quoteStudioRevision(s.id,{priceUsd:5,delayMinutes:60});const q2=state().quote!;expect(q2.id).not.toBe(q.id);
  await actComic(s.id,'local',{type:'approve-price',quoteId:q2.id},d);
- s=state();expect(f.holds).toEqual([30,33]);expect(s.phase).toBe('working');expect(s.queued).toBe(false);expect(s.work).toBe('revision');expect(s.progress).toBe('Version 2 in production');expect(s.notes.every(n=>n.status==='locked')).toBe(true);
- expect(missions).toHaveLength(2);expect(missions[1]).toMatchObject({jobId:s.id,version:2,priceCents:300,feedback:[{text:'Warmer colours overall.'},{text:'The gate should open wide.',scene:2}]});
+ s=state();const first=s.approvedQuotes[0].totalUsd;expect(f.holds).toEqual([first,first+5]);expect(s.phase).toBe('working');expect(s.queued).toBe(false);expect(s.work).toBe('revision');expect(s.progress).toBe('Version 2 in production');expect(s.notes.every(n=>n.status==='locked')).toBe(true);expect(publicComic(s).estimateMinutes).toBe(60);
+ expect(missions).toHaveLength(2);expect(missions[1]).toMatchObject({jobId:s.id,category:'comics',version:2,priceCents:500,feedback:[{text:'Warmer colours overall.'},{text:'The gate should open very wide.',scene:2}]});
  // V1 stays visible while V2 is in production; no feedback edit meanwhile.
  expect(publicComic(s).preview).toContain('v1-');await expect(actComic(s.id,'local',{type:'lock-feedback',id:randomUUID(),text:'Another note.',targets:[1],stage:'visuals'},d)).rejects.toThrow('Wait for the current change');
+ await expect(quoteStudioRevision(s.id,{priceUsd:5,delayMinutes:60})).rejects.toThrow('version in review');
  const rel2=await deliver(missions[1],'studio film two','Gate opens wide in panel 2.');await applyStudioDelivery(missions[1].id,d);
  s=state();expect(s.phase).toBe('review');expect(s.filmVersion).toBe(2);expect(s.media).toBe(rel2);expect(s.notes.every(n=>n.status==='applied')).toBe(true);expect(publicComic(s).version).toBe(2);expect(publicComic(s).deliveryNotes).toBe('Gate opens wide in panel 2.');
+ await expect(quoteStudioRevision(s.id,{priceUsd:5,delayMinutes:60})).rejects.toThrow('no locked note');
  expect(d.gateway.media).not.toHaveBeenCalled();expect(d.build).not.toHaveBeenCalled();
 });
 it('approving a version settles the wallet without a second review and the download serves the delivered file, sha-verified',async()=>{

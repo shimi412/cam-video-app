@@ -26,3 +26,18 @@ export function studioRevisionCostUsd(){
  if(!Number.isFinite(value)||value<=0||value>50)throw Error(`CAM_STUDIO_REVISION_COST_USD must be a number between 0 and 50 (got "${raw}").`);
  return value;
 }
+/** Option C (Shimi, 2026-10-26): the estimate the client sees in studio mode is a whole-dollar price drawn
+ * once between 26 and 34 $, more likely near 30 (rounded mean of three uniform draws), and a delay of
+ * about 1 h 30. No calculator, no provider call. The price is persisted in the film's quote at the estimate. */
+export const STUDIO_ESTIMATE_MINUTES=90;
+export const STUDIO_ESTIMATE_RANGE={min:26,max:34} as const;
+export function studioEstimateUsd(random:()=>number=Math.random){
+ const {min,max}=STUDIO_ESTIMATE_RANGE;
+ const draws=[random(),random(),random()].map(r=>min+Math.min(Math.max(r,0),1)*(max-min));
+ return Math.max(min,Math.min(max,Math.round(draws.reduce((a,b)=>a+b,0)/draws.length)));
+}
+/** Client-facing delay: "about 1 h 30", "about 45 min". */
+export function studioDelayLabel(minutes:number){
+ const m=Math.max(1,Math.round(minutes)),h=Math.floor(m/60),r=m%60;
+ return h?`about ${h} h${r?` ${String(r).padStart(2,'0')}`:''}`:`about ${m} min`;
+}
