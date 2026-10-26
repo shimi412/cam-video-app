@@ -6,6 +6,7 @@ import {sheetParams,imageParams,clipParams,voiceParams,STYLE} from './prompts';
 import {hash,quoteHash,singleJourney,panelMotion,type ComicState,type Quote} from './model';
 import {comicsGateway,type ComicGateway,type MediaRequest} from './provider';
 import {comicsBudgets} from './budgets';
+import {studioFirstVersionCost,studioRevisionCostUsd} from '../studio/pricing';
 export const needsImage=(a:ComicState['plan'],b:ComicState['plan'],id:number)=>{const keys=['scene','hero','color'] as const;return keys.some(k=>a?.panels[id-1]?.[k]!==b?.panels[id-1]?.[k]);};
 /** A changed panel needs a new clip when its image changes, when its motion kind changes, or (generated and legacy panels) when its animation direction changes. A local panel's clip is a free loop of its still: only a new image needs a new one; a camera move change costs nothing (the build applies it). */
 export const needsClip=(a:ComicState['plan'],b:ComicState['plan'],id:number)=>{const pa=a?.panels[id-1],pb=b?.panels[id-1];if(needsImage(a,b,id))return true;if(panelMotion(pa??{})!==panelMotion(pb??{}))return true;if(panelMotion(pb??{})==='local')return false;return (['action','camera','preserve','videoPrompt','lockEndFrame'] as const).some(k=>pa?.[k]!==pb?.[k]);};
@@ -105,4 +106,19 @@ export async function priceComic(s:ComicState,kind:Quote['kind'],gateway:ComicGa
  const credited=prior&&s.workQuote===prior.id?prior.additionalUsd:0;
  const additionalUsd=Math.max(0,revisionPriceCents(additionalCostUsd)/100-credited);
  return {id:randomUUID(),kind,items,credits,analysisUsd,costUsd,totalUsd:priorUsd+additionalUsd,additionalUsd,expires,inputHash,additionalCostUsd};
+}
+/** Studio mode (Shimi, 2026-10-26): the same grid on a local estimate, with no director and no provider
+ * call. `film` = the whole first version from the script's panel count (`src/lib/studio/pricing.ts`);
+ * `revision` = the documented studio revision cost x2. The quote has no media lines: the executor
+ * spends on his side, the client price is what the grid says. */
+export async function priceStudioComic(s:ComicState,kind:'film'|'revision'):Promise<Quote>{
+ const config=CustomerPricingSchema.parse((await pool.query("SELECT value FROM settings WHERE key='customer_pricing'")).rows[0]?.value),b=comicsBudgets();
+ const prior=s.approvedQuotes.at(-1),priorUsd=prior?.totalUsd??0,expires=Date.now()+b.quoteMinutes*60000,inputHash=quoteHash(s,kind);
+ if(kind==='film'){
+  const {credits,costUsd}=studioFirstVersionCost(s.panelCount??0,config.higgsfieldCreditUsd,b);
+  const totalUsd=Math.max(priorUsd,firstVersionPriceCents(costUsd)/100);
+  return {id:randomUUID(),kind,items:{},credits,analysisUsd:costUsd-credits*config.higgsfieldCreditUsd,costUsd,totalUsd,additionalUsd:totalUsd-priorUsd,expires,inputHash,additionalCostUsd:costUsd};
+ }
+ const additionalCostUsd=studioRevisionCostUsd(),additionalUsd=revisionPriceCents(additionalCostUsd)/100;
+ return {id:randomUUID(),kind,items:{},credits:0,analysisUsd:0,costUsd:(prior?.costUsd??0)+additionalCostUsd,totalUsd:priorUsd+additionalUsd,additionalUsd,expires,inputHash,additionalCostUsd};
 }

@@ -5,6 +5,11 @@ import {providerMode} from '../providers/mode';
 import {reserveCredits} from '../customer-wallet';
 import type {ComicState,Quote} from './model';
 export const comicDirectory=(id:string)=>path.resolve('storage/comics',z.uuid().parse(id));
+/** Where a saved media name of a film lives: the engine's files under storage/comics/<id>/, a studio delivery
+ * (`studio/<id>/vN-<sha>.mp4`, written by `deliverMission`) under storage/studio/<id>/. Only this film's own studio folder. */
+export function comicFile(id:string,file:string){const safe=z.uuid().parse(id);return file.startsWith(`studio/${safe}/`)?path.resolve('storage',file):path.join(comicDirectory(safe),file);}
+/** The client account a film belongs to (the executor delivers without a session). */
+export async function comicActor(jobId:string){const r=await pool.query('SELECT actor_id FROM comics_runs WHERE job_id=$1',[z.uuid().parse(jobId)]);if(!r.rows[0])throw Error('Video not found.');return String(r.rows[0].actor_id);}
 export async function getComic(id:string,actor:string){const r=await pool.query('SELECT c.state,j.saved_to_library FROM comics_runs c JOIN jobs j ON j.id=c.job_id WHERE c.job_id=$1 AND c.actor_id=$2 AND j.deleted_at IS NULL',[z.uuid().parse(id),actor]);if(!r.rows[0])throw Error('Video not found.');return {...r.rows[0].state,saved:r.rows[0].saved_to_library} as ComicState;}
 export async function saveComic(s:ComicState){await pool.query("WITH saved AS (UPDATE comics_runs SET state=$2,updated_at=now() WHERE job_id=$1 RETURNING job_id) UPDATE jobs SET status=$3 WHERE id IN (SELECT job_id FROM saved)",[s.id,JSON.stringify(s),s.phase==='complete'?'succeeded':s.phase==='blocked'?'failed':s.queued?'running':'estimated']);}
 export async function lockComic<T>(id:string,fn:()=>Promise<T>,tryOnly=false){const c=await pool.connect();let locked=false;try{const r=await c.query(`SELECT ${tryOnly?'pg_try_advisory_lock':'pg_advisory_lock'}(hashtextextended($1,0)) AS locked`,[`comics-${z.uuid().parse(id)}`]);if(tryOnly&&!r.rows[0].locked)return;locked=true;return await fn();}finally{if(locked)await c.query('SELECT pg_advisory_unlock(hashtextextended($1,0))',[`comics-${id}`]);c.release();}}

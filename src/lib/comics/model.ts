@@ -104,7 +104,12 @@ export type ComicState={version:1;recovery?:PipelineRecovery;id:string;title:str
   * -> download. Films created before this field keep the legacy gated flow unchanged. */
  journey?:'single';/** Client-facing version number of the current complete film (1 after V1). `revision` stays the internal request identity counter; `version` is the schema version. */filmVersion?:number;/** The approved quote that the running work item executes under; after the plan swap of a revision the work is bound by this identity, not by a fresh price. */workQuote?:string;/** Finishing settings decided from the client's notes by the finishing director, applied at the next build. */pendingSettings?:{music:'normal'|'quiet'|'off';captions:boolean};
  /** 2026-10-25: panels whose clip is a free local loop of the approved still (the build applies the camera move), the controls of every generated file, and the clips replaced by the local camera path with the reason, disclosed to the client. */
- localClips?:Record<string,true>;controls?:Record<string,Control>;clipFallbacks?:Record<string,'frozen'|'flagged'>;};
+ localClips?:Record<string,true>;controls?:Record<string,Control>;clipFallbacks?:Record<string,'frozen'|'flagged'>;
+ /** Shimi, 2026-10-26: `studio` films are produced by the local executor (Claude Code) through `studio_missions`,
+  * never by the engine worker; the estimate is local (`panelCount` from the script's sentences, no plan). Saved
+  * films without the field, and films created while the category is `engine`, keep every engine path. */
+ fulfilment?:'engine'|'studio';panelCount?:number;};
+export const studioFulfilment=(s:ComicState)=>s.fulfilment==='studio';
 export const boardHash=(s:ComicState)=>hash({plan:s.plan,images:s.images});
 export const quoteHash=(s:ComicState,kind:Quote['kind'])=>hash({kind,plan:s.proposal??s.plan,images:kind==='video'?s.images:undefined,notes:kind==='revision'?s.notes.filter(n=>n.status==='locked'):undefined,revision:s.revision});
 export const singleJourney=(s:ComicState)=>s.journey==='single';
@@ -126,9 +131,11 @@ export function publicComic(s:ComicState){const media=(file:string)=>`/api/comic
  const blocked=s.phase==='blocked',stop=blocked?s.stop:undefined;
  const legacyMessage=s.error?(recoveryView(s.recovery)?.message??(/^(Panel \d+ needs visual correction:|Quality checks need correction|The saved work|The storyboard approval)/.test(s.error)?s.error.replace(/Claude|Higgsfield|Kling|Nano Banana|ElevenLabs/gi,"media service"):"This step needs attention. Your completed media and feedback are saved. No new generation was started automatically.")):undefined;
  const failedClips=!!s.plan?.panels.some(p=>!s.clips[p.id])&&!!s.plan?.panels.filter(p=>!s.clips[p.id]).every(p=>(singleJourney(s)?latestOperation(s,`clip-${p.id}-`):s.operations[`clip-${p.id}-${s.revision}`])?.state==='failed');
- const single=singleJourney(s);
+ const single=singleJourney(s),studio=studioFulfilment(s),panelCount=s.plan?.panels.length??s.panelCount??0;
  return {id:s.id,title:s.title,phase:s.phase,revision:s.revision,progress:s.progress,failureAnalysis:s.error&&!stop?recoveryView(s.recovery):null,
-  journey:single?'single' as const:'legacy' as const,version:s.filmVersion??0,estimateMinutes:s.plan?estimatedMinutes(s.plan.panels.length):null,
+  journey:single?'single' as const:'legacy' as const,version:s.filmVersion??0,estimateMinutes:panelCount?estimatedMinutes(panelCount):null,
+  // Studio films (2026-10-26) have no storyboard: the client feedback targets the version's panels by number; the view never says who produces.
+  studio,panelCount,
   // A needs-attention decision keeps Resume available (bounded by `exhausted`): the client asks for a fresh analysis after a repair, never for a resubmission (live 2026-10-22, local encode guard corrected while the film was blocked).
   canResume:blocked&&!['review-budget','replace-failed'].includes(stop?.kind??'')&&(!s.recovery?.current||s.recovery.current.status==='unavailable'||['retry-saved','needs-attention'].includes(decision(s)??'')||!!stop)&&!s.recovery?.exhausted,
   canReviewBudget:blocked&&(stop?stop.kind==='review-budget':decision(s)==='review-budget'),
@@ -139,6 +146,7 @@ export function publicComic(s:ComicState){const media=(file:string)=>`/api/comic
   panels:s.plan?.panels.map(p=>({id:p.id,narration:p.narration,meaning:p.meaning,scene:p.scene,action:p.action,title:p.title,motion:panelMotion(p),image:s.images[p.id]?media(s.images[p.id]):null,reviewNotes:panelNotes(s,p.id)})),
   // Disclosed adaptations of the assembled film, for the human visual and finishing approvals.
   filmNotes:[...(s.checks?.titleRepairs??[]).map(r=>({text:r.action==='dropped'?`Panel ${r.panel}: its title was too short to read and is not shown.`:`Panel ${r.panel}: its title stays on screen into the next panel so it can be read.`,evidence:[] as string[]})),...(s.checks?.flashNotes??[]).map(n=>({text:`A brief visual change around ${n.time.toFixed(1)} s was detected; please check it while watching.`,evidence:n.evidence.map(media)})),...Object.entries(s.clipFallbacks??{}).map(([panel,why])=>({text:`Panel ${panel}: its generated animation ${why==='frozen'?'barely moved':'showed elements that were not asked for'}; the approved drawing is shown with a camera move instead.`,evidence:[] as string[]})),...(s.audioReview?.endingNeedsListening?[{text:'The narration ends right at its last word; please listen to the ending.',evidence:[] as string[]}]:[])],
-  deliveryNotes:s.phase==='complete'&&s.deliveryNotes?clean(s.deliveryNotes):undefined,
+  // The executor's notes of a studio version are shown with the version itself (consultative, as the delivery review's).
+  deliveryNotes:(s.phase==='complete'||studio&&s.phase==='review')&&s.deliveryNotes?clean(s.deliveryNotes):undefined,
   preview:s.media?media(s.phase==='visuals'?s.media.replace(/final\.mp4$/,'preview.mp4'):s.media):null,download:s.phase==='complete'?media('download'):null,boardHash:boardHash(s),mediaHash:s.mediaHash};}
 export type ComicView=ReturnType<typeof publicComic>;

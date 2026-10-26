@@ -26,3 +26,17 @@ A studio job can be handed to the engine later only as a new job; a mission is n
 ## Out of scope for the first delivery
 
 Automatic formats (three exports), finishing options, per-scene feedback. Everything the client types is forwarded verbatim to Shimi.
+
+## Wiring of 2026-10-26 (Attack first; Shimi's decision: the software is a screen between Claude Code and the client)
+
+Implemented for `comics` only; Clay and Motion keep the engine whatever the setting says.
+
+- Switch: `/admin/studio`, section "Fulfilment per category" (`GET/POST /api/admin/studio/fulfilment`). `settings.fulfilment` is validated by the `Fulfilment` schema of `src/lib/studio/missions.ts`.
+- The film carries `fulfilment: "studio"` and `panelCount` from its creation; a later switch never changes it.
+- Estimate: local, `src/lib/studio/pricing.ts` (constants) and `priceStudioComic` (`src/lib/comics/pricing.ts`). Delay = `estimatedMinutes(panelCount)` (the "within 24 hours" text of this plan is not implemented: the task of 2026-10-26 keeps the existing delay).
+- Approval -> `createMission` (V1) with the credits reserved; feedback -> revision quote (`CAM_STUDIO_REVISION_COST_USD` 1.5 -> $3) -> approval -> `createMission` (V2 with the locked notes as `feedback`).
+- Delivery -> `applyStudioDelivery(missionId)` -> the client reviews the delivered file; approval -> settlement -> download of that file.
+
+What the executor reads (`studio_missions` row, `StudioMission`): `id`, `jobId`, `category` (`comics`), `version` (1, 2, ...), `title`, `script`, `feedback` (`[{text, scene?, seconds?}]`, empty for V1), `priceCents` (the approved additional price of this version), `state` (`queued` | `in-production` | `delivered`), `mediaPath`, `mediaSha256`, `notes`, `createdAt`, `deliveredAt`.
+
+What the executor calls to deliver: `deliverMission(missionId, {bytes, contentType: "video/mp4"}, notes)` then `applyStudioDelivery(missionId)` (`scripts/studio-deliver.ts` does both).
