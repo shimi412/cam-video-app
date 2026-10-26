@@ -22,10 +22,10 @@ export const Mission=z.object({id:z.uuid(),jobId:z.uuid(),category:z.enum(['clay
 export type StudioMission=z.infer<typeof Mission>;
 const row=(r:Record<string,unknown>):StudioMission=>Mission.parse({id:r.id,jobId:r.job_id,category:r.category,version:r.version,title:r.title,script:r.script,feedback:r.feedback??[],priceCents:r.price_cents,state:r.state,mediaPath:r.media_path??null,mediaSha256:r.media_sha256??null,notes:r.notes??null,createdAt:new Date(r.created_at as string).toISOString(),deliveredAt:r.delivered_at?new Date(r.delivered_at as string).toISOString():null});
 /** One mission per client version: V1 after the price approval, then one per approved revision quote. */
-export async function createMission(input:{jobId:string;category:Category;version:number;title:string;script:string;feedback?:StudioMission['feedback'];priceCents:number}){
+export async function createMission(input:{jobId:string;category:Category;version:number;title:string;script:string;feedback?:StudioMission['feedback'];priceCents:number;references?:string[]}){
  const id=randomUUID();
  const r=await pool.query("INSERT INTO studio_missions(id,job_id,category,version,title,script,feedback,price_cents,state) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued') ON CONFLICT(job_id,version) DO UPDATE SET feedback=EXCLUDED.feedback,price_cents=EXCLUDED.price_cents RETURNING *",[id,input.jobId,input.category,input.version,input.title.slice(0,200),input.script,JSON.stringify(input.feedback??[]),input.priceCents]);
- const mission=row(r.rows[0]);await notifyStudio(mission).catch(()=>{});return mission;
+ const mission=row(r.rows[0]);await notifyStudio(mission,undefined,input.references).catch(()=>{});return mission;
 }
 export async function listMissions(filter:{open?:boolean}={}){const r=await pool.query(`SELECT * FROM studio_missions ${filter.open?"WHERE state<>'delivered'":''} ORDER BY created_at DESC LIMIT 200`);return r.rows.map(row);}
 export async function missionsForJob(jobId:string){const r=await pool.query("SELECT * FROM studio_missions WHERE job_id=$1 ORDER BY version",[jobId]);return r.rows.map(row);}
@@ -43,11 +43,12 @@ export async function deliverMission(id:string,file:{bytes:Uint8Array;contentTyp
 }
 export async function markInProduction(id:string){const r=await pool.query("UPDATE studio_missions SET state='in-production' WHERE id=$1 AND state='queued' RETURNING *",[id]);return r.rows[0]?row(r.rows[0]):null;}
 /** Telegram notification to Shimi (CAM_STUDIO_TELEGRAM_BOT_TOKEN + CAM_STUDIO_TELEGRAM_CHAT_ID); silent when unset. */
-export function studioNotificationText(m:StudioMission,origin=process.env.APP_URL??'http://127.0.0.1:3108'){
+export function studioNotificationText(m:StudioMission,origin=process.env.APP_URL??'http://127.0.0.1:3108',references:string[]=[]){
+ const refs=references.length?`\nImages de référence (${references.length}) : storage/references/${m.jobId}/\n`+references.map(f=>`- ${f}`).join('\n')+'\n':'';
  const feedback=m.feedback.length?`\nRetours client (V${m.version-1}) :\n`+m.feedback.map(f=>`- ${f.scene?`scène ${f.scene} : `:f.seconds!==undefined?`à ${f.seconds.toFixed(1)} s : `:''}${f.text}`).join('\n'):'';
- return `CAM studio : nouvelle mission ${m.category} V${m.version}\nTitre : ${m.title}\nPrix approuvé : ${(m.priceCents/100).toFixed(0)} $\n${origin}/admin/studio\n\nScript :\n${m.script}${feedback}`.slice(0,3900);
+ return `CAM studio : nouvelle mission ${m.category} V${m.version}\nTitre : ${m.title}\nPrix approuvé : ${(m.priceCents/100).toFixed(0)} $\n${origin}/admin/studio\n${refs}\nScript :\n${m.script}${feedback}`.slice(0,3900);
 }
-export async function notifyStudio(m:StudioMission,send:(text:string)=>Promise<void>=sendTelegram){await send(studioNotificationText(m));}
+export async function notifyStudio(m:StudioMission,send:(text:string)=>Promise<void>=sendTelegram,references:string[]=[]){await send(studioNotificationText(m,undefined,references));}
 /** Option C (2026-10-26): the client's locked notes on version N, sent to Shimi so he sets the price and delay of version N+1 on /admin/studio. */
 export function studioFeedbackText(film:{id:string;title:string;category:Category;version:number},notes:{text:string;targets:number[]}[],origin=process.env.APP_URL??'http://127.0.0.1:3108'){
  const list=notes.map(n=>`- ${n.targets.length===1?`scène ${n.targets[0]} : `:''}${n.text}`).join('\n');

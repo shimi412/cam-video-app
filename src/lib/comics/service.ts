@@ -4,7 +4,7 @@ import {freshPipelineRecovery,recoveryCapabilities,recoveryView,consumeRecovery}
 import {createHash} from 'node:crypto';
 import {reviewDelivery} from '../agent/delivery-review';
 import {z} from 'zod';
-import {readFile} from 'node:fs/promises';
+import {readFile,readdir,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {pool} from '@/db';
 import {withCamExecution} from '../providers/live-policy';
@@ -129,10 +129,11 @@ export async function actComic(id:string,actor:string,input:unknown,deps:ComicDe
    if(studio){
     // Studio mode: credits are reserved as for the engine, then the version is a mission for the local executor. The film is never queued for the engine worker.
     if(s.phase==='working')throw Error('Work is already running.');
-    await holdComic(s,q);s.approvedQuotes.push(q);s.workQuote=q.id;s.work=q.kind==='film'?'film':'revision';s.queued=false;s.phase='working';s.error=undefined;s.stop=undefined;
+    // Shimi, 2026-10-26: each version is paid at its delivery; the approval reserves this version's price only.
+    await holdComic(s,q,true);s.approvedQuotes.push(q);s.workQuote=q.id;s.work=q.kind==='film'?'film':'revision';s.queued=false;s.phase='working';s.error=undefined;s.stop=undefined;
     const version=(s.filmVersion??0)+1,locked=s.notes.filter(n=>n.status==='locked');s.progress=`Version ${version} in production`;
     s.pendingStudioQuote=undefined;
-    await deps.mission({jobId:s.id,category:s.category??'comics',version,title:s.title,script:s.script,feedback:locked.map(n=>({text:n.text,...(n.targets.length===1?{scene:n.targets[0]}:{})})),priceCents:Math.round(q.additionalUsd*100)});
+    await deps.mission({jobId:s.id,category:s.category??'comics',version,title:s.title,script:s.script,feedback:locked.map(n=>({text:n.text,...(n.targets.length===1?{scene:n.targets[0]}:{})})),priceCents:Math.round(q.additionalUsd*100),references:s.references??[]});
     await saveComic(s);return publicComic(s);
    }
    if(q.kind==='video'&&!single&&s.approved.board!==boardHash(s))throw Error('Approve the current storyboard first.');
@@ -148,7 +149,12 @@ export async function actComic(id:string,actor:string,input:unknown,deps:ComicDe
    // A studio version was reviewed by its executor before delivery (notes kept as the version's review notes): no second paid review.
    if(!studio){try{await reviewDelivery({jobId:id,category:'comics',mediaHash:createHash('sha256').update(bytes).digest('hex'),file,script:s.script,facts:{humanApproval:`This approval of version ${s.filmVersion??1}`,version:s.filmVersion,checks:s.checks,settings:s.settings,notes:s.notes,unresolved:s.unresolved,stillFallbacks:s.fallbacks,consultativeNotes:Object.fromEntries((s.plan?.panels??[]).map(p=>[p.id,panelNotes(s,p.id)])),audioReview:s.audioReview}});s.deliveryNotes=undefined;}
    catch(error){const message=error instanceof Error?error.message:String(error);if(!message.startsWith('Final review:'))throw error;s.deliveryNotes=message.slice('Final review:'.length).trim();}}
-   s.approved={visuals:s.mediaHash,final:s.mediaHash};s.phase='complete';s.progress='Your approved film is ready';await settleCredits(id,true);
+   s.approved={visuals:s.mediaHash,final:s.mediaHash};s.phase='complete';s.progress='Your approved film is ready';if(!studio)await settleCredits(id,true);
+   await pool.query("UPDATE jobs SET status='succeeded' WHERE id=$1",[id]).catch(()=>{});
+   // Shimi, 2026-10-26: once the client has approved a version, the earlier delivered versions of that video are purged; only the approved file stays on the server.
+   if(studio){const dir=path.dirname(file);for(const name of await readdir(dir).catch(()=>[] as string[])){const other=path.join(dir,name);if(other!==file)await rm(other,{force:true}).catch(()=>{});}}
+   // Shimi, 2026-10-26: the client's reference images go with the earlier versions once the final version is approved.
+   if(studio)await rm(path.resolve('storage','references',id),{recursive:true,force:true}).catch(()=>{});
   }else if(a.type==='approve-board'){
    if(s.phase!=='board'||a.boardHash!==boardHash(s)||s.notes.some(n=>n.status==='locked')||!plan||plan.panels.some(p=>!s.images[p.id]||a.votes[p.id]!==true))throw Error('Review and approve every current storyboard panel first.');
    s.votes=a.votes;s.approved.board=boardHash(s);s.quote=await deps.price(s,'video',deps.gateway);s.phase='video-price';s.progress='Your video price is ready';
@@ -459,7 +465,10 @@ export async function applyStudioDelivery(missionId:string,deps:ComicDependencie
   s.work=undefined;s.workQuote=undefined;s.queued=false;s.quote=undefined;s.error=undefined;s.stop=undefined;s.approved={};s.targets=[];s.transientRetries=0;
   s.deliveryNotes=m.notes??undefined;s.pendingStudioQuote=undefined;
   for(const n of s.notes)if(n.status==='locked')n.status='applied';
-  await saveComic(s);await observeVideo(s.id,async()=>({category:'comics',action:'studio-delivery',version:m.version,mission:m.id,phase:s.phase}));return publicComic(s);
+  await saveComic(s);
+  // Shimi, 2026-10-26: the delivered version is charged now (its reservation becomes spending); the final approval charges nothing more.
+  await settleCredits(s.id,true,`Version ${m.version} delivered`);
+  await observeVideo(s.id,async()=>({category:'comics',action:'studio-delivery',version:m.version,mission:m.id,phase:s.phase}));return publicComic(s);
  });
 }
 

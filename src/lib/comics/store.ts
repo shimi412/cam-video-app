@@ -22,4 +22,5 @@ export async function createComic(actor:string,id:string,title:string,script:str
  await c.query('COMMIT');return getComic(id,actor);
  }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
 }
-export async function holdComic(s:ComicState,q:Quote){const supplier=`comics-${q.id}`,id=`${s.id}-${q.id}`;await pool.query('INSERT INTO customer_quotes(id,job_id,supplier_quote,amount_cents,expires_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(job_id,supplier_quote) DO NOTHING',[id,s.id,supplier,q.totalUsd*100,new Date(q.expires)]);await reserveCredits(s.id,id,supplier);}
+/** `perVersion` (studio films, 2026-10-26): the hold is the price of this version only (`additionalUsd`), charged at its delivery; the previous version was already charged. */
+export async function holdComic(s:ComicState,q:Quote,perVersion=false){const supplier=`comics-${q.id}`,id=`${s.id}-${q.id}`,amount=Math.round((perVersion?q.additionalUsd:q.totalUsd)*100);await pool.query('INSERT INTO customer_quotes(id,job_id,supplier_quote,amount_cents,expires_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(job_id,supplier_quote) DO NOTHING',[id,s.id,supplier,amount,new Date(q.expires)]);await reserveCredits(s.id,id,supplier,perVersion);}

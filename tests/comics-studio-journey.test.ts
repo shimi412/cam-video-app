@@ -13,7 +13,7 @@ import {randomUUID} from 'node:crypto';
 import {hash,publicComic,type ComicState} from '../src/lib/comics/model';
 import type {StudioMission} from '../src/lib/studio/missions';
 const f=vi.hoisted(()=>({state:null as unknown,holds:[] as number[],dir:'',pricing:{mode:'tiers-v2',multiplier:2,higgsfieldCreditUsd:.1},sql:[] as string[]}));
-vi.mock('../src/lib/comics/store',()=>({getComic:async()=>structuredClone(f.state),saveComic:async(s:unknown)=>{f.state=structuredClone(s);},lockComic:async(_id:string,work:()=>Promise<unknown>)=>work(),holdComic:async(_s:unknown,q:{totalUsd:number})=>{f.holds.push(q.totalUsd);},comicDirectory:()=>f.dir,comicFile:(_id:string,file:string)=>path.join(f.dir,file),comicActor:async()=>'local',createComic:vi.fn(async()=>structuredClone(f.state))}));
+vi.mock('../src/lib/comics/store',()=>({getComic:async()=>structuredClone(f.state),saveComic:async(s:unknown)=>{f.state=structuredClone(s);},lockComic:async(_id:string,work:()=>Promise<unknown>)=>work(),holdComic:async(_s:unknown,q:{totalUsd:number;additionalUsd:number},perVersion?:boolean)=>{f.holds.push(perVersion?q.additionalUsd:q.totalUsd);},comicDirectory:()=>f.dir,comicFile:(_id:string,file:string)=>path.join(f.dir,file),comicActor:async()=>'local',createComic:vi.fn(async()=>structuredClone(f.state))}));
 vi.mock('../src/lib/agent/observations',()=>({observeVideo:async()=>{}}));
 vi.mock('../src/lib/customer-wallet',()=>({settleCredits:vi.fn(),CustomerPricingSchema:{parse:()=>f.pricing}}));
 vi.mock('../src/db',()=>({pool:{query:vi.fn(async(sql:string)=>{f.sql.push(sql);return sql.includes('customer_pricing')?{rows:[{value:f.pricing}]}:{rows:[],rowCount:0};})}}));
@@ -49,12 +49,13 @@ it('counts the panels from the script sentences and estimates the first version 
  // Ten panels, five clips: 3 + 2 + 20 + 40 = 65 credits at $0.10, 15 inspections at $0.25, $0.50 direction: $10.75, first tier.
  const ten=studioFirstVersionCost(10,.1,{directionUsd:.5,inspectionUsd:.25});expect(ten.credits).toBe(65);expect(ten.costUsd).toBeCloseTo(10.75,6);
 });
-it('option C: the estimate price is a whole dollar between 26 and 34, more likely near 30, and the delay reads about 1 h 30',()=>{
- expect(studioEstimateUsd(()=>0)).toBe(26);expect(studioEstimateUsd(()=>0.999999)).toBe(34);expect(studioEstimateUsd(()=>0.5)).toBe(30);
- const counts:Record<number,number>=Object.fromEntries(Array.from({length:9},(_,i)=>[26+i,0]));let sum=0;
- for(let i=0;i<20000;i++){const p=studioEstimateUsd();expect(Number.isInteger(p)).toBe(true);expect(p).toBeGreaterThanOrEqual(26);expect(p).toBeLessThanOrEqual(34);counts[p]++;sum+=p;}
- expect(sum/20000).toBeGreaterThan(29.5);expect(sum/20000).toBeLessThan(30.5);
- expect(counts[30]).toBeGreaterThan(counts[27]);expect(counts[30]).toBeGreaterThan(counts[33]);expect(counts[27]).toBeGreaterThan(counts[26]*2);expect(counts[33]).toBeGreaterThan(counts[34]*2);
+it('option C: the estimate price is a whole dollar between 35 and 40 (Motion 22 to 28), more likely near the middle, and the delay reads about 1 h 30',()=>{
+ expect(studioEstimateUsd(()=>0)).toBe(35);expect(studioEstimateUsd(()=>0.999999)).toBe(40);expect(studioEstimateUsd(()=>0.5)).toBe(38);
+ expect(studioEstimateUsd(()=>0,'motion')).toBe(22);expect(studioEstimateUsd(()=>0.999999,'motion')).toBe(28);expect(studioEstimateUsd(()=>0.5,'motion')).toBe(25);expect(studioEstimateUsd(()=>0.5,'clay')).toBe(38);
+ const counts:Record<number,number>=Object.fromEntries(Array.from({length:6},(_,i)=>[35+i,0]));let sum=0;
+ for(let i=0;i<20000;i++){const p=studioEstimateUsd();expect(Number.isInteger(p)).toBe(true);expect(p).toBeGreaterThanOrEqual(35);expect(p).toBeLessThanOrEqual(40);counts[p]++;sum+=p;}
+ expect(sum/20000).toBeGreaterThan(37);expect(sum/20000).toBeLessThan(38);
+ expect(counts[37]+counts[38]).toBeGreaterThan(counts[35]+counts[40]);expect(counts[36]).toBeGreaterThan(counts[35]);expect(counts[39]).toBeGreaterThan(counts[40]);
  expect(studioDelayLabel(STUDIO_ESTIMATE_MINUTES)).toBe('about 1 h 30');expect(studioDelayLabel(45)).toBe('about 45 min');expect(studioDelayLabel(120)).toBe('about 2 h');
 });
 it('estimates without any director or provider call: phase estimate, quote film, a drawn whole-dollar price kept on refresh, delay 90 minutes',async()=>{
@@ -62,7 +63,7 @@ it('estimates without any director or provider call: phase estimate, quote film,
  expect(d.fulfilment).toHaveBeenCalledWith('clay');expect(d.preflight).not.toHaveBeenCalled();expect(d.direct).not.toHaveBeenCalled();expect(d.gateway.cost).not.toHaveBeenCalled();expect(d.price).not.toHaveBeenCalled();
  const s=state();expect(s.fulfilment).toBe('studio');expect(s.category).toBe('clay');expect(s.panelCount).toBe(3);expect(s.plan).toBeUndefined();
  expect(v.phase).toBe('estimate');expect(v.journey).toBe('single');expect(v.studio).toBe(true);expect(v.category).toBe('clay');expect(v.panelCount).toBe(3);expect(v.estimateMinutes).toBe(90);expect(v.pendingStudioQuote).toBe(false);
- const q=s.quote!;expect(q.kind).toBe('film');expect(q.items).toEqual({});expect(Number.isInteger(q.totalUsd)).toBe(true);expect(q.totalUsd).toBeGreaterThanOrEqual(26);expect(q.totalUsd).toBeLessThanOrEqual(34);expect(q.additionalUsd).toBe(q.totalUsd);expect(q.credits).toBe(0);expect(q.costUsd).toBe(0);
+ const q=s.quote!;expect(q.kind).toBe('film');expect(q.items).toEqual({});expect(Number.isInteger(q.totalUsd)).toBe(true);expect(q.totalUsd).toBeGreaterThanOrEqual(35);expect(q.totalUsd).toBeLessThanOrEqual(40);expect(q.additionalUsd).toBe(q.totalUsd);expect(q.credits).toBe(0);expect(q.costUsd).toBe(0);
  expect(v.quote).toMatchObject({kind:'film',totalUsd:q.totalUsd});expect(f.holds).toEqual([]);expect(missions).toEqual([]);
  // Idempotent re-entry keeps the saved estimate and reads the setting once: the mode is fixed at creation.
  await prepareComic('local',{requestId:state().id,title:'Studio',script,category:'clay'},d);expect(d.fulfilment).toHaveBeenCalledTimes(1);expect(state().quote!.id).toBe(q.id);
@@ -128,7 +129,7 @@ it('option C: feedback on V1 prices nothing, tells Shimi by Telegram and waits; 
  await actComic(s.id,'local',{type:'lock-feedback',id:panel,text:'The gate should open very wide.',targets:[2],stage:'visuals'},d);expect(state().quote).toBeUndefined();
  await actComic(s.id,'local',{type:'apply-feedback'},d);expect(d.notify).toHaveBeenCalledTimes(3);await quoteStudioRevision(s.id,{priceUsd:5,delayMinutes:60});const q2=state().quote!;expect(q2.id).not.toBe(q.id);
  await actComic(s.id,'local',{type:'approve-price',quoteId:q2.id},d);
- s=state();const first=s.approvedQuotes[0].totalUsd;expect(f.holds).toEqual([first,first+5]);expect(s.phase).toBe('working');expect(s.queued).toBe(false);expect(s.work).toBe('revision');expect(s.progress).toBe('Version 2 in production');expect(s.notes.every(n=>n.status==='locked')).toBe(true);expect(publicComic(s).estimateMinutes).toBe(60);
+ s=state();const first=s.approvedQuotes[0].totalUsd;expect(f.holds).toEqual([first,5]);expect(s.phase).toBe('working');expect(s.queued).toBe(false);expect(s.work).toBe('revision');expect(s.progress).toBe('Version 2 in production');expect(s.notes.every(n=>n.status==='locked')).toBe(true);expect(publicComic(s).estimateMinutes).toBe(60);
  expect(missions).toHaveLength(2);expect(missions[1]).toMatchObject({jobId:s.id,category:'comics',version:2,priceCents:500,feedback:[{text:'Warmer colours overall.'},{text:'The gate should open very wide.',scene:2}]});
  // V1 stays visible while V2 is in production; no feedback edit meanwhile.
  expect(publicComic(s).preview).toContain('v1-');await expect(actComic(s.id,'local',{type:'lock-feedback',id:randomUUID(),text:'Another note.',targets:[1],stage:'visuals'},d)).rejects.toThrow('Wait for the current change');
@@ -138,11 +139,11 @@ it('option C: feedback on V1 prices nothing, tells Shimi by Telegram and waits; 
  await expect(quoteStudioRevision(s.id,{priceUsd:5,delayMinutes:60})).rejects.toThrow('no locked note');
  expect(d.gateway.media).not.toHaveBeenCalled();expect(d.build).not.toHaveBeenCalled();
 });
-it('approving a version settles the wallet without a second review and the download serves the delivered file, sha-verified',async()=>{
+it('a delivered version is charged at delivery, approval charges nothing more, no second review, and the download serves the delivered file, sha-verified',async()=>{
  const d=deps();await approveV1(d);const rel=await deliver(missions[0],'studio film one','Executor notes.');await applyStudioDelivery(missions[0].id,d);
- let s=state();await expect(actComic(s.id,'local',{type:'approve-version',mediaHash:'other',resolved:[]},d)).rejects.toThrow('Watch and approve');
+ let s=state();expect(settleCredits).toHaveBeenCalledWith(s.id,true,'Version 1 delivered');vi.mocked(settleCredits).mockClear();await expect(actComic(s.id,'local',{type:'approve-version',mediaHash:'other',resolved:[]},d)).rejects.toThrow('Watch and approve');
  await actComic(s.id,'local',{type:'approve-version',mediaHash:s.mediaHash,resolved:[]},d);
- s=state();expect(s.phase).toBe('complete');expect(settleCredits).toHaveBeenCalledWith(s.id,true);expect(reviewDelivery).not.toHaveBeenCalled();expect(s.approved).toEqual({visuals:s.mediaHash,final:s.mediaHash});expect(s.deliveryNotes).toBe('Executor notes.');
+ s=state();expect(s.phase).toBe('complete');expect(settleCredits).not.toHaveBeenCalled();expect(reviewDelivery).not.toHaveBeenCalled();expect(s.approved).toEqual({visuals:s.mediaHash,final:s.mediaHash});expect(s.deliveryNotes).toBe('Executor notes.');
  const v=publicComic(s);expect(v.download).toBe(`/api/comics/${s.id}/media/download`);expect(v.deliveryNotes).toBe('Executor notes.');
  const download=await media(new Request('http://localhost'),{params:Promise.resolve({id:s.id,file:['download']})});
  expect(download.status).toBe(200);expect(download.headers.get('Content-Disposition')).toContain('attachment');expect(await download.text()).toBe('studio film one');

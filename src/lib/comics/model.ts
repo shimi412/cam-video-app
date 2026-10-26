@@ -111,7 +111,9 @@ export type ComicState={version:1;recovery?:PipelineRecovery;id:string;title:str
   * films without the field, and films created while the category is `engine`, keep every engine path. */
  fulfilment?:'engine'|'studio';panelCount?:number;
  /** Option C (2026-10-26): the category chosen on the home page (clay and motion films go through this flow in studio mode), the wait for the admin's revision quote after the client's feedback, and the delay the admin set for the next version. */
- category?:'clay'|'motion'|'comics';pendingStudioQuote?:boolean;studioDelayMinutes?:number;};
+ category?:'clay'|'motion'|'comics';pendingStudioQuote?:boolean;studioDelayMinutes?:number;
+ /** Reference images attached by the client (file names under storage/references/<jobId>/), 2026-10-26. */
+ references?:string[];};
 export const studioFulfilment=(s:ComicState)=>s.fulfilment==='studio';
 export const boardHash=(s:ComicState)=>hash({plan:s.plan,images:s.images});
 export const quoteHash=(s:ComicState,kind:Quote['kind'])=>hash({kind,plan:s.proposal??s.plan,images:kind==='video'?s.images:undefined,notes:kind==='revision'?s.notes.filter(n=>n.status==='locked'):undefined,revision:s.revision});

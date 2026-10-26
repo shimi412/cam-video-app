@@ -27,12 +27,16 @@ export function studioRevisionCostUsd(){
  return value;
 }
 /** Option C (Shimi, 2026-10-26): the estimate the client sees in studio mode is a whole-dollar price drawn
- * once between 26 and 34 $, more likely near 30 (rounded mean of three uniform draws), and a delay of
+ * once inside the category's range, more likely near its middle (rounded mean of three uniform draws), and a delay of
  * about 1 h 30. No calculator, no provider call. The price is persisted in the film's quote at the estimate. */
 export const STUDIO_ESTIMATE_MINUTES=90;
-export const STUDIO_ESTIMATE_RANGE={min:26,max:34} as const;
-export function studioEstimateUsd(random:()=>number=Math.random){
- const {min,max}=STUDIO_ESTIMATE_RANGE;
+/** Shimi, 2026-10-26 (after the client meeting): Clay and Attack are priced 35 to 40 $, Motion stays around 25 $. */
+export const STUDIO_ESTIMATE_RANGE={min:35,max:40} as const;
+/** Shimi, 2026-10-26: Motion design is priced a few dollars below Clay and Attack (22 to 28 $, around 25) to steer
+ * the client toward the format with the highest margin. */
+export const STUDIO_ESTIMATE_RANGE_MOTION={min:22,max:28} as const;
+export function studioEstimateUsd(random:()=>number=Math.random,category?:string){
+ const {min,max}=category==='motion'?STUDIO_ESTIMATE_RANGE_MOTION:STUDIO_ESTIMATE_RANGE;
  const draws=[random(),random(),random()].map(r=>min+Math.min(Math.max(r,0),1)*(max-min));
  return Math.max(min,Math.min(max,Math.round(draws.reduce((a,b)=>a+b,0)/draws.length)));
 }

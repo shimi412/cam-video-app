@@ -381,20 +381,61 @@ cues["subs"] = []
 if FILM.get("captions", True):
     def text_of(g):
         return " ".join(w["word"] for w in g)
+    # Shimi's rule (2026-10-26): a caption never cuts a sentence and never starts a new sentence at
+    # its end. Sentences (. ! ?) are hard boundaries; clauses (, ; :) are the preferred cut points;
+    # a clause longer than two lines is split at a balanced word boundary, before a conjunction when
+    # one is near. Two lines (44 px, CAP_MERGE characters) are allowed.
+    BREAK_BEFORE = {"and", "or", "but", "that", "which", "who", "why", "how", "when", "while", "because", "during", "into", "against", "about", "than", "so", "if", "then"}
+    def sentences():
+        out, cur = [], []
+        for w in WORDS:
+            cur.append(w)
+            if w["word"].rstrip('"\u201d\u2019\')').endswith((".", "!", "?")):
+                out.append(cur); cur = []
+        if cur: out.append(cur)
+        return out
+    def clauses(sent):
+        out, cur = [], []
+        for w in sent:
+            cur.append(w)
+            if w["word"].rstrip('"\u201d\u2019\')').endswith((",", ";", ":")):
+                out.append(cur); cur = []
+        if cur: out.append(cur)
+        return out
+    def split_long(cl):
+        if len(text_of(cl)) <= CAP_MERGE: return [cl]
+        n = -(-len(text_of(cl)) // CAP_MERGE)
+        best, best_score = None, None
+        import itertools
+        idx = list(range(1, len(cl)))
+        for cuts in itertools.combinations(idx, n - 1):
+            parts, prev, ok = [], 0, True
+            for c in list(cuts) + [len(cl)]:
+                part = cl[prev:c]; prev = c
+                if len(text_of(part)) > CAP_MERGE: ok = False; break
+                parts.append(part)
+            if not ok: continue
+            lens = [len(text_of(x)) for x in parts]
+            score = max(lens) - min(lens) - sum(8 for c in cuts if cl[c]["word"].lower().strip(',;:') in BREAK_BEFORE)
+            if best_score is None or score < best_score: best, best_score = parts, score
+        if best is None:
+            best, cur = [], []
+            for w in cl:
+                if cur and len(text_of(cur + [w])) > CAP_MERGE: best.append(cur); cur = []
+                cur.append(w)
+            if cur: best.append(cur)
+        return best
     groups = []
-    cursor = 0
-    while cursor < len(WORDS):
-        end = cursor + 1
-        while end < len(WORDS) and end - cursor < 6 and len(text_of(WORDS[cursor:end + 1])) <= CAP_CHARS:
-            end += 1
-        while end < len(WORDS) and WORDS[end-1]["end"] - WORDS[cursor]["start"] < .8 and len(text_of(WORDS[cursor:end + 1])) <= CAP_MERGE:
-            end += 1
-        group = WORDS[cursor:end]
-        if groups and group[-1]["end"] - group[0]["start"] < .8 and len(text_of(groups[-1] + group)) <= CAP_MERGE:
-            groups[-1].extend(group)
-        else:
-            groups.append(group)
-        cursor = end
+    for sent in sentences():
+        pieces = [x for cl in clauses(sent) for x in split_long(cl)]
+        cur = []
+        for piece in pieces:
+            if cur and len(text_of(cur + piece)) <= CAP_MERGE:
+                cur = cur + piece
+            else:
+                if cur: groups.append(cur)
+                cur = list(piece)
+        if cur: groups.append(cur)
     for gi, group in enumerate(groups):
         st=group[0]["start"]
         en=min(groups[gi+1][0]["start"] if gi+1<len(groups) else group[-1]["end"]+.4, group[-1]["end"]+.6)

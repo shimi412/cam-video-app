@@ -5,6 +5,7 @@ import { InProgressDialog, type InProgressVideo } from "@/components/in-progress
 import { WorkProgress } from "@/components/work-progress";
 import Link from "next/link";
 import { CategoryCard } from "@/components/category-card";
+import { StudioHome } from "@/components/studio-home";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PreparationReview } from "./preparation-review";
@@ -352,6 +353,8 @@ export default function StudioPage() {
   const framedTemplate = framing ? templates.find((t) => t.slug === framing.params.templateSlug) : undefined;
 
   if(connected===null)return error?<p role="alert">{error}</p>:<WorkProgress title="Opening CAM" description="Loading your workspace."/>;
+  // Shimi, 2026-10-26: when the three formats are produced in studio mode, the home page is the locked-category screen with the creation form below.
+  if(categoryHref.clay&&categoryHref.motion&&categoryHref.comics&&!job&&!framing)return <StudioHome/>;
   return (
     <div className="space-y-6">
       <div className="space-y-4">

@@ -1,11 +1,8 @@
-'use client';
-import {Suspense,useRef,useState} from 'react';
-import Link from 'next/link';
-import {useRouter,useSearchParams} from 'next/navigation';
-import {WorkProgress} from '@/components/work-progress';
-/** Option C (Shimi, 2026-10-26): the three categories share this creation screen when they are produced in studio mode. The copy names the category, never the production method. */
-const CATEGORY_COPY={clay:{title:'Create a Clay animation',line:'A narrator in a warm clay studio, scene after scene.',kicker:'Clay animation'},motion:{title:'Create a motion design video',line:'Words and shapes in motion, carried by your narration.',kicker:'Motion design'},comics:{title:'Create an Attack video',line:'A comic-book world, expressive panels and a camera that carries your story.',kicker:'Attack video'}} as const;
-type FilmCategory=keyof typeof CATEGORY_COPY;
-const filmCategory=(value:string|null|undefined):FilmCategory=>value==='clay'||value==='motion'?value:'comics';
-function ComicStartForm(){const router=useRouter(),request=useRef<string|null>(null),category=filmCategory(useSearchParams().get('category')),copy=CATEGORY_COPY[category];const [title,setTitle]=useState(''),[script,setScript]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');return <div className="max-w-3xl mx-auto space-y-6"><Link href="/" className="btn btn-ghost btn-sm">← Video categories</Link><div><p className="kicker">Step 1 · Your script</p><h1 className="page-title">{copy.title}</h1></div><p>{copy.line}</p><ol aria-label="Video journey" className="flex flex-wrap gap-3 text-sm">{['Script & estimate','Production','Review & feedback','Download'].map((s,i)=><li key={s}>{i+1}. {s}</li>)}</ol><form className="card space-y-5" onSubmit={async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');request.current??=crypto.randomUUID();try{const r=await fetch('/api/comics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requestId:request.current,title,script,category})}),v=await r.json();if(!r.ok)throw Error(v.error);router.push(`/comics/${v.id}`);}catch(e){setError(e instanceof Error?e.message:'Could not prepare this price.');setBusy(false);}}}><label className="block">Video title<input required maxLength={80} value={title} disabled={busy} onChange={e=>{request.current=null;setTitle(e.target.value);}} className="input block mt-2"/></label><label className="block">Your script<textarea required minLength={20} maxLength={12000} rows={10} disabled={busy} value={script} onChange={e=>{request.current=null;setScript(e.target.value);}} className="input block mt-2"/></label><p>We read your script and show you the estimated delay and the price of the complete first version. Nothing is produced before you approve that estimate.</p><button disabled={busy} className="btn btn-primary">Review estimate</button></form>{busy&&<WorkProgress title="Reading your script" description="Estimating the delay and price of your film."/>}{error&&<p role="alert" className="text-red-600">{error}</p>}</div>;}
-export default function ComicStart(){return <Suspense fallback={<WorkProgress title="Opening" description="Loading the creation screen."/>}><ComicStartForm/></Suspense>;}
+"use client";
+import {Suspense} from "react";
+import Link from "next/link";
+import {useSearchParams} from "next/navigation";
+import {WorkProgress} from "@/components/work-progress";
+import {ComicStartForm,filmCategory} from "@/components/comic-start-form";
+function Screen(){const category=filmCategory(useSearchParams().get("category"));return <div className="max-w-3xl mx-auto space-y-6"><Link href="/" className="btn btn-ghost btn-sm">← Video categories</Link><ComicStartForm category={category}/></div>;}
+export default function ComicStart(){return <Suspense fallback={<WorkProgress title="Opening" description="Loading the creation screen."/>}><Screen/></Suspense>;}

@@ -7,6 +7,7 @@ export const GET=withAccess(async(request:Request,context:{params:Promise<{id:st
  try{const {id,file}=await context.params,s=await getComic(id,(await actorFor(request))!.id),name=file.join('/'),download=name==='download';
  if(download&&(s.phase!=='complete'||s.approved.final!==s.mediaHash))throw Error('Approve the final film first.');
  const target=download?s.media:name;
+ if(download){const {pool}=await import('@/db');await pool.query("UPDATE jobs SET params=jsonb_set(params,'{downloadedAt}',to_jsonb(now()::text)) WHERE id=$1 AND params->>'downloadedAt' IS NULL",[id]).catch(()=>{});}
  // Allowed: the saved images, the current film (a studio delivery is `studio/<id>/vN-<sha>.mp4`, read from storage/studio/<id>/ by `comicFile`), its preview and the evidence frames.
  if(!target||![...Object.values(s.images),s.media,s.media?.replace(/final\.mp4$/,'preview.mp4'),...(s.checks?.flashNotes??[]).flatMap(n=>n.evidence)].includes(target)||target.includes('..')||path.isAbsolute(target))throw Error('Media unavailable.');
  const bytes=await readFile(comicFile(id,target));if(download&&hash(bytes.toString('base64'))!==s.approved.final)throw Error('Approved file changed.');

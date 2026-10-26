@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { signOut } from "next-auth/react";
+import { toCredits } from "@/lib/credits-display";
 
 const NAV = [
   { href: "/", label: "Create video" },
   { href: "/productions", label: "My videos" },
-  { href: "/library", label: "Library" },
   { href: "/credits", label: "My credits" },
   { href: "/help", label: "Help" },
   { href: "/admin", label: "Admin" },
@@ -57,7 +57,7 @@ export function Header() {
           </nav>
         </div>
         {account && <div className="flex items-center gap-3 text-sm flex-wrap">
-          {preview ? <span className="pill">{localDemo ? "Local demo · No charges" : "Preview workspace · No charges"}</span> : <span className="pill" aria-label="CAM credits balance"><span aria-hidden="true">◎</span><span className="font-mono">{balance === null ? "…" : balance.toFixed(2)}</span> CAM credits</span>}
+          {preview ? <span className="pill">{localDemo ? "Local demo · No charges" : "Preview workspace · No charges"}</span> : <span className="pill" aria-label="CAM credits balance"><span aria-hidden="true">◎</span><span className="font-mono">{balance === null ? "…" : toCredits(balance).toLocaleString("en-US")}</span> CAM credits</span>}
           <Link href="/?new=1" className="btn btn-primary btn-sm">+ Create video</Link>
           {!account.local && <button className="btn btn-ghost btn-sm" onClick={() => void signOut({ callbackUrl: "/login" })}>Sign out</button>}
         </div>}
