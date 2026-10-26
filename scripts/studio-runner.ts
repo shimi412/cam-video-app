@@ -31,21 +31,32 @@ async function run(m:StudioMission){
  await writeFile(path.join(dir,'mission.json'),JSON.stringify(m,null,1));
  const prompt=await executorPrompt(m,dir);
  const claude=process.env.CAM_STUDIO_CLAUDE??'claude';
- const cli=[ '-p',prompt,'--output-format','json','--max-turns',process.env.CAM_STUDIO_MAX_TURNS??'300','--dangerously-skip-permissions','--add-dir',repo,...(process.env.CAM_STUDIO_MODEL?['--model',process.env.CAM_STUDIO_MODEL]:[])];
- log('executing',m.id,'V'+m.version,m.title);
- const started=Date.now();
- const result=await new Promise<{code:number|null;out:string}>(resolve=>{
+ const base=['--output-format','json','--max-turns',process.env.CAM_STUDIO_MAX_TURNS??'300','--dangerously-skip-permissions','--add-dir',repo,...(process.env.CAM_STUDIO_MODEL?['--model',process.env.CAM_STUDIO_MODEL]:[])];
+ const invoke=(cli:string[])=>new Promise<{code:number|null;out:string}>(resolve=>{
   const child=spawn('caffeinate',['-i',claude,...cli],{cwd:workspace,env:{...process.env,CLAUDECODE:undefined,CLAUDE_CODE_SESSION_ID:undefined,CLAUDE_CODE_CHILD_SESSION:undefined},stdio:['ignore','pipe','pipe']});
   let out='';child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{out+=d;});
   child.on('close',code=>resolve({code,out}));
  });
+ const delivered=async()=>(await listMissions()).find(x=>x.id===m.id)?.state==='delivered';
+ log('executing',m.id,'V'+m.version,m.title);
+ const started=Date.now();
+ let result=await invoke(['-p',prompt,...base]);
+ let session='';try{session=String(JSON.parse(result.out).session_id??'');}catch{/* raw output kept */}
+ // A headless session may end its answer while provider jobs are still running ("je reprends dans
+ // 4 minutes"): resume the same session until the mission is delivered, bounded (2026-10-26).
+ for(let resume=1;resume<=Number(process.env.CAM_STUDIO_RESUMES??6)&&session&&!(await delivered());resume++){
+  await writeFile(path.join(dir,`executor-output-${resume}.json`),result.out);
+  log('resuming',m.id,'attempt',resume);
+  result=await invoke(['-p',`Continue la mission ${m.id} sans t'arrêter avant la livraison : attends les générations en cours avec jobs_wait (répète jusqu'à all_terminal), regarde les clips, refais ceux qui ne vivent pas (2 reprises max, sinon local), puis studio-build.ts, notes.md, studio-deliver.ts et ton rapport final.`,'--resume',session,...base]);
+  try{const j=JSON.parse(result.out);session=String(j.session_id??session);}catch{/* keep session */}
+ }
  await writeFile(path.join(dir,'executor-output.json'),result.out);
  let summary='';let cost=0;try{const j=JSON.parse(result.out);summary=String(j.result??'').slice(0,1500);cost=Number(j.total_cost_usd??0);}catch{summary=result.out.slice(-1500);}
  const minutes=((Date.now()-started)/60000).toFixed(1);
- const delivered=(await listMissions()).find(x=>x.id===m.id)?.state==='delivered';
- log('done',m.id,'delivered:',delivered,'minutes:',minutes,'cost:',cost.toFixed(2));
- await writeFile(path.join(dir,'executor-report.md'),`# Rapport exécuteur\n\nMission ${m.id} V${m.version} « ${m.title} »\nDurée : ${minutes} min · Coût Claude : ${cost.toFixed(2)} $ · Livrée : ${delivered}\n\n${summary}\n`);
- if(!delivered)await notifyStudio({...m,script:`⚠️ Exécuteur terminé sans livraison (${minutes} min, ${cost.toFixed(2)} $). Rapport : storage/comics/${m.id}/executor-report.md\n${summary.slice(0,800)}`,feedback:[]}).catch(()=>{});
+  const wasDelivered=await delivered();
+ log('done',m.id,'delivered:',wasDelivered,'minutes:',minutes,'cost:',cost.toFixed(2));
+ await writeFile(path.join(dir,'executor-report.md'),`# Rapport exécuteur\n\nMission ${m.id} V${m.version} « ${m.title} »\nDurée : ${minutes} min · Coût Claude : ${cost.toFixed(2)} $ · Livrée : ${wasDelivered}\n\n${summary}\n`);
+ if(!wasDelivered)await notifyStudio({...m,script:`⚠️ Exécuteur terminé sans livraison (${minutes} min, ${cost.toFixed(2)} $). Rapport : storage/comics/${m.id}/executor-report.md\n${summary.slice(0,800)}`,feedback:[]}).catch(()=>{});
 }
 async function pass(){
  const open=(await listMissions({open:true})).filter(m=>m.category==='comics'&&(only?m.id===only:m.state==='queued'));
