@@ -8,6 +8,7 @@ import {readFile,readdir,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {deliverMission,notifyStudio} from '../src/lib/studio/missions';
 import {pool} from '../src/db';
+async function main(){
 const [id,fileArg,notesArg]=process.argv.slice(2);
 if(!id){console.error('usage: studio-deliver.ts <missionId> [file.mp4] [notes.md]');process.exit(2);}
 const dir=path.resolve('storage/comics',id);
@@ -26,3 +27,5 @@ try{const svc=await import('../src/lib/comics/service') as Record<string,unknown
 await notifyStudio({...mission,script:`Livré : ${path.basename(file)} (${(bytes.length/1e6).toFixed(1)} MB). Notes : ${notes.slice(0,300)||'aucune'}`,feedback:[]}).catch(()=>{});
 console.log(JSON.stringify({mission:mission.id,version:mission.version,state:mission.state,media:mission.mediaPath??null,clientState:applied}));
 await pool.end();
+}
+main().catch(e=>{console.error(e instanceof Error?e.stack??e.message:String(e));process.exit(1);});

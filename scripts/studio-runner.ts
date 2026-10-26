@@ -14,6 +14,7 @@ import {mkdir,writeFile,access} from 'node:fs/promises';
 import path from 'node:path';
 import {listMissions,markInProduction,notifyStudio,type StudioMission} from '../src/lib/studio/missions';
 import {pool} from '../src/db';
+async function main(){
 const workspace=process.env.CAM_STUDIO_WORKSPACE??'/Users/shimi/Documents/ALEF';
 const repo=process.cwd();
 const args=process.argv.slice(2),once=args.includes('--once'),only=args.includes('--mission')?args[args.indexOf('--mission')+1]:null;
@@ -58,3 +59,5 @@ async function pass(){
 try{await access(path.join(workspace,'BINA/4 TOOLS/skills/cam-attack/SKILL.md'));}catch{throw Error('cam-attack skill missing in the workspace.');}
 if(once||only){await pass();await pool.end();}
 else{log('polling every',process.env.CAM_STUDIO_POLL_MS??'30000','ms');for(;;){try{await pass();}catch(e){log('error',e instanceof Error?e.message:String(e));}await new Promise(r=>setTimeout(r,Number(process.env.CAM_STUDIO_POLL_MS??30000)));}}
+}
+main().catch(e=>{console.error(e instanceof Error?e.stack??e.message:String(e));process.exit(1);});

@@ -14,6 +14,7 @@ import path from 'node:path';
 import {buildComic} from '../src/lib/comics/render';
 import {Plan,type ComicState} from '../src/lib/comics/model';
 import {localClip} from '../src/lib/comics/controls';
+async function main(){
 const [id]=process.argv.slice(2);
 if(!id){console.error('usage: studio-build.ts <uuid>');process.exit(2);}
 const dir=path.resolve('storage/comics',id);
@@ -36,3 +37,5 @@ for(const p of plan.panels){
 const result=await buildComic(state);
 await writeFile(path.join(dir,'build-result.json'),JSON.stringify(result,null,1));
 console.log(JSON.stringify({media:result.media,checks:result.checks,fallbacks:result.fallbacks}));
+}
+main().catch(e=>{console.error(e instanceof Error?e.stack??e.message:String(e));process.exit(1);});
