@@ -3,10 +3,14 @@ import { pool } from "@/db";
 import { randomUUID } from "node:crypto";
 import { creditedUsdForCents } from "@/lib/credits-display";
 export function stripeClient(){const key=process.env.STRIPE_SECRET_KEY;if(!key)throw Error("Payments are not configured yet. Please contact Bina.");return new Stripe(key,{maxNetworkRetries:0,timeout:20000});}
+/** A live key is a standard secret key (sk_live_) or a restricted key (rk_live_): the CAM site runs on a
+ * restricted live key since 2026-10-28, and the first real 10 $ recharge was saved as a test order because
+ * only sk_live_ was recognised. */
+export function stripeLive(key=process.env.STRIPE_SECRET_KEY??""){return /^(sk|rk)_live_/.test(key);}
 export function paymentsConfigured(){return Boolean(process.env.STRIPE_SECRET_KEY&&process.env.STRIPE_WEBHOOK_SECRET&&process.env.CAM_PUBLIC_URL);}
 export async function createTopup(actor:string,id:string,cents:number){
  if(!paymentsConfigured())throw Error("Payments are not configured yet. Please contact Bina.");
- const stripe=stripeClient(),live=process.env.STRIPE_SECRET_KEY!.startsWith("sk_live_");
+ const stripe=stripeClient(),live=stripeLive();
  await pool.query("INSERT INTO credit_orders(id,actor_id,amount_cents,live) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",[id,actor,cents,live]);
  const order=(await pool.query("SELECT * FROM credit_orders WHERE id=$1",[id])).rows[0];if(order.actor_id!==actor||order.amount_cents!==cents||order.live!==live)throw Error("This recharge identifier is already used.");
  if(order.status==='paid'||order.status==='test-paid')throw Error("This recharge has already been processed.");
