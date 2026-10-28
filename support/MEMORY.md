@@ -5,7 +5,7 @@
 2. Estimate: the screen shows the delay of the complete first version (about 1 h 30) and its price in credits. Nothing is produced before Approve & start production.
 3. Production: the page shows "Version 1 in production". The client can close the page; the version appears when it is ready. No storyboard, no scene-by-scene step: every version is a complete film.
 4. Review: "Version N is ready for your review". Watch the film, read the review notes under it. Then either approve and download, or ask for changes.
-5. Changes: write notes (for the whole video, or with a timestamp or a scene number), click Lock feedback, then Apply feedback. The screen says the notes are being reviewed; the price and delay of the next version appear shortly after. Approving that price starts the next version.
+5. Changes: write notes (for the whole video, or with a timestamp such as 0:17), click Lock feedback, then Apply feedback. The screen says the notes are being reviewed; the price and delay of the next version appear shortly after. Approving that price starts the next version.
 6. Approve this version & download: the approved file is downloadable from the video page and from My videos.
 
 ## Credits
