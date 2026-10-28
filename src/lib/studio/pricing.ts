@@ -35,10 +35,20 @@ export const STUDIO_ESTIMATE_RANGE={min:35,max:40} as const;
 /** Shimi, 2026-10-26: Motion design is priced a few dollars below Clay and Attack (22 to 28 $, around 25) to steer
  * the client toward the format with the highest margin. */
 export const STUDIO_ESTIMATE_RANGE_MOTION={min:22,max:28} as const;
-export function studioEstimateUsd(random:()=>number=Math.random,category?:string){
+/** Shimi, 2026-10-28 (after the 2 min 13 "1B Views" film): a Motion film is priced by its length. Up to 1 min 30 the
+ * usual estimate applies; beyond, at least 5 $ more, and 5 $ more again for every further minute (2 min 30 -> +10 $).
+ * The length is estimated from the script at about 1.9 words per second (Bram with breaths: 238 words -> 126 s). */
+export const MOTION_WORDS_PER_SECOND=1.9;
+export const MOTION_BASE_SECONDS=90;
+export function motionLengthSurchargeUsd(script:string){
+ const words=script.split(/\s+/).filter(Boolean).length,seconds=words/MOTION_WORDS_PER_SECOND;
+ return seconds<=MOTION_BASE_SECONDS?0:5*Math.ceil((seconds-MOTION_BASE_SECONDS)/60);
+}
+export function studioEstimateUsd(random:()=>number=Math.random,category?:string,script=''){
  const {min,max}=category==='motion'?STUDIO_ESTIMATE_RANGE_MOTION:STUDIO_ESTIMATE_RANGE;
  const draws=[random(),random(),random()].map(r=>min+Math.min(Math.max(r,0),1)*(max-min));
- return Math.max(min,Math.min(max,Math.round(draws.reduce((a,b)=>a+b,0)/draws.length)));
+ const base=Math.max(min,Math.min(max,Math.round(draws.reduce((a,b)=>a+b,0)/draws.length)));
+ return base+(category==='motion'?motionLengthSurchargeUsd(script):0);
 }
 /** Client-facing delay: "about 1 h 30", "about 45 min". */
 export function studioDelayLabel(minutes:number){

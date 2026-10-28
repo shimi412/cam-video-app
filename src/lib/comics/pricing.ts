@@ -114,7 +114,7 @@ export async function priceStudioComic(s:ComicState,kind:'film'|'revision',price
  const b=comicsBudgets(),prior=s.approvedQuotes.at(-1),priorUsd=prior?.totalUsd??0,expires=Date.now()+b.quoteMinutes*60000,inputHash=quoteHash(s,kind);
  if(kind==='film'){
   // Option C (2026-10-26): one whole-dollar price drawn at the estimate and kept (a refresh extends the expiry, never redraws).
-  const totalUsd=Math.max(priorUsd,s.quote?.kind==='film'&&s.quote.totalUsd?s.quote.totalUsd:studioEstimateUsd(Math.random,s.category));
+  const totalUsd=Math.max(priorUsd,s.quote?.kind==='film'&&s.quote.totalUsd?s.quote.totalUsd:studioEstimateUsd(Math.random,s.category,s.script));
   return {id:randomUUID(),kind,items:{},credits:0,analysisUsd:0,costUsd:0,totalUsd,additionalUsd:totalUsd-priorUsd,expires,inputHash,additionalCostUsd:0};
  }
  // The revision price is set by the admin (`quote` action of /api/admin/studio); a refresh keeps it.
