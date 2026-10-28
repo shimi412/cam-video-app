@@ -16,6 +16,6 @@
 - Never promise a delay shorter than the one shown on the screen.
 - A saved note is not yet an applied change: changes are applied in the next version, after the client approves its price.
 - The client approves prices and versions, never technical steps. There is no storyboard approval and no per-scene approval in this journey.
-- Finished films: My videos lists the saved videos; the video page offers the download after approval.
+- My videos lists every video the client created (Draft, Finished, Downloaded); the video page offers the download after approval.
 - If a page shows "We are still working on your video", the version is still in production: no action is needed.
 - Do not describe how the film is made, which tools or models are used, or who works on it. Say "the CAM studio" or "the system".

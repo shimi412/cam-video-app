@@ -16,7 +16,8 @@ export async function lockComic<T>(id:string,fn:()=>Promise<T>,tryOnly=false){co
 export async function createComic(actor:string,id:string,title:string,script:string){
  const c=await pool.connect();try{await c.query('BEGIN');// New films follow the single journey (Shimi, 2026-10-23); saved films without `journey` keep the legacy gated flow.
  const s:ComicState={version:1,journey:'single',id:z.uuid().parse(id),title,script,phase:'planning',revision:0,queued:false,progress:'Preparing your estimate',approvedQuotes:[],operations:{},notes:[],votes:{},approved:{},images:{},clips:{},settings:{music:'normal',captions:true},targets:[]};
- const r=await c.query("INSERT INTO jobs(id,script,title,params,status) VALUES($1,$2,$3,$4,'draft') ON CONFLICT(id) DO NOTHING RETURNING id",[id,script,title,JSON.stringify({filmType:'comics',productionMethod:'whimsical-v1',aspectRatio:'9:16',executionMode:providerMode(),live:true})]);
+ // Every film is listed in My videos from its creation (live case 2026-10-28: the client's first film was invisible because only a "keep" click set the flag).
+ const r=await c.query("INSERT INTO jobs(id,script,title,params,status,saved_to_library) VALUES($1,$2,$3,$4,'draft',true) ON CONFLICT(id) DO NOTHING RETURNING id",[id,script,title,JSON.stringify({filmType:'comics',productionMethod:'whimsical-v1',aspectRatio:'9:16',executionMode:providerMode(),live:true})]);
  if(r.rowCount)await c.query('INSERT INTO comics_runs(job_id,actor_id,state) VALUES($1,$2,$3)',[id,actor,JSON.stringify(s)]);
  else{const old=(await c.query('SELECT state FROM comics_runs WHERE job_id=$1 AND actor_id=$2',[id,actor])).rows[0];if(!old||old.state.script!==script||old.state.title!==title)throw Error('This request belongs to another video.');}
  await c.query('COMMIT');return getComic(id,actor);
