@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { pool } from "@/db";
 import { randomUUID } from "node:crypto";
+import { creditedUsdForCents } from "@/lib/credits-display";
 export function stripeClient(){const key=process.env.STRIPE_SECRET_KEY;if(!key)throw Error("Payments are not configured yet. Please contact Bina.");return new Stripe(key,{maxNetworkRetries:0,timeout:20000});}
 export function paymentsConfigured(){return Boolean(process.env.STRIPE_SECRET_KEY&&process.env.STRIPE_WEBHOOK_SECRET&&process.env.CAM_PUBLIC_URL);}
 export async function createTopup(actor:string,id:string,cents:number){
@@ -22,7 +23,7 @@ export async function settleTopup(session:Stripe.Checkout.Session){
  if(!order)throw Error("Unknown payment order.");
  if(session.currency!=="usd"||session.amount_total!==order.amount_cents||session.livemode!==order.live||session.metadata?.orderId!==order.id||(order.session_id&&order.session_id!==session.id))throw Error("Payment does not match the saved order.");
  if(order.status!=='paid'&&order.status!=='test-paid'){
- let ledger:string|null=null;if(session.livemode){ledger=randomUUID();await c.query("INSERT INTO credit_ledger(id,delta_usd,kind,note,wallet) VALUES($1,$2,'topup',$3,'customer')",[ledger,(order.amount_cents/100).toFixed(2),`Stripe recharge ${session.id}`]);}
+ let ledger:string|null=null;if(session.livemode){ledger=randomUUID();await c.query("INSERT INTO credit_ledger(id,delta_usd,kind,note,wallet) VALUES($1,$2,'topup',$3,'customer')",[ledger,creditedUsdForCents(order.amount_cents).toFixed(2),`Stripe recharge ${session.id}`]);}
  await c.query("UPDATE credit_orders SET status=$2,session_id=$3,ledger_id=$4 WHERE id=$1",[order.id,session.livemode?'paid':'test-paid',session.id,ledger]);}
  await c.query("COMMIT");}catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
 }

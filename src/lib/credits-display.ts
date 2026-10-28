@@ -13,3 +13,6 @@ export const fmtCredits=(credits:number)=>credits.toLocaleString("en-US");
 /** Shimi, 2026-10-26: 1,200 credits offered the first month, then 600 credits included every month with the plan. */
 export const WELCOME_CREDITS=1200;
 export const MONTHLY_INCLUDED_CREDITS=600;
+/** Dollars credited to the wallet for a paid recharge: a pack pays its advertised credits, bonus included
+ * (300 $ -> 3,300 credits -> 330 $ in the ledger); any other amount pays ten credits per dollar. */
+export const creditedUsdForCents=(cents:number)=>{const pack=PACKS.find(p=>p.usd*100===cents);return pack?pack.credits/CREDITS_PER_USD:cents/100;};
