@@ -52,7 +52,8 @@ export async function stillClip(still:string,out:string,seconds:number){
 export async function localClip(s:ComicState,panelId:number){
  const still=s.images[panelId];if(!still)throw Error(`Panel ${panelId} has no approved still for its local clip.`);
  const t=s.timing?.phrases.find(p=>p.phrase===panelId);const seconds=Math.min(30,Math.max(3,Math.ceil((t?t.end-t.start:4)+2)));
- const dir=comicDirectory(s.id),file=`local-${panelId}-${hash({still,seconds}).slice(0,16)}.mp4`;
+ // the cache key carries the still's size and mtime: a redrawn still under the same name must produce a new local clip (live case 2026-10-29, snow panel kept after redraw)
+ const dir=comicDirectory(s.id),meta=await stat(path.join(dir,still)),file=`local-${panelId}-${hash({still,seconds,size:meta.size,mtime:meta.mtimeMs}).slice(0,16)}.mp4`;
  if(!(await stat(path.join(dir,file)).catch(()=>null)))await stillClip(path.join(dir,still),path.join(dir,file),seconds);
  return file;
 }
