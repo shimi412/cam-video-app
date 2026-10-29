@@ -6,7 +6,7 @@
 #    aside (Turbopack panics on any file under the storage symlink: "points out of the filesystem root", live outage
 #    2026-10-28 18:10), 4. restore the link, restart the service and check the public login page.
 set -euo pipefail
-HOST="${CAM_SERVER:-mon-serveur}"; APP=/srv/cam-video-app/app; NODE=/usr/local/node-24.19.0/bin/node
+HOST="${CAM_SERVER:-mon-serveur}"; APP=/srv/cam-video-app/app; NODE=/usr/bin/node
 cd "$(dirname "$0")/.."
 rsync -az --delete --exclude node_modules --exclude .next --exclude storage --exclude .env --exclude .secrets --exclude .git --exclude .venv-motion-runtime ./ "$HOST:/tmp/cam-app-sync/"
 ssh "$HOST" "set -e

@@ -4,7 +4,7 @@
 # Copies the film and the notes to the server, then runs studio-deliver.ts there (DB and storage of the server).
 set -euo pipefail
 MISSION="$1"; FILM="$2"; NOTES="${3:-}"
-HOST="${CAM_SERVER:-mon-serveur}"; APP=/srv/cam-video-app/app; NODE=/usr/local/node-24.19.0/bin/node
+HOST="${CAM_SERVER:-mon-serveur}"; APP=/srv/cam-video-app/app; NODE=/usr/bin/node
 TMP="/tmp/cam-deliver-$MISSION"
 ssh "$HOST" "mkdir -p $TMP && chmod 777 $TMP"
 scp -q "$FILM" "$HOST:$TMP/final.mp4"
