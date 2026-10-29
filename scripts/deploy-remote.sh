@@ -8,9 +8,9 @@
 set -euo pipefail
 HOST="${CAM_SERVER:-mon-serveur}"; APP=/srv/cam-video-app/app; NODE=/usr/bin/node
 cd "$(dirname "$0")/.."
-rsync -az --delete --exclude node_modules --exclude .next --exclude storage --exclude .env --exclude .secrets --exclude .git --exclude .venv-motion-runtime ./ "$HOST:/tmp/cam-app-sync/"
+rsync -az --delete --exclude node_modules --exclude .next --exclude storage --exclude .env --exclude .secrets --exclude .git --exclude ".venv*" ./ "$HOST:/tmp/cam-app-sync/"
 ssh "$HOST" "set -e
-sudo rsync -a --delete --exclude .env --exclude .secrets --exclude storage --exclude node_modules --exclude .next /tmp/cam-app-sync/ $APP/
+sudo rsync -a --delete --exclude .env --exclude .secrets --exclude storage --exclude node_modules --exclude .next --exclude ".venv*" /tmp/cam-app-sync/ $APP/
 sudo chown -R cam:cam $APP
 cd $APP
 sudo mv storage storage.volume
