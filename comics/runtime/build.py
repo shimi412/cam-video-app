@@ -216,7 +216,10 @@ for c in order:
     rate = 1.0
     last_t = win - 0.04
     after = P / f"assets/stills/case-{c:02d}-fin.jpg"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{last_t:.3f}", "-i", str(f), "-frames:v", "1", "-q:v", "2", str(after)], check=True)
+    # dernière image lue depuis la fin du clip (seek depuis le début à win-0.04 tombait parfois après la dernière image : still absent, « media_load_failed », 29/10/2026)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-sseof", "-0.12", "-i", str(f), "-frames:v", "1", "-q:v", "2", str(after)], check=True)
+    if not after.exists():
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(f), "-vf", "select=eq(n\\,0)", "-frames:v", "1", "-q:v", "2", str(after)], check=True)
     before = P / f"assets/stills/case-{c:02d}-debut.jpg"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(f), "-frames:v", "1", "-q:v", "2", str(before)], check=True)
     fit = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover"
@@ -401,7 +404,14 @@ if FILM.get("captions", True):
             if w["word"].rstrip('"\u201d\u2019\')').endswith((",", ";", ":")):
                 out.append(cur); cur = []
         if cur: out.append(cur)
-        return out
+        # a clause of one or two words ("Second,", "First,", "Meanwhile,") never stands alone (live check 2026-10-29,
+        # "Second," shown 0.71 s): it joins the next clause when the pair fits, else the previous one.
+        merged = []
+        for cl in out:
+            if merged and len(merged[-1]) <= 2: merged[-1] = merged[-1] + cl      # split_long re-cuts the pair if it is too long
+            else: merged.append(cl)
+        if len(merged) >= 2 and len(merged[-1]) <= 2 and len(text_of(merged[-2] + merged[-1])) <= CAP_MERGE: merged[-2:] = [merged[-2] + merged[-1]]
+        return merged
     def split_long(cl):
         if len(text_of(cl)) <= CAP_MERGE: return [cl]
         n = -(-len(text_of(cl)) // CAP_MERGE)

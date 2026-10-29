@@ -1,5 +1,5 @@
 import {recoveryView,type PipelineRecovery} from '../agent/recovery-policy';
-import {STUDIO_ESTIMATE_MINUTES} from '../studio/pricing';
+import {studioDelayMinutes} from '../studio/pricing';
 import {z} from 'zod';
 import {createHash} from 'node:crypto';
 import type {MotionTiming} from '../motion/model';
@@ -18,7 +18,7 @@ export type CameraMove=z.infer<typeof CameraMove>;
  * still parse (defaults) and keep behaving as before (`panelMotion` reads them as `legacy`). */
 export const Panel=z.object({id:z.number().int().positive(),narration:z.string().min(1).max(1600),meaning:z.string().min(5).max(600),scene:z.string().min(10).max(1200),hero:z.enum(['absent','partial','full']).default('absent'),color:z.string().min(3).max(50),title:z.string().max(70).default(''),action:z.string().min(5).max(600),camera:z.string().min(5).max(200),preserve:z.string().min(5).max(400),
  motion:z.enum(['local','generated']).default('local'),cameraMove:CameraMove.default({kind:'hold',amount:'subtle'}),videoPrompt:z.string().max(1200).default(''),lockEndFrame:z.boolean().default(false)}).strict();
-export const Plan=z.object({panels:z.array(Panel).min(3).max(24)}).strict();
+export const Plan=z.object({panels:z.array(Panel).min(3).max(40)}).strict();
 /** Saved plans may predate the 2026-10-25 fields (and the 2026-10-22 hero default): the state type is the schema's input shape; `validatePlan` returns the parsed shape with defaults applied. */
 export type ComicPlan=z.input<typeof Plan>;
 export type ComicPanel=ComicPlan['panels'][number];
@@ -138,7 +138,7 @@ export function publicComic(s:ComicState){const media=(file:string)=>`/api/comic
  const failedClips=!!s.plan?.panels.some(p=>!s.clips[p.id])&&!!s.plan?.panels.filter(p=>!s.clips[p.id]).every(p=>(singleJourney(s)?latestOperation(s,`clip-${p.id}-`):s.operations[`clip-${p.id}-${s.revision}`])?.state==='failed');
  const single=singleJourney(s),studio=studioFulfilment(s),panelCount=s.plan?.panels.length??s.panelCount??0;
  return {id:s.id,title:s.title,phase:s.phase,revision:s.revision,progress:s.progress,failureAnalysis:s.error&&!stop?recoveryView(s.recovery):null,
-  journey:single?'single' as const:'legacy' as const,version:s.filmVersion??0,estimateMinutes:studio?(s.quote?.kind==='revision'||s.work==='revision')&&s.studioDelayMinutes?s.studioDelayMinutes:STUDIO_ESTIMATE_MINUTES:panelCount?estimatedMinutes(panelCount):null,
+  journey:single?'single' as const:'legacy' as const,version:s.filmVersion??0,estimateMinutes:studio?(s.quote?.kind==='revision'||s.work==='revision')&&s.studioDelayMinutes?s.studioDelayMinutes:studioDelayMinutes(s.script):panelCount?estimatedMinutes(panelCount):null,
   // Option C: the client reads the category label, never "comics" for a clay or motion film; the wait for the next version's price shows as a progress card.
   category:s.category??'comics' as const,pendingStudioQuote:studio&&!!s.pendingStudioQuote,
   // Studio films (2026-10-26) have no storyboard: the client feedback targets the version's panels by number; the view never says who produces.

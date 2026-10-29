@@ -30,6 +30,12 @@ export function studioRevisionCostUsd(){
  * once inside the category's range, more likely near its middle (rounded mean of three uniform draws), and a delay of
  * about 1 h 30. No calculator, no provider call. The price is persisted in the film's quote at the estimate. */
 export const STUDIO_ESTIMATE_MINUTES=90;
+/** Shimi, 2026-10-29: a film whose narration runs past 1 min 30 is announced at about 5 hours instead of 1 h 30. */
+export const STUDIO_ESTIMATE_MINUTES_LONG=300;
+export function studioDelayMinutes(script:string){
+ const seconds=script.split(/\s+/).filter(Boolean).length/MOTION_WORDS_PER_SECOND;
+ return seconds>MOTION_BASE_SECONDS?STUDIO_ESTIMATE_MINUTES_LONG:STUDIO_ESTIMATE_MINUTES;
+}
 /** Shimi, 2026-10-26 (after the client meeting): Clay and Attack are priced 35 to 40 $, Motion stays around 25 $. */
 export const STUDIO_ESTIMATE_RANGE={min:35,max:40} as const;
 /** Shimi, 2026-10-26: Motion design is priced a few dollars below Clay and Attack (22 to 28 $, around 25) to steer
