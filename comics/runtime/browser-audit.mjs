@@ -18,6 +18,6 @@ try{
   if(timing.phrases.some(p=>Math.abs(t-(p.start+p.end)/2)<.04)){const file=`evidence/render-${i}.png`;await page.screenshot({path:file});samples.push({time:t,file});}
  }
  for(let t=0;t<build.duration;t++){await seek(t);await page.screenshot({path:`evidence/second-${String(t).padStart(3,'0')}.jpg`,type:'jpeg',quality:60});}
- await seek(build.duration-.1);const logo=await page.evaluate(()=>!!document.querySelector('#lg17')&&document.querySelectorAll('img[src="assets/logo-cam-texte.png"]').length===3);await page.screenshot({path:'evidence/ending.png'});
+ await seek(build.duration-.1);const logo=build.logoAt==null?await page.evaluate(()=>!document.querySelector('#lg17')&&!document.querySelector('img[src="assets/logo-cam-texte.png"]')):await page.evaluate(()=>!!document.querySelector('#lg17')&&document.querySelectorAll('img[src="assets/logo-cam-texte.png"]').length===3);await page.screenshot({path:'evidence/ending.png'});
  await writeFile('render-samples.json',JSON.stringify(samples));await writeFile('browser-audit.json',JSON.stringify({safeZones:violations,logo}));
 }finally{await browser.close();}

@@ -7,7 +7,8 @@
  * The folder is `storage/comics/<uuid>/` and must hold: `plan.json` ({"panels":[…]} with, per panel,
  * `motion` local|generated and `cameraMove`), `timing.json` (from studio-align.ts), `voice/voix.wav`,
  * and for every panel either `clips/case-N.mp4` (generated) or `images/case-N.png` (local camera).
- * Optional `settings.json` ({"music":"normal"|"quiet"|"off","captions":true}).
+ * Optional `settings.json` ({"music":"normal"|"quiet"|"off","captions":true,"logo":true}); `"logo":false` ends on the
+ * board (pull back, hold, fade to black) with no CAM signature, for clients who want no logo at all.
  * Prints the media path (`render-…/final.mp4`) and the checks. */
 import {access,readFile,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';

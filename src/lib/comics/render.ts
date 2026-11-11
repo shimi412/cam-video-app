@@ -17,11 +17,11 @@ async function peak(file:string){const r=await exec('ffmpeg',['-hide_banner','-i
  * camera move, which the build animates; a generated or legacy clip keeps the board camera only. */
 export function filmDocument(s:ComicState){
  if(!s.plan)throw Error('Plan missing.');
- return {panels:s.plan.panels.map(p=>{const local=!!s.localClips?.[p.id];const panel:Record<string,unknown>={...p};delete panel.title;delete panel.videoPrompt;delete panel.lockEndFrame;return {...panel,motion:local?'local':'generated',cameraMove:local?panelCamera(p):{kind:'hold',amount:'subtle'}};}),captions:s.settings.captions};
+ return {panels:s.plan.panels.map(p=>{const local=!!s.localClips?.[p.id];const panel:Record<string,unknown>={...p};delete panel.title;delete panel.videoPrompt;delete panel.lockEndFrame;return {...panel,motion:local?'local':'generated',cameraMove:local?panelCamera(p):{kind:'hold',amount:'subtle'}};}),captions:s.settings.captions,logo:s.settings.logo!==false};
 }
 export async function buildComic(s:ComicState){
  if(!s.plan||!s.timing||!s.voice||s.plan.panels.some(p=>!s.clips[p.id]))throw Error('The full film is not ready to assemble.');
- const root=comicDirectory(s.id),name=`render-${s.revision}-${s.settings.music}-${s.settings.captions?'captions':'clean'}`,dir=path.join(root,name);
+ const root=comicDirectory(s.id),name=`render-${s.revision}-${s.settings.music}-${s.settings.captions?'captions':'clean'}${s.settings.logo===false?'-nologo':''}`,dir=path.join(root,name);
  await mkdir(path.join(dir,'assets/clips'),{recursive:true});await mkdir(path.join(dir,'assets/stills'),{recursive:true});
  await cp('comics/template/assets',path.join(dir,'assets'),{recursive:true});
  for(const p of s.plan.panels)await cp(path.join(root,s.clips[p.id]),path.join(dir,`assets/clips/case-${String(p.id).padStart(2,'0')}.mp4`));

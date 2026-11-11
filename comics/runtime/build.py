@@ -25,9 +25,11 @@ PH = {p["phrase"]: p for p in T["phrases"]}
 WORDS = T["words"]
 VOICE_END = T["duration"]
 PULL = VOICE_END + 0.2           # la caméra recule sur la planche
+SIGNATURE = FILM.get("logo", True)   # False (règle client du 29/10/2026) : aucun logo CAM, fin sur la planche
 CARD = PULL + 1.3                # signature CAM
 LOGO_LEN = 4.3
-DUR = round(CARD + LOGO_LEN, 2)
+FADE = 0.8                       # sans signature : recul 1,2 s, tenue 1,4 s, fondu au noir 0,8 s
+DUR = round(CARD + LOGO_LEN, 2) if SIGNATURE else round(PULL + 1.2 + 1.4 + FADE, 2)
 
 PAPER = "#F1E7CF"
 INK = "#0B0B0F"
@@ -457,34 +459,39 @@ if FILM.get("captions", True):
         cues["subs"].append([st,en,text]); seen("caption "+text,st,en)
 
 # ---------------------------------------------------------------- signature CAM animée (reprise du film du 5 octobre)
+if not SIGNATURE:
+    clip_div(screen, DUR - FADE, FADE, 30, cid="fadeout", style=f"inset:0;background:{INK};opacity:0")
+    mv(f'tl.to("#fadeout",{{opacity:1,duration:{FADE:.2f},ease:"power2.in"}},{DUR - FADE:.3f});')
+    cues["card"] = None
 TL = CARD + 0.45
-LS = .74
-sw17 = VB[2] * LS
-ox = 540 - (1157 - 42) * LS / 2
-oy = 880 - (534 - 94) * LS / 2
-SCX, SCY = ox + sw17 / 2, oy + VB[3] * LS / 2
-st17, sh17 = brand_star("bs17", SCX, SCY, sw17, TL, seed=11, nparts=22)
-lines17 = ""
-for k, (y0, y1) in enumerate([(0, 76), (95, 174), (193, 271)]):
-    lines17 += (f'<div id="lt{k}" style="position:absolute;left:{ox + (536 - 42) * LS:.0f}px;top:{oy + (198 - 94 + y0) * LS:.0f}px;width:{622 * LS:.0f}px;height:{(y1 - y0) * LS:.0f}px;overflow:hidden">'
-                f'<img src="assets/logo-cam-texte.png" style="position:absolute;left:0;top:{-y0 * LS:.0f}px;width:{622 * LS:.0f}px;height:{271 * LS:.0f}px"></div>')
-ring = f'<div id="rg17" style="position:absolute;left:{SCX - 60:.0f}px;top:{SCY - 60:.0f}px;width:120px;height:120px;border-radius:50%;border:5px solid {LIGHT};opacity:0"></div>'
-bar17 = (f'<div id="rl17" style="position:absolute;left:{ox:.0f}px;top:{oy + VB[3] * LS + 70:.0f}px;width:{(1157 - 42) * LS:.0f}px;height:3px;'
-         f'background:{NAVY};transform-origin:left center"></div>')
-clip_div(screen, CARD, DUR - CARD, 30, cid="card", style=f"inset:0;background:{CR}",
-         inner=f'<div id="lg17" style="position:absolute;inset:0">{ring}{st17}{lines17}{bar17}</div>')
-mv(f'tl.fromTo("#card",{{clipPath:"circle(0px at 540px 960px)"}},{{clipPath:"circle(1200px at 540px 960px)",duration:.45,ease:"power3.in"}},{CARD:.3f});')
-LAND = TL + .45 + .2 + .75
-mv(f'tl.fromTo("#rg17",{{scale:.3,opacity:1}},{{scale:14,opacity:0,duration:1.1,ease:"power2.out"}},{LAND - .25:.3f});')
-for k in range(3):
-    mv(f'tl.fromTo("#lt{k}",{{clipPath:"inset(0% 100% 0% 0%)",y:24}},{{clipPath:"inset(0% 0% 0% 0%)",y:0,duration:.55,ease:"power3.out"}},{TL + 1.2 + k * .14:.3f});')
-mv(f'tl.fromTo("#rl17",{{scaleX:0}},{{scaleX:1,duration:.6,ease:"power3.inOut"}},{TL + 1.45:.3f});')
-LOGO_NET = TL + 1.45 + .6
-mv(f'tl.fromTo("#lg17",{{scale:1}},{{scale:1.03,duration:{DUR - TL - .8:.2f},ease:"sine.out"}},{TL + .8:.3f});')
-cues["card"] = CARD
-cues["logo_impact"] = LAND
-if LOGO_NET + 1.8 > DUR + .01:
-    print(f"⚠ DUR trop courte : {DUR} < {LOGO_NET + 1.8:.2f}")
+if SIGNATURE:
+    LS = .74
+    sw17 = VB[2] * LS
+    ox = 540 - (1157 - 42) * LS / 2
+    oy = 880 - (534 - 94) * LS / 2
+    SCX, SCY = ox + sw17 / 2, oy + VB[3] * LS / 2
+    st17, sh17 = brand_star("bs17", SCX, SCY, sw17, TL, seed=11, nparts=22)
+    lines17 = ""
+    for k, (y0, y1) in enumerate([(0, 76), (95, 174), (193, 271)]):
+        lines17 += (f'<div id="lt{k}" style="position:absolute;left:{ox + (536 - 42) * LS:.0f}px;top:{oy + (198 - 94 + y0) * LS:.0f}px;width:{622 * LS:.0f}px;height:{(y1 - y0) * LS:.0f}px;overflow:hidden">'
+                    f'<img src="assets/logo-cam-texte.png" style="position:absolute;left:0;top:{-y0 * LS:.0f}px;width:{622 * LS:.0f}px;height:{271 * LS:.0f}px"></div>')
+    ring = f'<div id="rg17" style="position:absolute;left:{SCX - 60:.0f}px;top:{SCY - 60:.0f}px;width:120px;height:120px;border-radius:50%;border:5px solid {LIGHT};opacity:0"></div>'
+    bar17 = (f'<div id="rl17" style="position:absolute;left:{ox:.0f}px;top:{oy + VB[3] * LS + 70:.0f}px;width:{(1157 - 42) * LS:.0f}px;height:3px;'
+             f'background:{NAVY};transform-origin:left center"></div>')
+    clip_div(screen, CARD, DUR - CARD, 30, cid="card", style=f"inset:0;background:{CR}",
+             inner=f'<div id="lg17" style="position:absolute;inset:0">{ring}{st17}{lines17}{bar17}</div>')
+    mv(f'tl.fromTo("#card",{{clipPath:"circle(0px at 540px 960px)"}},{{clipPath:"circle(1200px at 540px 960px)",duration:.45,ease:"power3.in"}},{CARD:.3f});')
+    LAND = TL + .45 + .2 + .75
+    mv(f'tl.fromTo("#rg17",{{scale:.3,opacity:1}},{{scale:14,opacity:0,duration:1.1,ease:"power2.out"}},{LAND - .25:.3f});')
+    for k in range(3):
+        mv(f'tl.fromTo("#lt{k}",{{clipPath:"inset(0% 100% 0% 0%)",y:24}},{{clipPath:"inset(0% 0% 0% 0%)",y:0,duration:.55,ease:"power3.out"}},{TL + 1.2 + k * .14:.3f});')
+    mv(f'tl.fromTo("#rl17",{{scaleX:0}},{{scaleX:1,duration:.6,ease:"power3.inOut"}},{TL + 1.45:.3f});')
+    LOGO_NET = TL + 1.45 + .6
+    mv(f'tl.fromTo("#lg17",{{scale:1}},{{scale:1.03,duration:{DUR - TL - .8:.2f},ease:"sine.out"}},{TL + .8:.3f});')
+    cues["card"] = CARD
+    cues["logo_impact"] = LAND
+    if LOGO_NET + 1.8 > DUR + .01:
+        print(f"⚠ DUR trop courte : {DUR} < {LOGO_NET + 1.8:.2f}")
 
 # ---------------------------------------------------------------- audio
 cues["phrases"] = {p: [PH[p]["start"], PH[p]["end"]] for p in PH}
@@ -510,7 +517,7 @@ doc = f'''<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name=
 (P / "index.html").write_text(doc)
 (P / "visibility.json").write_text(json.dumps(VISIBLE))
 bad = [(n, a, b - a) for n, a, b in VISIBLE if b - a < MIN_VISIBLE]
-(P / "build-audit.json").write_text(json.dumps({"duration":DUR,"logoAt":CARD,"panels":len(PANELS),"titleRepairs":TITLE_REPAIRS,"titleEntrances":ENTRANCES,"localMoves":LOCAL_MOVES,"briefItems":[f"{n} ({d:.2f} s at {a:.2f} s)" for n, a, d in bad]}))
+(P / "build-audit.json").write_text(json.dumps({"duration":DUR,"logoAt":CARD if SIGNATURE else None,"panels":len(PANELS),"titleRepairs":TITLE_REPAIRS,"titleEntrances":ENTRANCES,"localMoves":LOCAL_MOVES,"briefItems":[f"{n} ({d:.2f} s at {a:.2f} s)" for n, a, d in bad]}))
 print(f"contrôle durée d'affichage (≥ {MIN_VISIBLE} s) :", len(VISIBLE), "apparitions,", len(bad), "trop courtes,", len(TITLE_REPAIRS), "titres réparés")
 for n, a, d in bad:
     print(f"  ⚠ {a:6.2f} s  {d:.2f} s  {n}")

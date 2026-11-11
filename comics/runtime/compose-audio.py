@@ -111,8 +111,9 @@ for i,t in enumerate(np.arange(0,C["pull"],beat/2)):
     if i%8==0: put(score,t,brass(root,2),.04)
 for index,(start,end,*_) in enumerate(SH.values()):
     if index%3==0: put(sfx,start+.3,thump(.6,46),.15)
-put(score,C["logo_impact"],brass(146.84,2.2),.08)
-put(sfx,C["logo_impact"],timpani(.6,44),.15)
+if C.get("logo_impact") is not None:
+    put(score,C["logo_impact"],brass(146.84,2.2),.08)
+    put(sfx,C["logo_impact"],timpani(.6,44),.15)
 tt=np.arange(N)/SR
 env=np.minimum(1,tt/.2)*np.minimum(1,np.maximum(0,(DUR-tt)/1.0))
 write("musique.wav",score*env)
